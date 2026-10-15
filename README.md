@@ -1,19 +1,33 @@
 # Decker — by Mutant X
 
-**20 macros. Two rows. One screen. Your controls.**
+**Enhanced In-Game Macro Interface for Final Fantasy XI**
 
-Decker is a Final Fantasy XI/Ashita macro interface that displays the **Ctrl and Alt rows simultaneously** — all 20 macros in your current macro set, visible together.
+**20 Macros. Two Rows. One Screen. Your Controls.**
 
-You no longer have to hold Ctrl or Alt to activate macros through Decker. Choose your own direct keybindings, or navigate with arrow keys. Left/Right selects slots, Up/Down changes macro sets, and a configurable key switches between the two rows. The game's original Ctrl/Alt controls remain available.
+Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt macros together, while still using your original in-game macros.
 
-Decker also includes transparency, auto-hide, Hold-to-Navigate and Toggle Lock, optional chat notifications, and beginner-friendly settings.
+## Install
 
-## Installation
+1. Download and extract the Decker ZIP.
+2. Copy `addons/decker` into your Ashita `addons` folder.
+3. Load Decker through your Ashita addon loader.
+4. Open **Settings** in Decker.
 
-Place `decker.lua` in your Ashita `addons/decker/` directory and load the addon through Ashita. Configure your preferred controls in Decker's settings. Avoid mapping native Ctrl/Alt combinations as Decker shortcuts where they could conflict with the game's macro system.
+## First-time setup
 
-## Development status
+1. Open **Settings → Controls**.
+2. Set **Navigation modifier** to **Right Shift**.
+3. Choose **Toggle / Lock** under **Navigation behaviour**.
+4. Tick **Enable custom navigation**.
+5. Close Settings. Tap **Right Shift** to lock navigation.
+6. Use **Left / Right** to select a macro; **End** switches Ctrl/Alt rows.
+7. Use **Up / Down** to change macro sets; **Enter** runs the selected macro.
+8. Tap **Right Shift** again to unlock. **You're ready!**
 
-Early-development addon. The latest packaged trial is v1.39. Keep a copy of your working version before upgrading. Decker uses the existing in-game macro engine and does not replace macro data.
+## Optional
 
-**Created by Mutant X.**
+Click macro buttons with the mouse, customise direct keybindings, or adjust opacity and auto-hide under Display. Avoid using Ctrl/Alt as Decker keybinds because they can interfere with native FFXI controls. Direct keyboard overrides are off by default.
+
+Decker does not replace or rewrite your FFXI macro data.
+
+**by Mutant X**
