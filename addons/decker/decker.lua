@@ -3,14 +3,14 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.47';
+addon.version = '1.48-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
 local imgui = require('imgui');
 local ffi = require('ffi');
 ffi.cdef[[typedef const char* (__thiscall* Decker_FsMacroContainer_getName_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setPage_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setBook_f)(uint32_t, uint32_t); typedef void (__thiscall* Decker_FsMacroContainer_runMacro_f)(uint32_t, uint8_t, uint8_t);]];
-local state = { visible=true, signatures={}, addresses={}, summary='Not scanned', pointerSummary='Not checked', nameSummary='Not attempted', phase=0, confirm=false, confirmAll=false, scanning=false, names={}, setHint='Current in-game set (not independently detected)', nameCount=0, allowSwitch=false, selectedPage=nil, previousFingerprint=nil, changeSummary='Not checked', switchSummary='Not attempted', autoRefresh=false, refreshAt=0, refreshInterval=3, compact=true, details=false, showTests=false, clickConsent=false, clickSummary='Not attempted', scale=1.0, refreshErrorCount=0, hudWidth=92, hudHeight=43, allowAllClicks=false, nativeHudStudy=false, theme=1, compactKeys=true, keybinds=false, acknowledgeKeys=false, held={}, keySummary='Exclusive bindings OFF by default', preserveNativeArrows=true, pendingRefreshFrames=0, manualBook=1, trackedSet=1, trackedSource='default (unverified)', suppressed={}, nativeArrowRefreshes=0, showAdvanced=false, debugLog=false, flashRow=nil, flashSlot=nil, flashUntil=0, navSlot=nil, navRow=nil, navSource='unverified', navHeld={}, navModifier='RSHIFT', navKeysEnabled=false, navModifierHeld=false, navCaptured={}, navUpHeld=false, navDownHeld=false, stickyNavigation=true, navToggleActive=false, navPressed={}, navPhysicalDown=false, navHeldKeys={}, navPhysicalKeys={}, navQueue={}, navRow='CTRL', navSlot=1, navSource='default', savedNavEnabled=false, savedKeybinds=false, savedAck=false, rowSwitchKey='END', hudOpacity=1.0, echoLock=true, autoHide=true, autoHideDelay=10, autoHideMode='hide', hudLastActivity=os.clock(), hudWasActive=false, hudReadySince=nil, hudHasInteracted=false, hudForceReveal=false };
+local state = { visible=true, signatures={}, addresses={}, summary='Not scanned', pointerSummary='Not checked', nameSummary='Not attempted', phase=0, confirm=false, confirmAll=false, scanning=false, names={}, setHint='Current in-game set (not independently detected)', nameCount=0, allowSwitch=false, selectedPage=nil, previousFingerprint=nil, changeSummary='Not checked', switchSummary='Not attempted', autoRefresh=false, refreshAt=0, refreshInterval=3, compact=true, details=false, showTests=false, clickConsent=false, clickSummary='Not attempted', scale=1.0, refreshErrorCount=0, hudWidth=92, hudHeight=43, allowAllClicks=false, nativeHudStudy=false, theme=1, compactKeys=true, keybinds=false, acknowledgeKeys=false, held={}, keySummary='Exclusive bindings OFF by default', preserveNativeArrows=true, pendingRefreshFrames=0, manualBook=1, trackedSet=1, trackedSource='default (unverified)', suppressed={}, nativeArrowRefreshes=0, showAdvanced=false, debugLog=false, flashRow=nil, flashSlot=nil, flashUntil=0, navSlot=nil, navRow=nil, navSource='unverified', navHeld={}, navModifier='RSHIFT', navKeysEnabled=false, navModifierHeld=false, navCaptured={}, navUpHeld=false, navDownHeld=false, stickyNavigation=true, navToggleActive=false, navPressed={}, navPhysicalDown=false, navHeldKeys={}, navPhysicalKeys={}, navQueue={}, navRow='CTRL', navSlot=1, navSource='default', savedNavEnabled=false, savedKeybinds=false, savedAck=false, activeRowKeys=false, rowSwitchKey='END', hudOpacity=1.0, echoLock=true, autoHide=true, autoHideDelay=10, autoHideMode='hide', hudLastActivity=os.clock(), hudWasActive=false, hudReadySince=nil, hudHasInteracted=false, hudForceReveal=false };
 -- Configurable direct bindings. Defaults retain the original 1-0 / F1-F10 scheme.
 -- All direct shortcuts are opt-in; never rewrite FFXI's native macro keys.
 local DIRECT_KEY_OPTIONS={
@@ -66,7 +66,7 @@ end
 local function save_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
-    f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
+    f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nactiverowkeys=',state.activeRowKeys and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
@@ -92,6 +92,7 @@ local function load_display()
         if key=='stickynav' and (value=='0' or value=='1') then state.stickyNavigation=value=='1'; end
         if key=='navmode' and (value=='toggle' or value=='hold') then state.stickyNavigation=value=='toggle'; end
         if key=='navenabled' and (value=='0' or value=='1') then state.savedNavEnabled=value=='1'; end
+        if key=='activerowkeys' and (value=='0' or value=='1') then state.activeRowKeys=value=='1'; end
         if key=='keybinds' and (value=='0' or value=='1') then state.savedKeybinds=value=='1'; end
         if key=='ackkeys' and (value=='0' or value=='1') then state.savedAck=value=='1'; end
         -- Legacy auto-exit preference intentionally ignored: navigation now has only Toggle and Hold modes.
@@ -520,6 +521,10 @@ end
 -- DirectInput scancodes: 1..0 (2..11) and F1..F10 (59..68).
 -- Keyboard overrides remain OFF until explicit activation. Native FFXI chat/edit focus
 -- cannot yet be identified reliably in VanaCore. Warn in UI before enabling.
+local function active_row_slot(key)
+    if not state.activeRowKeys or not state.acknowledgeKeys or not state.allowAllClicks or not nav_is_active() then return nil; end
+    return (key>=2 and key<=11) and (key==11 and 10 or key-1) or nil;
+end
 local function mapped_key(key)
     if type(key)~='number' then return nil,nil; end
     for i,code in ipairs(state.directKeys) do
@@ -686,7 +691,10 @@ ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
     end
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
-    local row,slot=mapped_key(e.key);
+    local activeSlot=active_row_slot(e.key);
+    local row,slot;
+    if activeSlot then row,slot=state.navRow or 'CTRL',activeSlot;
+    else row,slot=mapped_key(e.key); end
     if not row then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
     if state.suppressed[e.key] then
@@ -697,7 +705,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
         end
         return;
     end
-    if not shortcuts_active() or e.blocked or modifier_down() then return; end
+    if (not activeSlot and not shortcuts_active()) or e.blocked or modifier_down() then return; end
     if e.down then
         if not state.held[e.key] then
             state.held[e.key]=true;
@@ -713,14 +721,15 @@ end);
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
-    if not shortcuts_active() and next(state.suppressed)==nil then return; end
+    if not shortcuts_active() and not (state.activeRowKeys and state.acknowledgeKeys and state.allowAllClicks and nav_is_active()) and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
     local keys={};
     for _,code in ipairs(state.directKeys) do if code>0 then keys[code]=true; end end
+    if state.activeRowKeys and state.acknowledgeKeys and state.allowAllClicks and nav_is_active() then for code=2,11 do keys[code]=true; end end
     for code,_ in pairs(state.suppressed) do keys[code]=true; end
     for code,_ in pairs(keys) do
-        if code<size and (state.suppressed[code] or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
+        if code<size and (state.suppressed[code] or ((shortcuts_active() and mapped_key(code)~=nil) or active_row_slot(code)~=nil) and not modifier_down()) then ptr[code]=0; end
     end
 end);
 ashita.events.register('load','decker_load',function() say('Decker v'..addon.version..' loaded',false); end);
@@ -984,12 +993,15 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.Button('Clear##cool'..i) then state.cooldownBindings[i]=nil; save_display(); end
             end
             imgui.TextWrapped('To map a button: /decker cooldown ctrl 1 spell 123, or /decker cooldown alt 2 ability 5. Use /decker cooldown ctrl 1 clear to remove. Ability value is a recast timer ID.');
-            imgui.Text('Controls - Direct macro keys');
+            imgui.Text('Controls - Direct macro keys')
+            imgui.TextWrapped('Active Row Keys: while Decker navigation is active, number keys 1-0 execute the selected row. The Switch Row Key changes which ten macros they run. Disabled by default. These keys may interfere with chat/menu typing; enable only after acknowledging the risk.')
+            local ar={state.activeRowKeys};
+            if imgui.Checkbox('Enable Active Row Keys (1-0)',ar) then state.activeRowKeys=ar[1]; state.suppressed={}; state.held={}; save_display(); end;
             imgui.TextWrapped('Custom direct macro controls remain OFF by default. Chat and menu safety is unverified under VanaCore.');
             local ack={state.acknowledgeKeys};
             if imgui.Checkbox('I understand the chat/menu risk',ack) then
                 state.acknowledgeKeys=ack[1]; state.savedAck=ack[1];
-                if not ack[1] then state.keybinds=false; state.savedKeybinds=false; state.held={}; end
+                if not ack[1] then state.keybinds=false; state.savedKeybinds=false; state.activeRowKeys=false; state.held={}; end
                 save_display();
             end
             if state.acknowledgeKeys and state.allowAllClicks then
