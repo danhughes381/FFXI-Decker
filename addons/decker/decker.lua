@@ -521,10 +521,6 @@ end
 -- DirectInput scancodes: 1..0 (2..11) and F1..F10 (59..68).
 -- Keyboard overrides remain OFF until explicit activation. Native FFXI chat/edit focus
 -- cannot yet be identified reliably in VanaCore. Warn in UI before enabling.
-local function active_row_slot(key)
-    if not state.activeRowKeys or not state.acknowledgeKeys or not state.allowAllClicks or not nav_is_active() then return nil; end
-    return (key>=2 and key<=11) and (key==11 and 10 or key-1) or nil;
-end
 local function mapped_key(key)
     if type(key)~='number' then return nil,nil; end
     for i,code in ipairs(state.directKeys) do
@@ -572,6 +568,10 @@ local function nav_is_active()
        and (state.stickyNavigation and state.navToggleActive or
            (not state.stickyNavigation and state.navModifierHeld))
        and not other_modifier_down();
+end
+local function active_row_slot(key)
+    if not state.activeRowKeys or not state.acknowledgeKeys or not state.allowAllClicks or not nav_is_active() then return nil; end
+    return (key>=2 and key<=11) and (key==11 and 10 or key-1) or nil;
 end
 local function nav_clear()
     state.navToggleActive=false;
