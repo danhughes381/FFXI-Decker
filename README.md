@@ -37,6 +37,19 @@ If you already have FFXI macros set up, Decker makes them easier to see and navi
 7. **Exit navigation:** Release the modifier in Hold mode, or tap it again in Toggle / Lock mode.
 8. **Refresh when needed:** After changing macros in FFXI, use **Refresh macro names** again.
 
+## Keyboard and peripheral bindings
+
+Decker is designed for different keyboards, MMO mice and gaming keypads. **You don't have to use Ctrl or Alt to select macros.** Choose whichever supported keys suit your setup.
+
+**Two optional binding approaches (design direction; not all behaviour is implemented or tested yet):**
+
+- **Active Row Keys:** Enable a checkbox to let one configurable group of ten keys execute macros on the currently selected Ctrl or Alt row. For example, press **N** to switch rows, then **1–0** to run the corresponding macro. This must only intercept keys while Decker navigation is active.
+- **Independent Row Bindings:** Assign ten keys to each row separately. For example, **1–0** for one row and **F1–F10** for the other, or keys emitted by an MMO mouse or Razer Orbweaver. These mappings should work without changing the active row.
+
+The options should be independent so players can enable either or both. Detect and warn about duplicate bindings and native FFXI conflicts; do not silently take over gameplay keys. Peripheral support depends on the device sending keyboard inputs Ashita can recognise.
+
+**Current release:** Decker includes configurable direct keybindings and a row-switch control. The proposed Active Row Keys checkbox and its number-key interception still need implementation and in-game verification. Do not treat this section as a claim that those features are shipped.
+
 ## Optional
 
 Click macro buttons with the mouse, customise direct keybindings, or adjust opacity and auto-hide under Display. Avoid using Ctrl/Alt as Decker keybinds because they can interfere with native FFXI controls. Direct keyboard overrides are off by default.
