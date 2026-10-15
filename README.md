@@ -8,6 +8,14 @@
 
 Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt macros together, while still using your original in-game macros. **No need to recreate your macro books or learn a separate macro language.**
 
+### Navigate without holding Ctrl or Alt
+
+In traditional FFXI, you hold **Ctrl** or **Alt** to open one macro row at a time. With Decker's **Toggle / Lock** navigation mode, press your chosen navigation key **once** to keep navigation active and see **both rows together**. Then use **Left / Right** to move between macro slots, **Up / Down** to move between macro sets, and your configurable **Switch Row Key** (default **End**) to switch between the Ctrl and Alt rows. Press the navigation key again to unlock.
+
+You can move across slots, rows and sets without continuously holding Ctrl or Alt. **Ctrl and Alt remain available for FFXI's original controls.** Choose a comfortable navigation key that doesn't conflict with those bindings.
+
+*Note: Macro books are separate from macro sets. Decker's book selector changes books; Up / Down navigates sets within the selected book.*
+
 ### Why Decker?
 
 If you already have FFXI macros set up, Decker makes them easier to see and navigate without replacing the game's familiar Ctrl/Alt macro system. It's deliberately a lightweight alternative to building a fully custom hotbar. Keep your existing macros and change how you access them.
