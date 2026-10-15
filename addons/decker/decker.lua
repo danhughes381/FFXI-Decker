@@ -31,7 +31,7 @@ local function direct_conflict(code,index)
     for i,k in ipairs(state.directKeys) do if i~=index and k==code then return true; end end
     -- Avoid keys reserved for navigation while custom navigation is enabled.
     local reserved={ [203]=true,[205]=true,[200]=true,[208]=true,[28]=true,[1]=true,[57]=true };
-    if state.navKeysEnabled and (reserved[code] or code==({RSHIFT=54,LSHIFT=42,END=207,HOME=199})[state.navModifier] or code==({END=207,HOME=199,INSERT=210,DELETE=211,F9=67,F10=68,F11=87,F12=88})[state.rowSwitchKey]) then return true; end
+    if state.navKeysEnabled and (reserved[code] or code==({RSHIFT=54,LSHIFT=42,END=207,HOME=199})[state.navModifier] or code==({END=207,HOME=199,INSERT=210,DELETE=211,N=49,F9=67,F10=68,F11=87,F12=88})[state.rowSwitchKey]) then return true; end
     return false;
 end
 -- Display-only preferences saved next to this addon. No macro data or game files are written.
@@ -88,7 +88,7 @@ local function load_display()
         if key=='autohidemode' and (value=='hide' or value=='collapse') then state.autoHideMode=value; end
         if key=='echolock' and (value=='0' or value=='1') then state.echoLock=value=='1'; end
         if key=='opacity' and n and n>=0.2 and n<=1 then state.hudOpacity=n; end
-        if key=='rowswitchkey' and (value=='END' or value=='HOME' or value=='INSERT' or value=='DELETE' or value=='F9' or value=='F10' or value=='F11' or value=='F12') then state.rowSwitchKey=value; end
+        if key=='rowswitchkey' and (value=='END' or value=='HOME' or value=='INSERT' or value=='DELETE' or value=='N' or value=='F9' or value=='F10' or value=='F11' or value=='F12') then state.rowSwitchKey=value; end
         if key=='stickynav' and (value=='0' or value=='1') then state.stickyNavigation=value=='1'; end
         if key=='navmode' and (value=='toggle' or value=='hold') then state.stickyNavigation=value=='toggle'; end
         if key=='navenabled' and (value=='0' or value=='1') then state.savedNavEnabled=value=='1'; end
@@ -695,7 +695,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
     local row,slot;
     if activeSlot then row,slot=state.navRow or 'CTRL',activeSlot;
     else row,slot=mapped_key(e.key); end
-    if not row then return; end
+    if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
     if state.suppressed[e.key] then
         e.blocked=true;
@@ -940,7 +940,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
             imgui.TextWrapped('Arrow Left/Right: select slot. Space or Switch Row Key: switch Decker row. Enter: execute. Up/Down: change set. Escape: handled by FFXI (does not unlock).')
             if imgui.BeginCombo('Switch Row Key',state.rowSwitchKey) then
-                for _,choice in ipairs({'END','HOME','INSERT','DELETE','F9','F10','F11','F12'}) do
+                for _,choice in ipairs({'END','HOME','INSERT','DELETE','N','F9','F10','F11','F12'}) do
                     if imgui.Selectable(choice,state.rowSwitchKey==choice) then
                         state.rowSwitchKey=choice; state.navCaptured={}; state.navPhysicalKeys={}; save_display();
                     end
@@ -996,7 +996,11 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.Text('Controls - Direct macro keys')
             imgui.TextWrapped('Active Row Keys: while Decker navigation is active, number keys 1-0 execute the selected row. The Switch Row Key changes which ten macros they run. Disabled by default. These keys may interfere with chat/menu typing; enable only after acknowledging the risk.')
             local ar={state.activeRowKeys};
-            if imgui.Checkbox('Enable Active Row Keys (1-0)',ar) then state.activeRowKeys=ar[1]; state.suppressed={}; state.held={}; save_display(); end;
+            if state.acknowledgeKeys and state.allowAllClicks then
+                if imgui.Checkbox('Enable Active Row Keys (1-0)',ar) then state.activeRowKeys=ar[1]; state.suppressed={}; state.held={}; save_display(); end
+            else
+                imgui.TextWrapped('Active Row Keys unavailable until native macros are connected and chat/menu risk is acknowledged below.')
+            end
             imgui.TextWrapped('Custom direct macro controls remain OFF by default. Chat and menu safety is unverified under VanaCore.');
             local ack={state.acknowledgeKeys};
             if imgui.Checkbox('I understand the chat/menu risk',ack) then
@@ -1034,7 +1038,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if imgui.Button('Reset direct keys to defaults') then
                 state.directKeys=default_direct_keys(); state.held={}; state.suppressed={}; save_display();
             end
-            if imgui.Button('Release keyboard overrides') then state.keybinds=false; state.acknowledgeKeys=false; state.savedKeybinds=false; state.savedAck=false; state.held={}; save_display(); end
+            if imgui.Button('Release keyboard overrides') then state.keybinds=false; state.activeRowKeys=false; state.acknowledgeKeys=false; state.savedKeybinds=false; state.savedAck=false; state.held={}; state.suppressed={}; save_display(); end
             imgui.Text('/decker keysoff also disables overrides');
             end
             if imgui.CollapsingHeader('Quick Start Guide') then
