@@ -2,9 +2,15 @@
 
 **Enhanced In-Game Macro Interface for Final Fantasy XI**
 
-**20 Macros. Two Rows. One Screen. Your Controls.**
+**Keep your macros. Upgrade how you use them.**
 
-Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt macros together, while still using your original in-game macros.
+*20 Macros. Two Rows. One Screen. Your Controls.*
+
+Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt macros together, while still using your original in-game macros. **No need to recreate your macro books or learn a separate macro language.**
+
+### Why Decker?
+
+If you already have FFXI macros set up, Decker makes them easier to see and navigate without replacing the game's familiar Ctrl/Alt macro system. It's deliberately a lightweight alternative to building a fully custom hotbar. Keep your existing macros and change how you access them.
 
 ## Install
 
