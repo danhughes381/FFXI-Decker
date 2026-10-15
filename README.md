@@ -40,4 +40,4 @@ You're welcome to use it, share it, learn from it, and build your own improvemen
 
 Make it your own — just give credit where it started. Thanks for supporting the FFXI community!
 
-*This is a friendly attribution request, not a substitute for a software licence. Licensing terms will be specified separately.*
+**Licence:** [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for original-project attribution. The request to link back to GitHub is appreciated, but is not an additional licence condition.
