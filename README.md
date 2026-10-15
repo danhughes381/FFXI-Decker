@@ -31,3 +31,13 @@ Click macro buttons with the mouse, customise direct keybindings, or adjust opac
 Decker does not replace or rewrite your FFXI macro data.
 
 **by Mutant X**
+
+## Sharing, modifying & giving credit
+
+Decker was created by **Mutant X** for the Final Fantasy XI community.
+
+You're welcome to use it, share it, learn from it, and build your own improvements. If you share or release a modified version, please acknowledge **Decker by Mutant X** as the original project, link back to [this repository](https://github.com/danhughes381/FFXI-Decker), and make clear what you've changed.
+
+Make it your own — just give credit where it started. Thanks for supporting the FFXI community!
+
+*This is a friendly attribution request, not a substitute for a software licence. Licensing terms will be specified separately.*
