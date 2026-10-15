@@ -10,19 +10,18 @@ Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt
 
 1. Download and extract the Decker ZIP.
 2. Copy `addons/decker` into your Ashita `addons` folder.
-3. Load Decker through your Ashita addon loader.
-4. Open **Settings** in Decker.
+3. Load Decker through Ashita while FFXI is running.
 
 ## First-time setup
 
-1. Open **Settings → Controls**.
-2. Set **Navigation modifier** to **Right Shift**.
-3. Choose **Toggle / Lock** under **Navigation behaviour**.
-4. Tick **Enable custom navigation**.
-5. Close Settings. Tap **Right Shift** to lock navigation.
-6. Use **Left / Right** to select a macro; **End** switches Ctrl/Alt rows.
-7. Use **Up / Down** to change macro sets; **Enter** runs the selected macro.
-8. Tap **Right Shift** again to unlock. **You're ready!**
+1. **Refresh macros:** Open Decker Settings and select **Refresh macro names** to load your current Ctrl/Alt macro labels.
+2. **Choose a navigation key:** In **Settings → Controls**, choose a **Navigation modifier** that's comfortable on your keyboard. **Right Shift is an example, not a requirement.** **Avoid Ctrl and Alt:** keep those for FFXI's traditional macro controls.
+3. **Choose a mode:** Select **Hold to navigate** or **Toggle / Lock**, whichever suits you.
+4. **Enable navigation:** Turn on **Enable custom navigation**, then close Settings.
+5. **Navigate:** Hold or tap your chosen modifier. **Left / Right** selects slots; **End** switches Ctrl/Alt rows.
+6. **Change sets and execute:** **Up / Down** changes sets; **Enter** runs the selected macro.
+7. **Exit navigation:** Release the modifier in Hold mode, or tap it again in Toggle / Lock mode.
+8. **Refresh when needed:** After changing macros in FFXI, use **Refresh macro names** again.
 
 ## Optional
 
