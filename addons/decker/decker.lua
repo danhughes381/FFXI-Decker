@@ -1073,6 +1073,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
             if state.phase>=4 and imgui.Button('Refresh macro names') then state.confirmAll=true; read_all_names(); end
             imgui.Separator(); imgui.Text('Decker v'..addon.version..'  |  by Mutant X')
+            imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.')
             if imgui.Button('Close settings') then state.showTests=false; end
         end
         imgui.End();
