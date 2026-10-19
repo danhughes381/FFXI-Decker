@@ -45,8 +45,8 @@ end)
 test('command allowlist rejects Lua chaining and chat',function()
  for _,c in ipairs({'/equipset 1','/lac set PDT','/item "Food" <me>','/mount "Chocobo"'}) do assert(api.valid(c),c) end
  for _,c in ipairs({'/lua exec print(1)','/lac set PDT; /quit','/equipset 0','/equipset 101','/tell Someone hi','/item "Food" <me>\n/quit'}) do assert(not api.valid(c),c) end
- ready();s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/lac set PDT'}};assert(api.request(1));assert(requested[#requested]=='/lac set PDT')
- api.save();s.statebarSlots={};api.load();assert(s.statebarSlots[1].command=='/lac set PDT' and s.statebarSlots[1].source=='command')
+ ready();s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/lac set PDT',label='PDT'}};assert(api.request(1));assert(requested[#requested]=='/lac set PDT')
+ api.save();s.statebarSlots={};api.load();assert(s.statebarSlots[1].command=='/lac set PDT' and s.statebarSlots[1].source=='command' and s.statebarSlots[1].label=='PDT')
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='split' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)

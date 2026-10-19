@@ -1,0 +1,12 @@
+{
+  "version": "1.49.5-dev",
+  "author": "Mutant X",
+  "channel": "development",
+  "artifact": "Decker_v1.49.5_dev_Mutant_X.zip",
+  "sha256": "1f5e75eb6bd7f2947a595d83238da266fc1119d79a55e643b446e6a60db16463",
+  "stable": false,
+  "in_game_verified": false,
+  "tag": "v1.49.5-dev",
+  "tag_status": "prepared locally; remote tag publication unavailable through connected GitHub tools",
+  "next_version": "1.49.6-dev"
+}
