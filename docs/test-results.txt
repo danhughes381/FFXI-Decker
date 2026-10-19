@@ -1,0 +1,11 @@
+PASS first install: safe defaults and Quick Setup
+PASS profile switching isolates all settings
+PASS profile reload and zero slots persist
+PASS State and Utility requests
+PASS command allowlist rejects Lua chaining and chat
+PASS section reset only affects selected preferences
+PASS all three layouts and N row switch
+PASS StateBar collisions and permission gates
+PASS single hotkey execution and key release after disable
+PASS Settings sections render with balanced style stacks
+10 regression groups passed (mocked host; not in-game validation)

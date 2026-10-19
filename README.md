@@ -1,73 +1,61 @@
-# Decker — by Mutant X
+# Decker — v1.49.5-dev
 
-**Enhanced In-Game Macro Interface for Final Fantasy XI**
+Enhanced in-game macro interface for Final Fantasy XI, by **Mutant X**.
+Ashita v4 / Vanacor / CatsEyeXI. Apache 2.0; retain LICENSE and NOTICE.
 
-**CatseyeXI: T1 Sanctioned — approved 19 October 2026.**
+**CatsEyeXI: T1 Sanctioned — approved 19 October 2026.** This records the existing staff approval; this development build has not been verified in game.
 
-CatseyeXI staff confirmed Decker's T1 Sanctioned approval on 19 October 2026.
+## Install and start
 
-**Keep your macros. Upgrade how you use them.**
+1. Back up your existing `addons/decker` folder and character `.cfg` files.
+2. Extract the ZIP into your Ashita/Vanacor root. The result must be `addons/decker/decker.lua`, not a nested second decker folder.
+3. Load with `/addon load decker` (unload the old version first when updating).
+4. Open `/decker settings`. In **Quick Setup**, Connect macros, select a layout and enable the controls you need. Keyboard overrides require acknowledging the warning.
 
-*20 Macros. Two Rows. One Screen. Your Controls.*
+Target setup time: under one minute; not yet measured in game. Mouse execution is available after Connect. Native connection uses client signatures and FFI; incompatible clients can crash. Do not enable keyboard overrides while typing or editing menus: reliable chat/menu focus detection is unavailable.
 
-Decker enhances FFXI's existing macro system. It displays all 10 Ctrl and 10 Alt macros together, while still using your original in-game macros. **No need to recreate your macro books or learn a separate macro language.**
+## Four Settings sections
 
-### Navigate without holding Ctrl or Alt
+| Section | Controls |
+| --- | --- |
+| Quick Setup | Connect, split/shared keyboard layouts, permission and keyboard status; advanced navigation and assignments expand below |
+| Appearance | Scale, themes, dimensions, opacity, auto-hide and dragging lock |
+| StateBar | Optional independent bar, slot labels, State/Utility type, action source, hotkeys and appearance |
+| More | Profiles, Book & Set controls, update information, help and diagnostics |
 
-In traditional FFXI, you hold **Ctrl** or **Alt** to open one macro row at a time. With Decker's **Toggle / Lock** navigation mode, press your chosen navigation key **once** to keep navigation active and see **both rows together**. Then use **Left / Right** to move between macro slots, **Up / Down** to move between macro sets, and your configurable **Switch Row Key** (default **End**) to switch between the Ctrl and Alt rows. Press the navigation key again to unlock.
+Each section has **Restore section defaults → Confirm restore**. More resets its Book/Set display and cooldown preferences only. Unrelated sections and other characters are preserved.
 
-You can move across slots, rows and sets without continuously holding Ctrl or Alt. **Ctrl and Alt remain available for FFXI's original controls.** Choose a comfortable navigation key that doesn't conflict with those bindings.
+## Main macro HUD
 
-*Note: Macro books are separate from macro sets. Decker's book selector changes books; Up / Down navigates sets within the selected book.*
+- Split layout: F1–F10 top (Ctrl), 1–0 bottom (Alt).
+- Shared layout: 1–0 or F1–F10 operates the selected Ctrl/Alt row.
+- Mouse execution; selected and pressed highlighting; optional cooldown text.
+- Opt-in navigation: default Right Shift, toggle or hold. Left/right select slots; up/down change sets; End or configured key switches row; Enter executes. Escape retains normal game behaviour.
+- Custom direct keys and row/navigation controls; Ctrl/Alt remain native game modifiers.
+- Auto-hide defaults off. Optional auto-hide collapses to a recoverable tab. `/decker show` reveals the HUD; `/decker keysoff` disables direct overrides.
+- Dragging and lock work through ImGui. Explicit position save/restore remains disabled pending Vanacor vector API validation; ImGui's own position retention is host-dependent.
 
-### Why Decker?
+## StateBar
 
-If you already have FFXI macros set up, Decker makes them easier to see and navigate without replacing the game's familiar Ctrl/Alt macro system. It's deliberately a lightweight alternative to building a fully custom hotbar. Keep your existing macros and change how you access them.
+StateBar is part of Decker and has independent visibility and selection. Labels stay readable; the last requested **State** remains highlighted. **Utility** actions do not clear it, and normal HUD macros do not change it. This is a request indicator, never equipment confirmation. Add an optional label such as PDT, MDT or Food per slot.
 
-## Install
+Action sources:
 
-1. Download and extract the Decker ZIP.
-2. Copy `addons/decker` into your Ashita `addons` folder.
-3. Load Decker through Ashita while FFXI is running.
+- **macro**: executes the chosen Ctrl/Alt slot in the **currently active native book/set**. It never silently switches to a dedicated book. Labels without a custom override follow the current macro names.
+- **command**: dispatches one allowlisted command through Ashita's command queue. Supported forms: `/equipset 1` (1–100), `/lac set PDT` (one alphanumeric/underscore/hyphen set name), `/item "Food" <me>`, `/ma "Spell" <me>`, `/ja "Ability" <me>`, `/mount "Name"`. Commands require Connect; macros and commands are requests only. Lua evaluation, script execution, chat commands and command chaining are rejected. The named item, spell, mount or integration must exist in your installation.
 
-## First-time setup
+Single-key hotkeys are optional and require keyboard consent and enablement. Main-macro and navigation collisions are rejected at execution; duplicate StateBar shortcuts from edited profiles are also blocked. Modifier combinations remain unavailable until input handling is validated. Dedicated-book execution remains unavailable because restoring the original native book/set cannot be verified.
 
-1. **Refresh macros:** Open Decker Settings and select **Refresh macro names** to load your current Ctrl/Alt macro labels.
-2. **Choose a navigation key:** In **Settings → Controls**, choose a **Navigation modifier** that's comfortable on your keyboard. **Right Shift is an example, not a requirement.** **Avoid Ctrl and Alt:** keep those for FFXI's traditional macro controls.
-3. **Choose a mode:** Select **Hold to navigate** or **Toggle / Lock**, whichever suits you.
-4. **Enable navigation:** Turn on **Enable custom navigation**, then close Settings.
-5. **Navigate:** Hold or tap your chosen modifier. **Left / Right** selects slots; **End** switches Ctrl/Alt rows.
-6. **Change sets and execute:** **Up / Down** changes sets; **Enter** runs the selected macro.
-7. **Exit navigation:** Release the modifier in Hold mode, or tap it again in Toggle / Lock mode.
-8. **Refresh when needed:** After changing macros in FFXI, use **Refresh macro names** again.
+## Character profiles
 
-## Keyboard and peripheral bindings
+After login, settings use `decker_profile_<server>_<character>.cfg`. Salts and Pepper get separate files. Unknown server IDs use the literal `server` prefix; identical names across unknown servers cannot be distinguished. No profile is written without a detected character. Character changes reset preferences before loading the next file, clear queued input and disconnect native macros. Reconnect and consent after each character change or addon restart. Legacy global `decker_display.cfg` is not overwritten or automatically imported.
 
-Decker is designed for different keyboards, MMO mice and gaming keypads. **You don't have to use Ctrl or Alt to select macros.** Choose whichever supported keys suit your setup.
+## Development status
 
-**Two optional binding approaches (design direction; not all behaviour is implemented or tested yet):**
+See [CHANGELOG.md](CHANGELOG.md), [TODO.md](TODO.md), and [docs/VERIFICATION.md](docs/VERIFICATION.md). LuaJIT host-mocked tests are provided in `tests/regression.lua`:
 
-- **Active Row Keys:** Enable a checkbox to let one configurable group of ten keys execute macros on the currently selected Ctrl or Alt row. For example, press **N** to switch rows, then **1–0** to run the corresponding macro. This must only intercept keys while Decker navigation is active.
-- **Independent Row Bindings:** Assign ten keys to each row separately. For example, **1–0** for one row and **F1–F10** for the other, or keys emitted by an MMO mouse or Razer Orbweaver. These mappings should work without changing the active row.
+```sh
+luajit tests/regression.lua .
+```
 
-The options should be independent so players can enable either or both. Detect and warn about duplicate bindings and native FFXI conflicts; do not silently take over gameplay keys. Peripheral support depends on the device sending keyboard inputs Ashita can recognise.
-
-**Current release:** Decker includes configurable direct keybindings and a row-switch control. The proposed Active Row Keys checkbox and its number-key interception still need implementation and in-game verification. Do not treat this section as a claim that those features are shipped.
-
-## Optional
-
-Click macro buttons with the mouse, customise direct keybindings, or adjust opacity and auto-hide under Display. Avoid using Ctrl/Alt as Decker keybinds because they can interfere with native FFXI controls. Direct keyboard overrides are off by default.
-
-Decker does not replace or rewrite your FFXI macro data.
-
-**by Mutant X**
-
-## Sharing, modifying & giving credit
-
-Decker was created by **Mutant X** for the Final Fantasy XI community.
-
-You're welcome to use it, share it, learn from it, and build your own improvements. If you share or release a modified version, please acknowledge **Decker by Mutant X** as the original project, link back to [this repository](https://github.com/danhughes381/FFXI-Decker), and make clear what you've changed.
-
-Make it your own — just give credit where it started. Thanks for supporting the FFXI community!
-
-**Licence:** [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for original-project attribution. The request to link back to GitHub is appreciated, but is not an additional licence condition.
+No automatic updater/rollback is implemented. Download releases from this repository and retain your previous ZIP. This build is a development candidate, **not a stable release**.

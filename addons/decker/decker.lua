@@ -1,16 +1,16 @@
--- Decker 1.30: native macro read proof-of-concept for VanaCore/Ashita 4.
+-- Decker 1.49.5-dev: native macro HUD for VanaCore/Ashita 4.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.48-dev';
+addon.version = '1.49.5-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
 local imgui = require('imgui');
 local ffi = require('ffi');
 ffi.cdef[[typedef const char* (__thiscall* Decker_FsMacroContainer_getName_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setPage_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setBook_f)(uint32_t, uint32_t); typedef void (__thiscall* Decker_FsMacroContainer_runMacro_f)(uint32_t, uint8_t, uint8_t);]];
-local state = { visible=true, signatures={}, addresses={}, summary='Not scanned', pointerSummary='Not checked', nameSummary='Not attempted', phase=0, confirm=false, confirmAll=false, scanning=false, names={}, setHint='Current in-game set (not independently detected)', nameCount=0, allowSwitch=false, selectedPage=nil, previousFingerprint=nil, changeSummary='Not checked', switchSummary='Not attempted', autoRefresh=false, refreshAt=0, refreshInterval=3, compact=true, details=false, showTests=false, clickConsent=false, clickSummary='Not attempted', scale=1.0, refreshErrorCount=0, hudWidth=92, hudHeight=43, allowAllClicks=false, nativeHudStudy=false, theme=1, compactKeys=true, keybinds=false, acknowledgeKeys=false, held={}, keySummary='Exclusive bindings OFF by default', preserveNativeArrows=true, pendingRefreshFrames=0, manualBook=1, trackedSet=1, trackedSource='default (unverified)', suppressed={}, nativeArrowRefreshes=0, showAdvanced=false, debugLog=false, flashRow=nil, flashSlot=nil, flashUntil=0, navSlot=nil, navRow=nil, navSource='unverified', navHeld={}, navModifier='RSHIFT', navKeysEnabled=false, navModifierHeld=false, navCaptured={}, navUpHeld=false, navDownHeld=false, stickyNavigation=true, navToggleActive=false, navPressed={}, navPhysicalDown=false, navHeldKeys={}, navPhysicalKeys={}, navQueue={}, navRow='CTRL', navSlot=1, navSource='default', savedNavEnabled=false, savedKeybinds=false, savedAck=false, activeRowKeys=false, rowSwitchKey='END', hudOpacity=1.0, echoLock=true, autoHide=true, autoHideDelay=10, autoHideMode='hide', hudLastActivity=os.clock(), hudWasActive=false, hudReadySince=nil, hudHasInteracted=false, hudForceReveal=false };
+local state = { visible=true, signatures={}, addresses={}, summary='Not scanned', pointerSummary='Not checked', nameSummary='Not attempted', phase=0, confirm=false, confirmAll=false, scanning=false, names={}, setHint='Current in-game set (not independently detected)', nameCount=0, allowSwitch=false, selectedPage=nil, previousFingerprint=nil, changeSummary='Not checked', switchSummary='Not attempted', autoRefresh=false, refreshAt=0, refreshInterval=3, compact=true, details=false, showTests=false, clickConsent=false, clickSummary='Not attempted', scale=1.0, refreshErrorCount=0, hudWidth=92, hudHeight=43, allowAllClicks=false, nativeHudStudy=false, theme=1, compactKeys=true, keybinds=false, acknowledgeKeys=false, held={}, keySummary='Exclusive bindings OFF by default', preserveNativeArrows=true, pendingRefreshFrames=0, manualBook=1, trackedSet=1, trackedSource='default (unverified)', suppressed={}, nativeArrowRefreshes=0, showAdvanced=false, debugLog=false, flashRow=nil, flashSlot=nil, flashUntil=0, navSlot=nil, navRow=nil, navSource='unverified', navHeld={}, navModifier='RSHIFT', navKeysEnabled=false, navModifierHeld=false, navCaptured={}, navUpHeld=false, navDownHeld=false, stickyNavigation=true, navToggleActive=false, navPressed={}, navPhysicalDown=false, navHeldKeys={}, navPhysicalKeys={}, navQueue={}, navRow='CTRL', navSlot=1, navSource='default', savedNavEnabled=false, savedKeybinds=false, savedAck=false, rowSwitchKey='END', hudOpacity=1.0, echoLock=true, autoHide=false, autoHideDelay=10, autoHideMode='collapse', hudLastActivity=os.clock(), hudWasActive=false, hudReadySince=nil, hudHasInteracted=false, hudForceReveal=false };
 -- Configurable direct bindings. Defaults retain the original 1-0 / F1-F10 scheme.
 -- All direct shortcuts are opt-in; never rewrite FFXI's native macro keys.
 local DIRECT_KEY_OPTIONS={
@@ -26,9 +26,27 @@ local function default_direct_keys()
     local t={}; for i=1,10 do t[i]=58+i; t[10+i]=i==10 and 11 or i+1; end; return t;
 end
 state.directKeys=default_direct_keys();
+state.settingsTab='Controls'; state.statebarEnabled=false; state.statebarVertical=false; state.statebarLocked=false; state.statebarAlways=true; state.statebarScale=1.0; state.statebarOpacity=1; state.statebarTheme=1; state.statebarVisibility='always'; state.statebarSlots={{row='CTRL',slot=1},{row='CTRL',slot=2},{row='CTRL',slot=3},{row='ALT',slot=1}};
+state.statebarOpacity=1.0; state.statebarTheme=1; state.statebarVisibility='always'; state.profileDiagnostic='Not checked'; state.statebarSelected=0;
+state.statebarHotkeys={}; state.statebarHotkeysEnabled=false; state.statebarActionMode='current';
+state.mappingMode='split'; state.positionLocked=false; state.hudPos=nil; state.profileId=nil; state.profileReady=false; state.lastProfileCheck=0;
+local function copy_value(v)
+    if type(v)~='table' then return v; end
+    local t={}; for k,x in pairs(v) do t[k]=copy_value(x); end; return t;
+end
+local profileDefaults=copy_value(state);
+local sectionKeys={
+    Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
+    Appearance={'scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked'},
+    StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
+    General={'manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
+};
+-- First-install defaults also form the profile-isolation boundary.
+profileDefaults.autoHide=false; profileDefaults.autoHideMode='collapse';
+profileDefaults.cooldownEnabled=false; profileDefaults.cooldownBindings={};
 local function direct_conflict(code,index)
     if code==0 then return false; end
-    for i,k in ipairs(state.directKeys) do if i~=index and k==code then return true; end end
+    if state.mappingMode=='split' then for i,k in ipairs(state.directKeys) do if i~=index and k==code then return true; end end end
     -- Avoid keys reserved for navigation while custom navigation is enabled.
     local reserved={ [203]=true,[205]=true,[200]=true,[208]=true,[28]=true,[1]=true,[57]=true };
     if state.navKeysEnabled and (reserved[code] or code==({RSHIFT=54,LSHIFT=42,END=207,HOME=199})[state.navModifier] or code==({END=207,HOME=199,INSERT=210,DELETE=211,N=49,F9=67,F10=68,F11=87,F12=88})[state.rowSwitchKey]) then return true; end
@@ -39,7 +57,8 @@ local function settings_path()
     local source=(debug.getinfo(1,'S') or {}).source or '';
     if source:sub(1,1)~='@' then return nil; end
     local directory=source:sub(2):match('^(.*[\\/])');
-    return directory and (directory..'decker_display.cfg') or nil;
+    if not directory then return nil; end
+    return directory..(state.profileId and ('decker_profile_'..state.profileId..'.cfg') or 'decker_display.cfg');
 end
 -- Cooldown bindings are optional per button; never infer actions from user-defined labels.
 state.cooldownEnabled=false;
@@ -64,9 +83,16 @@ local function cooldown_recast(binding)
     return ok and type(remaining)=='number' and remaining>0;
 end
 local function save_display()
+    if not state.profileReady then return; end
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
-    f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nactiverowkeys=',state.activeRowKeys and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
+    f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
+    f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
+    if state.hudPos then f:write('posx=',math.floor(state.hudPos[1]),'\nposy=',math.floor(state.hudPos[2]),'\n'); end
+    f:write('statebarenabled=',state.statebarEnabled and '1' or '0','\nstatebarvertical=',state.statebarVertical and '1' or '0','\nstatebarlocked=',state.statebarLocked and '1' or '0','\nstatebaralways=',state.statebarAlways and '1' or '0','\nstatebarscale=',state.statebarScale,'\nstatebaropacity=',state.statebarOpacity,'\nstatebartheme=',state.statebarTheme,'\nstatebarvisibility=',state.statebarVisibility,'\nstatebarselected=',state.statebarSelected or 0,'\n');
+    f:write('statebarcount=',#state.statebarSlots,'\n');
+    f:write('statebarhotkeysenabled=',state.statebarHotkeysEnabled and '1' or '0','\n');
+    for i,b in ipairs(state.statebarSlots) do f:write('statebar',i,'=',b.row,':',b.slot,'\n'); f:write('statebarhotkey',i,'=',state.statebarHotkeys[i] or 0,'\n'); f:write('statebartype',i,'=',b.kind or 'state','\n'); f:write('statebarcommand',i,'=',(b.command or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebarsource',i,'=',b.source or 'macro','\n'); f:write('statebarlabel',i,'=',(b.label or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
@@ -78,6 +104,38 @@ local function load_display()
     for line in f:lines() do
         local key,value=line:match('^(%w+)=([%w.:]+)$');
         local n=tonumber(value);
+        if key=='statebarcount' and n and n>=0 and n<=12 and n==math.floor(n) then state.statebarSlots={}; end
+        local ti=key and tonumber(key:match('^statebartype(%d+)$'));
+        local xi=key and tonumber(key:match('^statebarcommand(%d+)$'));
+        local mi=key and tonumber(key:match('^statebarsource(%d+)$'));
+        local li=key and tonumber(key:match('^statebarlabel(%d+)$'));
+        local bi=ti or xi or mi or li;
+        if bi and bi>=1 and bi<=12 and state.statebarSlots[bi] then
+            local b=state.statebarSlots[bi];
+            if ti and (value=='state' or value=='utility') then b.kind=value; end
+            if mi and (value=='macro' or value=='command') then b.source=value; end
+            if li and #value<=48 and #value%2==0 and not value:find('[^%x]') then b.label=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end):gsub('[%c#]',''); end
+            if xi and #value<=480 and #value%2==0 and not value:find('[^%x]') then b.command=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end); end
+        end
+        if key=='statebaropacity' and n and n>=0.2 and n<=1 then state.statebarOpacity=n; end
+        if key=='statebartheme' and n and n>=1 and n<=4 then state.statebarTheme=n; end
+        if key=='statebarvisibility' and (value=='always' or value=='navigation' or value=='manual') then state.statebarVisibility=value; end
+        if key=='statebarselected' and n and n>=0 and n<=12 then state.statebarSelected=n; end
+        if key=='statebarhotkeysenabled' then state.statebarHotkeysEnabled=value=='1'; end
+        local hi=key and tonumber(key:match('^statebarhotkey(%d+)$'));
+        if hi and hi>=1 and hi<=12 and n and DIRECT_NAMES[n] then state.statebarHotkeys[hi]=n; end
+        if key=='statebarenabled' then state.statebarEnabled=value=='1'; end
+        if key=='statebarvertical' then state.statebarVertical=value=='1'; end
+        if key=='statebarlocked' then state.statebarLocked=value=='1'; end
+        if key=='statebaralways' then state.statebarAlways=value=='1'; end
+        if key=='statebarscale' and n and n>=0.7 and n<=1.5 then state.statebarScale=n; end
+        local si=key and tonumber(key:match('^statebar(%d+)$'));
+        if si and si>=1 and si<=12 then local row,slot=value:match('^(CTRL):(%d+)$'); if not row then row,slot=value:match('^(ALT):(%d+)$'); end; slot=tonumber(slot); if row and slot and slot>=1 and slot<=10 then state.statebarSlots[si]={row=row,slot=slot}; end end
+        if key=='mappingmode' and (value=='split' or value=='numbers' or value=='functions') then state.mappingMode=value; end
+        if key=='positionlocked' then state.positionLocked=value=='1'; end
+        if key=='navrow' and (value=='CTRL' or value=='ALT') then state.navRow=value; end
+        if key=='posx' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[1]=n; end
+        if key=='posy' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[2]=n; end
         if key=='cooldownenabled' then state.cooldownEnabled=value=='1'; end
         local ci=key and tonumber(key:match('^cooldown(%d+)$'));
         if ci and ci>=1 and ci<=20 then local kind,id=value:match('^(spell):(%d+)$'); if not kind then kind,id=value:match('^(ability):(%d+)$'); end; if kind and tonumber(id) then state.cooldownBindings[ci]={kind=kind,id=tonumber(id)}; end end
@@ -92,7 +150,6 @@ local function load_display()
         if key=='stickynav' and (value=='0' or value=='1') then state.stickyNavigation=value=='1'; end
         if key=='navmode' and (value=='toggle' or value=='hold') then state.stickyNavigation=value=='toggle'; end
         if key=='navenabled' and (value=='0' or value=='1') then state.savedNavEnabled=value=='1'; end
-        if key=='activerowkeys' and (value=='0' or value=='1') then state.activeRowKeys=value=='1'; end
         if key=='keybinds' and (value=='0' or value=='1') then state.savedKeybinds=value=='1'; end
         if key=='ackkeys' and (value=='0' or value=='1') then state.savedAck=value=='1'; end
         -- Legacy auto-exit preference intentionally ignored: navigation now has only Toggle and Hold modes.
@@ -107,7 +164,53 @@ local function load_display()
     end
     f:close();
 end
-load_display();
+-- Character names are resolved only after login; never write to the shared legacy file.
+local function character_id()
+    -- VanaCore builds differ in player interfaces. Party member 0 is a
+    -- supported alternative to GetPlayer():GetName(); never invent an identity.
+    local mm=AshitaCore and AshitaCore:GetMemoryManager();
+    if not mm then state.profileDiagnostic='Memory manager unavailable'; return nil; end
+    local candidates={
+        function() local p=mm:GetPlayer(); return p and p:GetName(); end,
+        function() local party=mm:GetParty(); return party and party:GetMemberName(0); end,
+    };
+    local name=nil;
+    for i,read in ipairs(candidates) do
+        local ok,value=pcall(read);
+        if ok and type(value)=='string' and value:match('^[%a][%w_]+$') and #value>=2 then
+            name=value; state.profileDiagnostic='Character read from source '..i; break;
+        end
+    end
+    if not name then state.profileDiagnostic='No valid character name from Player or Party'; return nil; end
+    local server='server';
+    local ok,id=pcall(function() local p=mm:GetPlayer(); return p and p.GetServerId and p:GetServerId(); end);
+    if ok and type(id)=='number' and id>0 then server=tostring(id); end
+    return (server..'_'..name):gsub('[^%w_]','_');
+end
+local function refresh_profile()
+    local id=character_id();
+    if id==state.profileId then return; end
+    if state.profileReady then save_display(); end
+    state.profileId=id; state.profileReady=false;
+    for _,keys in pairs(sectionKeys) do for _,key in ipairs(keys) do state[key]=copy_value(profileDefaults[key]); end end
+    state.hudPos=nil; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
+    state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
+    state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
+    state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
+    state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navQueue={}; state.deferredNav={};
+    state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
+    state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
+    state.hudReadySince=nil; state.hudLastActivity=os.clock();
+    if id then
+        load_display(); state.profileReady=true;
+        -- Legacy full-hide preferences are migrated to a recoverable collapsed tab.
+        if state.autoHideMode=='hide' then state.autoHideMode='collapse'; save_display(); end
+        state.navKeysEnabled=state.savedNavEnabled;
+        -- Overrides require fresh consent per session, regardless of saved preferences.
+        state.keybinds=false; state.acknowledgeKeys=false; state.savedAck=false; state.savedKeybinds=false;
+    end
+    state.held={}; state.suppressed={};
+end
 -- Restore user-approved navigation at startup; native macro execution still requires explicit Connect.
 state.navKeysEnabled=state.savedNavEnabled;
 state.navRow='CTRL'; state.navSlot=1;
@@ -432,7 +535,34 @@ local function execute_slot(row,slot)
     if called then record_execution(row,slot,'executed'); end
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
     say(state.clickSummary);
+    return called;
 end
+
+-- Single validated command only: no Lua, script runners, command chaining or chat.
+local function valid_command(command)
+    if type(command)~='string' or #command>240 or command:find('[%c;|]') then return false; end
+    if command:match('^/equipset %d+$') then local n=tonumber(command:match('%d+')); return n>=1 and n<=100; end
+    if command:match('^/lac set [%w_%-]+$') then return true; end
+    if command:match('^/item "[^"<>]+" <me>$') or command:match('^/ma "[^"<>]+" <me>$') or command:match('^/ja "[^"<>]+" <me>$') or command:match('^/mount "[^"<>]+"$') then return true; end
+    return false;
+end
+local function request_statebar(i)
+    local b=state.statebarSlots[i]; if not b or not state.profileReady then return false; end
+    local requested=false;
+    if b.source=='command' then
+        if not state.allowAllClicks or not valid_command(b.command) then state.clickSummary='StateBar command blocked: connect and use a supported single command.'; return false; end
+        local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
+    else requested=execute_slot(b.row,b.slot); end
+    if requested and b.kind~='utility' then state.statebarSelected=i; save_display(); end
+    return requested;
+end
+local function restore_section(section)
+    for _,key in ipairs(sectionKeys[section] or {}) do state[key]=copy_value(profileDefaults[key]); end
+    if section=='Appearance' then state.hudPos=nil; end
+    state.held={}; state.navQueue={}; state.deferredNav={}; state.navToggleActive=false;
+    save_display();
+end
+
 -- Visual theme selection changes macro-name emphasis using a compact native-style label.
 -- Single user-initiated connection path; retains the same validated upstream calls.
 -- Native FFI reading may crash a mismatched game client; never run automatically on startup.
@@ -479,10 +609,13 @@ local function draw_row(title,offset)
         if i>1 then imgui.SameLine(); end
         local name=state.names[offset+i] or '';
         local shortcut;
-        if state.keybinds then
-            shortcut=DIRECT_NAMES[state.directKeys[(title=='CTRL' and 0 or 10)+i]] or '?';
+        -- Display selected mapping independently of direct-key activation.
+        if state.mappingMode=='numbers' then
+            shortcut=tostring(i==10 and 0 or i);
+        elseif state.mappingMode=='functions' then
+            shortcut='F'..tostring(i);
         else
-            shortcut=(title=='CTRL' and 'C' or 'A')..tostring(i==10 and 0 or i);
+            shortcut=DIRECT_NAMES[state.directKeys[(title=='CTRL' and 0 or 10)+i]] or '?';
         end
         -- Only the name and its compact key label belong on the button.
         local label=(name=='' and ' ' or name)..'\n'..shortcut..'##decker_'..title..i;
@@ -523,6 +656,12 @@ end
 -- cannot yet be identified reliably in VanaCore. Warn in UI before enabling.
 local function mapped_key(key)
     if type(key)~='number' then return nil,nil; end
+    if state.mappingMode~='split' then
+        if direct_conflict(key,0) then return nil,nil; end
+        local start=state.mappingMode=='numbers' and 2 or 59;
+        for i=1,10 do if key==(state.mappingMode=='numbers' and (i==10 and 11 or i+1) or 58+i) then return state.navRow or 'CTRL',i; end end
+        return nil,nil;
+    end
     for i,code in ipairs(state.directKeys) do
         if code~=0 and code==key and not direct_conflict(code,i) then
             return i<=10 and 'CTRL' or 'ALT',i<=10 and i or i-10;
@@ -560,7 +699,7 @@ end
 -- Navigation is Decker-owned; the game never receives a synthetic held Shift.
 -- In sticky mode tap the modifier once to arm arrows/space/enter, again to exit.
 -- In hold mode arrows/space/enter apply only while the modifier is held.
-local ROW_KEYS={END=207,HOME=199,INSERT=210,DELETE=211,F9=67,F10=68,F11=87,F12=88};
+local ROW_KEYS={END=207,HOME=199,INSERT=210,DELETE=211,N=49,F9=67,F10=68,F11=87,F12=88};
 local function row_key() return ROW_KEYS[state.rowSwitchKey] or 207; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local function nav_is_active()
@@ -568,10 +707,6 @@ local function nav_is_active()
        and (state.stickyNavigation and state.navToggleActive or
            (not state.stickyNavigation and state.navModifierHeld))
        and not other_modifier_down();
-end
-local function active_row_slot(key)
-    if not state.activeRowKeys or not state.acknowledgeKeys or not state.allowAllClicks or not nav_is_active() then return nil; end
-    return (key>=2 and key<=11) and (key==11 and 10 or key-1) or nil;
 end
 local function nav_clear()
     state.navToggleActive=false;
@@ -624,7 +759,7 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     end
 end);
 ashita.events.register('key_state','decker_custom_set_state',function(e)
-    if not e.data_raw or (type(e.size)=='number' and e.size<209) then return; end
+    if not e.data_raw or (type(e.size)=='number' and e.size<256) then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
@@ -690,11 +825,36 @@ ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
         state.navSource='Native selection unverified';
     end
 end);
+-- StateBar hotkeys are independent of the main HUD mapping. Only intercept when
+-- the player has opted into keyboard overrides; reject collisions with main keys.
+local function statebar_hotkey_slot(code)
+    if not state.statebarEnabled or not state.statebarHotkeysEnabled or not state.keybinds or not state.acknowledgeKeys then return nil; end
+    if not shortcuts_active() or modifier_down() then return nil; end
+    if mapped_key(code) then return nil; end
+    if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
+    local found=nil;
+    for i=1,#state.statebarSlots do if state.statebarHotkeys[i]==code and code~=0 then if found then return nil; end; found=i; end end
+    return found;
+end
+ashita.events.register('key_data','decker_statebar_key_press',function(e)
+    local i=statebar_hotkey_slot(e.key);
+    if not i or e.blocked then return; end
+    if state.suppressed[e.key] then
+        e.blocked=true;
+        if not e.down then state.suppressed[e.key]=nil; state.held[e.key]=nil; end
+        return;
+    end
+    if e.down then
+        e.blocked=true;
+        if not state.held[e.key] then
+            state.held[e.key]=true; state.suppressed[e.key]=true;
+            local b=state.statebarSlots[i];
+            if b then request_statebar(i); end
+        end
+    end
+end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
-    local activeSlot=active_row_slot(e.key);
-    local row,slot;
-    if activeSlot then row,slot=state.navRow or 'CTRL',activeSlot;
-    else row,slot=mapped_key(e.key); end
+    local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
     if state.suppressed[e.key] then
@@ -705,7 +865,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
         end
         return;
     end
-    if (not activeSlot and not shortcuts_active()) or e.blocked or modifier_down() then return; end
+    if not row or not shortcuts_active() or e.blocked or modifier_down() then return; end
     if e.down then
         if not state.held[e.key] then
             state.held[e.key]=true;
@@ -721,15 +881,18 @@ end);
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
-    if not shortcuts_active() and not (state.activeRowKeys and state.acknowledgeKeys and state.allowAllClicks and nav_is_active()) and next(state.suppressed)==nil then return; end
+    if not shortcuts_active() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
     local keys={};
-    for _,code in ipairs(state.directKeys) do if code>0 then keys[code]=true; end end
-    if state.activeRowKeys and state.acknowledgeKeys and state.allowAllClicks and nav_is_active() then for code=2,11 do keys[code]=true; end end
+    if state.mappingMode=='split' then
+        for _,code in ipairs(state.directKeys) do if code>0 then keys[code]=true; end end
+    else
+        for i=1,10 do keys[state.mappingMode=='numbers' and (i==10 and 11 or i+1) or 58+i]=true; end
+    end
     for code,_ in pairs(state.suppressed) do keys[code]=true; end
     for code,_ in pairs(keys) do
-        if code<size and (state.suppressed[code] or ((shortcuts_active() and mapped_key(code)~=nil) or active_row_slot(code)~=nil) and not modifier_down()) then ptr[code]=0; end
+        if code<size and (state.suppressed[code] or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
     end
 end);
 ashita.events.register('load','decker_load',function() say('Decker v'..addon.version..' loaded',false); end);
@@ -781,6 +944,7 @@ ashita.events.register('command','decker_cmd',function(e)
     else say('/decker connect | debug on|off | show | hide | keysoff | book N | setlabel N',true); end
 end);
 ashita.events.register('d3d_present','decker_draw',function()
+    if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
         -- set changes while a native request is unresolved; never advance
@@ -831,6 +995,44 @@ ashita.events.register('d3d_present','decker_draw',function()
         end
     end
     maybe_auto_refresh();
+    if state.statebarEnabled and (state.statebarVisibility=='always' or (state.statebarVisibility=='navigation' and (state.navToggleActive or state.navModifierHeld)) or (state.statebarVisibility=='manual' and state.statebarAlways) or state.showTests) then
+        local flags=state.statebarLocked and 4 or 0; -- ImGui NoMove, verified numeric constant
+        local count=#state.statebarSlots;
+        if count>0 then
+            local sw=math.floor(100*state.statebarScale);
+            local width=state.statebarVertical and (sw+32) or (count*(sw+5)+18);
+            local height=state.statebarVertical and (count*36*state.statebarScale+50) or 85;
+            imgui.SetNextWindowSize({width,height},ImGuiCond_FirstUseEver);
+            local barStyle=false;
+            if imgui.PushStyleVar and ImGuiStyleVar_Alpha then imgui.PushStyleVar(ImGuiStyleVar_Alpha,state.statebarOpacity); barStyle=true; end
+            if imgui.Begin('StateBar###DeckerStateBar',nil,flags) then
+                for i,b in ipairs(state.statebarSlots) do
+                    local idx=(b.row=='ALT' and 10 or 0)+b.slot;
+                    local name=b.label and b.label~='' and b.label or b.source=='command' and (b.command or 'Configure command') or (state.names[idx] or 'Unassigned');
+                    local key=b.source=='command' and (b.kind or 'state') or b.row..' '..tostring(b.slot==10 and 0 or b.slot);
+                    if i>1 and not state.statebarVertical then imgui.SameLine(); end
+                    -- StateBar selection is independent from the main macro HUD's press highlight.
+                    -- Keep the actual macro name legible; never prefix it with SELECTED.
+                    local sbSelected=(b.kind~='utility' and state.statebarSelected==i);
+                    local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
+                    if sbSelected and sbColours then
+                        local colours={{0.12,0.57,0.28,1},{0.12,0.40,0.70,1},{0.50,0.25,0.65,1},{0.40,0.40,0.40,1}};
+                        imgui.PushStyleColor(ImGuiCol_Button,colours[state.statebarTheme] or colours[1]);
+                        imgui.PushStyleColor(ImGuiCol_ButtonHovered,{0.17,0.68,0.34,1.0});
+                        imgui.PushStyleColor(ImGuiCol_ButtonActive,{0.09,0.46,0.22,1.0});
+                    end
+                    local sbPressed=imgui.Button(name..'\n'..key..'##statebar'..i,{sw,math.floor(40*state.statebarScale)});
+                    if sbSelected and sbColours then imgui.PopStyleColor(3); end
+                    if sbPressed then
+                        request_statebar(i);
+                    end
+                end
+                if imgui.Button('Configure##statebarconfig') then state.showTests=true; state.settingsTab='StateBar'; end
+            end
+            imgui.End();
+            if barStyle then imgui.PopStyleVar(); end
+        end
+    end
     if not state.visible then return; end
     local activeNav=state.navKeysEnabled and (state.stickyNavigation and state.navToggleActive or (not state.stickyNavigation and state.navModifierHeld));
     if activeNav and not state.hudWasActive then state.hudLastActivity=os.clock(); end
@@ -840,7 +1042,8 @@ ashita.events.register('d3d_present','decker_draw',function()
     if not state.hudReadySince then state.hudReadySince=os.clock(); end
     local idleHidden=state.autoHide and not state.hudForceReveal and not activeNav and not state.showTests and (os.clock()-state.hudLastActivity)>=state.autoHideDelay and (os.clock()-state.hudReadySince)>=10;
     state.hudForceReveal=false;
-    if idleHidden and state.autoHideMode=='hide' then return; end
+    -- Never leave a loaded addon invisible without an on-screen recovery control.
+    if idleHidden and state.autoHideMode=='hide' then state.autoHideMode='collapse'; end
     if idleHidden and state.autoHideMode=='collapse' then
         if imgui.Begin('Decker v'..addon.version..' - by Mutant X###DeckerCollapsed',nil,0) then
             if imgui.Button('Show Decker') then state.hudLastActivity=os.clock(); state.hudForceReveal=true; end
@@ -851,12 +1054,16 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     local hudw=math.floor(10*(state.hudWidth*state.scale+4)+32);
     imgui.SetNextWindowSize({hudw, math.floor(2*state.hudHeight*state.scale+96)},ImGuiCond_FirstUseEver);
+    -- Do not restore saved HUD coordinates through an unverified VanaCore ImGui ABI.
     -- Apply to the HUD only; Settings stays fully opaque.
     local opacityPushed=false;
     if type(imgui.PushStyleVar)=='function' and type(imgui.PopStyleVar)=='function' and ImGuiStyleVar_Alpha then
         imgui.PushStyleVar(ImGuiStyleVar_Alpha,state.hudOpacity); opacityPushed=true;
     end
-    if imgui.Begin(('Decker v'..addon.version..' - Book%02d (#%d)%s###DeckerMain'):format(state.manualBook or 1,state.trackedSet or 1,(state.navKeysEnabled and (state.stickyNavigation and (state.navToggleActive and ' [LOCKED]' or ' [UNLOCKED]') or (state.navModifierHeld and ' [HELD]' or ' [RELEASED]')) or '')..(state.trackedSource=='unverified (same names)' and ' [UNVERIFIED]' or '')),nil,0) then
+    if imgui.Begin(('Decker v'..addon.version..' - Book%02d (#%d)%s###DeckerMain'):format(state.manualBook or 1,state.trackedSet or 1,(state.navKeysEnabled and (state.stickyNavigation and (state.navToggleActive and ' [LOCKED]' or ' [UNLOCKED]') or (state.navModifierHeld and ' [HELD]' or ' [RELEASED]')) or '')..(state.trackedSource=='unverified (same names)' and ' [UNVERIFIED]' or '')),nil,(state.positionLocked and 4 or 0)) then
+        -- VanaCore ImGui positions may be math-backed vectors, not Lua arrays.
+        -- Avoid numeric indexing of GetWindowPos results until its ABI is verified.
+
         if #state.names==20 then
             draw_row('CTRL',0);
             draw_row('ALT',10);
@@ -866,12 +1073,14 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.SameLine(); if imgui.Button('>##decknext') then select_page((state.trackedSet or 1)%10+1); end
                 imgui.SameLine();
             end
-            if imgui.Button('Settings') then state.showTests=not state.showTests; state.hudLastActivity=os.clock(); end
+            if imgui.Button(state.positionLocked and 'Unlock position' or 'Lock position') then state.positionLocked=not state.positionLocked; save_display(); end
+            imgui.SameLine(); if imgui.Button('Settings') then state.showTests=not state.showTests; state.hudLastActivity=os.clock(); end
         else
             imgui.Text('Decker is not connected to native macros.');
             if imgui.Button('Connect macros') then connect_macros(); end
             imgui.SameLine();
-            if imgui.Button('Settings') then state.showTests=not state.showTests; state.hudLastActivity=os.clock(); end
+            if imgui.Button(state.positionLocked and 'Unlock position' or 'Lock position') then state.positionLocked=not state.positionLocked; save_display(); end
+            imgui.SameLine(); if imgui.Button('Settings') then state.showTests=not state.showTests; state.hudLastActivity=os.clock(); end
             imgui.TextWrapped('Connect invokes native FFXI reading functions. As with earlier builds, incompatible clients may crash.');
             if state.phase~=0 then imgui.TextWrapped(state.nameSummary..' / '..state.pointerSummary); end
         end
@@ -883,24 +1092,126 @@ ashita.events.register('d3d_present','decker_draw',function()
         imgui.SetNextWindowSize({490,370},ImGuiCond_FirstUseEver);
         if imgui.Begin('Decker v'..addon.version..' - Settings',nil,0) then
             if imgui.Button('X  Close Settings') then state.showTests=false; end
+            imgui.Text('v'..addon.version..' | '..(state.profileId or 'Waiting for login'));
             imgui.Separator();
-            if imgui.CollapsingHeader('Display') then
-            if state.allowSwitch then
-                imgui.Text('Jump to macro set:');
-                for i=1,10 do
-                    if i>1 then imgui.SameLine(); end
-                    if imgui.Button(tostring(i)..'##settings_set'..i,{30,24}) then select_page(i); end
-                end
+            -- Four user-facing sections; technical pages live under More.
+            local currentTab=state.settingsTab;
+            local moreActive=(currentTab=='General' or currentTab=='Profiles' or currentTab=='Updates');
+            for i,tab in ipairs({{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}}) do
+                if i>1 then imgui.SameLine(); end
+                local active=(tab[2]=='General' and moreActive) or currentTab==tab[2];
+                if imgui.Button((active and '['..tab[1]..']' or tab[1])..'##tab'..tab[2]) then state.settingsTab=tab[2]; end
             end
-
-            local auto={state.autoHide};
+            imgui.Separator();
+            if moreActive then
+                imgui.Text('More options:');
+                for i,tab in ipairs({'General','Profiles','Updates'}) do
+                    if i>1 then imgui.SameLine(); end
+                    if imgui.Button((state.settingsTab==tab and '['..tab..']' or tab)..'##more'..tab) then state.settingsTab=tab; end
+                end
+                imgui.Separator();
+            end
+            if state.settingsTab=='Profiles' then
+                imgui.TextWrapped('Active character: '..(state.profileId or 'Waiting for character login'));
+                imgui.TextWrapped('Detection: '..state.profileDiagnostic);
+                imgui.TextWrapped('Profile file: '..(state.profileId and ('decker_profile_'..state.profileId..'.cfg') or '(none; saves disabled)'));
+                imgui.TextWrapped('Profiles are saved separately per server and character. Settings are not copied between characters.');
+            elseif state.settingsTab=='Updates' then
+                imgui.Text('Installed: v'..addon.version);
+                imgui.TextWrapped('Automatic updates and rollback are not enabled in this build. Download signed-off releases from GitHub and keep the previous ZIP for rollback.');
+                imgui.TextWrapped('GitHub: github.com/danhughes381/FFXI-Decker/releases');
+            elseif state.settingsTab=='StateBar' then
+                local enabled={state.statebarEnabled};
+                if imgui.Checkbox('Enable StateBar',enabled) then state.statebarEnabled=enabled[1]; save_display(); end
+                local vert={state.statebarVertical};
+                if imgui.Checkbox('Vertical arrangement',vert) then state.statebarVertical=vert[1]; save_display(); end
+                local locked={state.statebarLocked};
+                if imgui.Checkbox('Lock StateBar position',locked) then state.statebarLocked=locked[1]; save_display(); end
+                local always={state.statebarAlways};
+                if imgui.Checkbox('Visible in manual mode',always) then state.statebarAlways=always[1]; save_display(); end
+                imgui.Text('Visibility (independent of macro HUD):');
+                for _,mode in ipairs({'always','navigation','manual'}) do
+                    if imgui.Button((state.statebarVisibility==mode and '[X] ' or '')..mode..'##sbvis') then state.statebarVisibility=mode; save_display(); end
+                    imgui.SameLine();
+                end
+                imgui.NewLine();
+                imgui.Text(('StateBar opacity: %d%%'):format(math.floor(state.statebarOpacity*100+0.5)));
+                if imgui.Button('Less opaque##sb') then state.statebarOpacity=math.max(.2,state.statebarOpacity-.1); save_display(); end
+                imgui.SameLine();
+                if imgui.Button('More opaque##sb') then state.statebarOpacity=math.min(1,state.statebarOpacity+.1); save_display(); end
+                imgui.Text('StateBar colour theme:');
+                for i,name in ipairs({'Classic','Blue','Green','Purple'}) do
+                    if imgui.Button((state.statebarTheme==i and '[X] ' or '')..name..'##sbtheme') then state.statebarTheme=i; save_display(); end
+                    if i<4 then imgui.SameLine(); end
+                end
+                if imgui.Button('StateBar smaller') then state.statebarScale=math.max(.7,state.statebarScale-.1); save_display(); end
+                imgui.SameLine(); imgui.Text(('%.0f%%'):format(state.statebarScale*100)); imgui.SameLine();
+                if imgui.Button('StateBar larger') then state.statebarScale=math.min(1.5,state.statebarScale+.1); save_display(); end
+                imgui.TextWrapped('The last pressed StateBar slot stays highlighted until another State slot is requested; Utility slots preserve it. Main Decker macro highlighting is independent. This indicates the last requested action, not a verified equipped set.');
+                imgui.Separator();
+                imgui.TextWrapped('Independent StateBar hotkeys (current macro book and set). Keys used by main Decker or navigation are reserved.');
+                local sbhot={state.statebarHotkeysEnabled};
+                if imgui.Checkbox('Enable StateBar hotkeys (requires keyboard overrides)',sbhot) then state.statebarHotkeysEnabled=sbhot[1]; save_display(); end
+                if state.statebarHotkeysEnabled and (not state.keybinds or not state.acknowledgeKeys) then
+                    imgui.TextWrapped('Enable direct keyboard overrides and acknowledge the warning under Quick Setup first.');
+                end
+                for i,b in ipairs(state.statebarSlots) do
+                    imgui.Separator(); imgui.Text('Slot '..i);
+                    local label={b.label or ''}; if imgui.InputText('Label (optional)##sblabel'..i,label,25) then b.label=label[1]:gsub('[%c#]',''):sub(1,24); save_display(); end
+                    if imgui.BeginCombo('Type##sbtype'..i,b.kind or 'state') then
+                        for _,kind in ipairs({'state','utility'}) do if imgui.Selectable(kind,b.kind==kind) then b.kind=kind; if kind=='utility' and state.statebarSelected==i then state.statebarSelected=0; end; save_display(); end end
+                        imgui.EndCombo();
+                    end
+                    if imgui.BeginCombo('Action##sbsource'..i,b.source or 'macro') then
+                        for _,source in ipairs({'macro','command'}) do if imgui.Selectable(source,b.source==source) then b.source=source; save_display(); end end
+                        imgui.EndCombo();
+                    end
+                    if b.source=='command' then
+                        local text={b.command or ''};
+                        if imgui.InputText('Command##sbcmd'..i,text,241) then b.command=text[1]; if valid_command(b.command) then save_display(); end end
+                        if not valid_command(b.command) then imgui.TextWrapped('Use /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
+                    end
+                    if imgui.BeginCombo('StateBar slot '..i..'##bar'..i,b.row..' '..b.slot) then
+                        for _,row in ipairs({'CTRL','ALT'}) do
+                            for slot=1,10 do
+                                if imgui.Selectable(row..' '..slot..'##barchoice'..i..row..slot,b.row==row and b.slot==slot) then
+                                    b.row=row; b.slot=slot; save_display();
+                                end
+                            end
+                        end
+                        imgui.EndCombo();
+                    end
+                    imgui.SameLine();
+                    local current=state.statebarHotkeys[i] or 0;
+                    if imgui.BeginCombo('Hotkey##statebarhotkey'..i,DIRECT_NAMES[current] or 'None') then
+                        for _,option in ipairs(DIRECT_KEY_OPTIONS) do
+                            local label,code=option[1],option[2];
+                            local clash=(code~=0 and (mapped_key(code)~=nil or (state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]))));
+                            if not clash then
+                                for j=1,#state.statebarSlots do if j~=i and state.statebarHotkeys[j]==code and code~=0 then clash=true; end end
+                            end
+                            if not clash and imgui.Selectable(label..'##statebarhotopt'..i..'_'..code,current==code) then state.statebarHotkeys[i]=code; save_display(); end
+                        end
+                        imgui.EndCombo();
+                    end
+                    imgui.SameLine();
+                    if imgui.Button('Remove##bar'..i) then table.remove(state.statebarSlots,i); table.remove(state.statebarHotkeys,i); if state.statebarSelected==i then state.statebarSelected=0 elseif state.statebarSelected>i then state.statebarSelected=state.statebarSelected-1 end; save_display(); break; end
+                end
+                if #state.statebarSlots<12 and imgui.Button('Add StateBar slot') then table.insert(state.statebarSlots,{row='CTRL',slot=1}); save_display(); end
+                imgui.TextWrapped('Hotkeys are optional and independent. Dedicated-book execution is unavailable: current book/set cannot be independently restored. Modifier shortcuts are unavailable pending input verification. Commands never run arbitrary Lua.');
+            end
+            if state.settingsTab=='Appearance' then
+            if imgui.CollapsingHeader('Display') then
+                        local auto={state.autoHide};
+            imgui.Text('Character profile: '..(state.profileId or 'waiting for login'));
+            if imgui.Button('Unlock HUD for dragging') then state.hudPos=nil; state.positionLocked=false; save_display(); end
             if imgui.Checkbox('Auto-hide macro display',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; save_display(); end
             imgui.Text('Hide after inactivity:');
             for _,seconds in ipairs({2,5,10,15,30}) do
                 if seconds~=2 then imgui.SameLine(); end
                 if imgui.Button((state.autoHideDelay==seconds and '[' or '')..seconds..'s'..(state.autoHideDelay==seconds and ']' or '')..'##hide'..seconds) then state.autoHideDelay=seconds; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; save_display(); end
             end
-            if imgui.Button('Hide completely'..(state.autoHideMode=='hide' and ' [selected]' or '')) then state.autoHideMode='hide'; save_display(); end
+            imgui.Text('Auto-hide collapses to a recoverable tab (full hide disabled).')
             imgui.SameLine(); if imgui.Button('Collapse to tab'..(state.autoHideMode=='collapse' and ' [selected]' or '')) then state.autoHideMode='collapse'; save_display(); end
             imgui.TextWrapped('The macro display stays visible while navigation is active. Settings stays visible while open. Keyboard shortcuts keep working when hidden.')
             imgui.Text(('Display opacity: %d%%'):format(math.floor(state.hudOpacity*100+0.5)));
@@ -920,7 +1231,33 @@ ashita.events.register('d3d_present','decker_draw',function()
             if imgui.Checkbox('Compact key labels',ck) then state.compactKeys=ck[1]; save_display(); end
             imgui.Separator();
             end
-            if imgui.CollapsingHeader('Controls') then
+            end -- General / Appearance tab
+            if state.settingsTab=='Controls' then
+             imgui.Text('QUICK SETUP - KEYBOARD')
+             imgui.Separator();
+            if imgui.Button('Connect macros##quick') then connect_macros(); end
+            imgui.Text('1. Choose your keyboard layout:');
+            for _,mode in ipairs({{'split','Split: F1-F10 / 1-0'},{'numbers','1-0 on selected row'},{'functions','F1-F10 on selected row'}}) do
+                if imgui.Button((state.mappingMode==mode[1] and '[X] ' or '')..mode[2]) then state.mappingMode=mode[1]; state.held={}; state.suppressed={}; save_display(); end
+            end
+             imgui.Text('2. Activate your chosen keys:');
+imgui.Text('Keyboard permission');
+            imgui.TextWrapped('Split mapping sets labels only. To execute F1-F10 and 1-0 directly: Connect macros, acknowledge the chat/menu risk, then enable experimental keyboard overrides below. Custom navigation is separate.');
+            imgui.Text('Keyboard: '..(shortcuts_active() and 'ENABLED' or 'DISABLED')..' | Macros: '..(state.allowAllClicks and 'CONNECTED' or 'NOT CONNECTED'));
+            local ack={state.acknowledgeKeys};
+            if imgui.Checkbox('I understand the chat/menu risk',ack) then
+                state.acknowledgeKeys=ack[1]; state.savedAck=ack[1];
+                if not ack[1] then state.keybinds=false; state.savedKeybinds=false; state.held={}; end
+                save_display();
+            end
+            if state.acknowledgeKeys and state.allowAllClicks then
+                local enabled={state.keybinds};
+                if imgui.Checkbox('Enable experimental keyboard overrides',enabled) then state.keybinds=enabled[1]; state.savedKeybinds=enabled[1]; state.held={}; save_display(); end
+            end
+             if not state.allowAllClicks then imgui.TextWrapped('Connect macros on the main HUD first, then return here to enable execution.'); end
+             imgui.Text('Direct execution: '..(state.keybinds and 'ON' or 'OFF'));
+             imgui.Separator();
+             if imgui.CollapsingHeader('Advanced navigation and key assignments') then
             local echo={state.echoLock};
             if imgui.Checkbox('Echo lock / unlock to chat',echo) then state.echoLock=echo[1]; save_display(); end
             imgui.TextWrapped('Only Toggle / Lock changes are announced. Hold mode stays quiet to avoid chat spam.');
@@ -965,21 +1302,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if imgui.Checkbox('Enable custom navigation',nav) then
                 state.navKeysEnabled=nav[1]; state.savedNavEnabled=nav[1]; nav_clear(); save_display();
             end
-            imgui.Text('Macro book selector (native GAME book)');
-            if imgui.Button('< Previous book') then select_native_book(math.max(1,state.manualBook-1)); end
-            imgui.SameLine();
-            if imgui.BeginCombo('Book##nativebook',('Book %02d (tracked)'):format(state.manualBook)) then
-                for book=1,20 do
-                    if imgui.Selectable(('Book %02d##book%d'):format(book,book),state.manualBook==book) then select_native_book(book); end
-                end
-                imgui.EndCombo();
-            end
-            imgui.SameLine();
-            if imgui.Button('Next book >') then select_native_book(math.min(20,state.manualBook+1)); end
-            imgui.TextWrapped('Book numbers are tracked, not read back from the game. Verify the correct macros after switching. Command: /decker switchbook 1-20');
-            if imgui.Button('Reset GAME to Book 1 / Set 1 (native call)') then reset_native_book(); end
-            imgui.TextWrapped('Reset invokes native game functions. It is not just a label reset; compatibility risks remain.');
-            imgui.Separator();
+                        imgui.Separator();
             imgui.Separator();
             imgui.Text('Cooldown text colours (experimental)');
             local cool={state.cooldownEnabled};
@@ -993,26 +1316,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.Button('Clear##cool'..i) then state.cooldownBindings[i]=nil; save_display(); end
             end
             imgui.TextWrapped('To map a button: /decker cooldown ctrl 1 spell 123, or /decker cooldown alt 2 ability 5. Use /decker cooldown ctrl 1 clear to remove. Ability value is a recast timer ID.');
-            imgui.Text('Controls - Direct macro keys')
-            imgui.TextWrapped('Active Row Keys: while Decker navigation is active, number keys 1-0 execute the selected row. The Switch Row Key changes which ten macros they run. Disabled by default. These keys may interfere with chat/menu typing; enable only after acknowledging the risk.')
-            local ar={state.activeRowKeys};
-            if state.acknowledgeKeys and state.allowAllClicks then
-                if imgui.Checkbox('Enable Active Row Keys (1-0)',ar) then state.activeRowKeys=ar[1]; state.suppressed={}; state.held={}; save_display(); end
-            else
-                imgui.TextWrapped('Active Row Keys unavailable until native macros are connected and chat/menu risk is acknowledged below.')
-            end
-            imgui.TextWrapped('Custom direct macro controls remain OFF by default. Chat and menu safety is unverified under VanaCore.');
-            local ack={state.acknowledgeKeys};
-            if imgui.Checkbox('I understand the chat/menu risk',ack) then
-                state.acknowledgeKeys=ack[1]; state.savedAck=ack[1];
-                if not ack[1] then state.keybinds=false; state.savedKeybinds=false; state.activeRowKeys=false; state.held={}; end
-                save_display();
-            end
-            if state.acknowledgeKeys and state.allowAllClicks then
-                local enabled={state.keybinds};
-                if imgui.Checkbox('Enable experimental keyboard overrides',enabled) then state.keybinds=enabled[1]; state.savedKeybinds=enabled[1]; state.held={}; save_display(); end
-            end
-            imgui.Separator();
+                        imgui.Separator();
             imgui.Text('Upper row - CTRL macros (slots 1-10)');
             imgui.TextWrapped('Pick a direct key for each macro. These only work when experimental keyboard overrides are enabled.');
             for i=1,20 do
@@ -1036,12 +1340,25 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
             imgui.TextWrapped(state.keySummary);
             if imgui.Button('Reset direct keys to defaults') then
-                state.directKeys=default_direct_keys(); state.held={}; state.suppressed={}; save_display();
+                state.directKeys=default_direct_keys();
+                state.held={}; state.suppressed={}; save_display();
             end
-            if imgui.Button('Release keyboard overrides') then state.keybinds=false; state.activeRowKeys=false; state.acknowledgeKeys=false; state.savedKeybinds=false; state.savedAck=false; state.held={}; state.suppressed={}; save_display(); end
+            if imgui.Button('Release keyboard overrides') then state.keybinds=false; state.acknowledgeKeys=false; state.savedKeybinds=false; state.savedAck=false; state.held={}; save_display(); end
             imgui.Text('/decker keysoff also disables overrides');
             end
-            if imgui.CollapsingHeader('Quick Start Guide') then
+            end -- Controls tab
+            if state.settingsTab=='General' and imgui.CollapsingHeader('Book and Set controls') then
+                if state.allowSwitch then
+                    imgui.Text('Jump to macro set:');
+                    for i=1,10 do
+                        if i>1 then imgui.SameLine(); end
+                        if imgui.Button(tostring(i)..'##more_set'..i,{30,24}) then select_page(i); end
+                    end
+                else
+                    imgui.TextWrapped('Macro set switching is unavailable until native macros connect.');
+                end
+            end
+            if state.settingsTab=='General' and imgui.CollapsingHeader('Quick Start Guide') then
                 imgui.TextWrapped('Decker - Enhanced In-Game Macro Interface for FFXI')
                 imgui.TextWrapped('1. Open FFXI and load Decker in Ashita.')
                 imgui.TextWrapped('2. Open Settings. Select Refresh macro names to load your current Ctrl/Alt macro labels.')
@@ -1056,8 +1373,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped('If macro names are missing or outdated, use Refresh macro names again. Your original FFXI macros remain unchanged.')
             end
             imgui.Separator();
-            if imgui.Button(state.showAdvanced and 'Hide advanced diagnostics' or 'Show advanced diagnostics') then state.showAdvanced=not state.showAdvanced; end
-            if state.showAdvanced then
+            if state.settingsTab=='General' and imgui.Button(state.showAdvanced and 'Hide advanced diagnostics' or 'Show advanced diagnostics') then state.showAdvanced=not state.showAdvanced; end
+            if state.settingsTab=='General' and state.showAdvanced then
                 local logging={state.debugLog};
                 if imgui.Checkbox('Developer chat logging',logging) then state.debugLog=logging[1]; end
                 imgui.TextWrapped('Native book/set getters remain unverified. Native arrow selection is not highlighted until a reliable getter exists.');
@@ -1071,9 +1388,16 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.Button('Show/hide signature details') then state.details=not state.details; end
                 if state.details then for _,p in ipairs(state.signatures) do imgui.TextWrapped(p[1]..': '..p[2]); end end
             end
-            if state.phase>=4 and imgui.Button('Refresh macro names') then state.confirmAll=true; read_all_names(); end
+            if (state.settingsTab=='General' or state.settingsTab=='Controls') and state.phase>=4 and imgui.Button('Refresh macro names') then state.confirmAll=true; read_all_names(); end
             imgui.Separator(); imgui.Text('Decker v'..addon.version..'  |  by Mutant X')
-            imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.')
+            imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.');
+            local section=moreActive and 'General' or state.settingsTab;
+            if imgui.Button('Restore section defaults') then state.resetSection=section; end
+            if state.resetSection==section then
+                imgui.Text('Restore only this section?');
+                if imgui.Button('Confirm restore') then restore_section(section); state.resetSection=nil; end
+                imgui.SameLine(); if imgui.Button('Cancel restore') then state.resetSection=nil; end
+            end
             if imgui.Button('Close settings') then state.showTests=false; end
         end
         imgui.End();

@@ -1,3 +1,9 @@
+# v1.49.5-dev
+
+Development candidate only. Integrates v1.49.4 with profile isolation fixes, State/Utility actions, validated direct commands, scoped defaults and LuaJIT mocked tests. See CHANGELOG.md and docs/VERIFICATION.md for current behaviour and live blockers. Install addons/decker/decker.lua; back up character configs.
+
+---
+
 # Decker v1.47
 
 **Enhanced In-Game Macro Interface for Final Fantasy XI** — by Mutant X.
