@@ -2,6 +2,10 @@
 
 **Enhanced In-Game Macro Interface for Final Fantasy XI**
 
+**CatseyeXI: T1 Sanctioned — approved 19 October 2026.**
+
+CatseyeXI staff confirmed Decker's T1 Sanctioned approval on 19 October 2026.
+
 **Keep your macros. Upgrade how you use them.**
 
 *20 Macros. Two Rows. One Screen. Your Controls.*
