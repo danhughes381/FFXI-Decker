@@ -1,5 +1,14 @@
 # Version history
 
+## 1.49.6-dev — in-game updater
+
+- More → Updates now checks the development/stable channel and offers Install update and reload Decker.
+- HTTPS runs in a background Windows PowerShell process, polled once per second with a 45-second process timeout. No blocking network calls on the game thread.
+- Download pinned commit source; verify SHA-256 in the worker, validate version and LuaJIT syntax locally, back up source and restore on a failed final rename.
+- Confirmed rollback restores the prior source and requests addon-only reload. Character settings are preserved; native macros need reconnecting afterward.
+- Stable channel deliberately has no published manifest until a release is verified. Windows transport/reload remain unverified in game.
+- Added updater regression coverage for manifest/version checks, exact backup/rollback, syntax rejection, process lifecycle and unsupported hosts.
+
 ## 1.49.5-dev — integration candidate
 
 - Integrated Library v1.49.4 usability source onto the existing v1.48 development branch; main was v1.47. No open PRs existed at inspection.

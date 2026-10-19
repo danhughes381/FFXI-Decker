@@ -8,4 +8,9 @@ PASS all three layouts and N row switch
 PASS StateBar collisions and permission gates
 PASS single hotkey execution and key release after disable
 PASS Settings sections render with balanced style stacks
-10 regression groups passed (mocked host; not in-game validation)
+PASS updater manifest validation and channel version ordering
+PASS updater promotion backs up and rollback restores exact source
+PASS updater rejects invalid Lua without replacing live source
+PASS updater process polling handles pending, timeout and failed download
+PASS updater handles unsupported host explicitly
+15 regression groups passed (mocked host; not in-game validation)

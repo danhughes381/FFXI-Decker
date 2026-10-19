@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot}'
+local expose='\nreturn {state=state,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -55,6 +55,42 @@ test('single hotkey execution and key release after disable',function() ready();
 test('Settings sections render with balanced style stacks',function()
  ready();s.showTests=true;s.visible=true;s.statebarEnabled=true;s.statebarSelected=1;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.lastProfileCheck=os.clock();s.autoRefresh=false;s.pendingRefreshFrames=0
  for _,tab in ipairs({'Controls','Appearance','StateBar','General','Profiles','Updates'}) do s.settingsTab=tab;events.decker_draw();assert(styles==0 and vars==0,tab) end
+end)
+test('updater manifest validation and channel version ordering',function()
+ local hash=string.rep('a',64);local commit=string.rep('b',40)
+ local valid='protocol=1\nversion=1.49.7-dev\ncommit='..commit..'\nsha256='..hash..'\n'
+ assert(api.manifest(valid).version=='1.49.7-dev')
+ assert(not api.manifest(valid..'version=9.0.0\n'))
+ assert(not api.manifest(valid:gsub('protocol=1','protocol=2')))
+ assert(not api.manifest(valid:gsub(commit,'../../../other')))
+ assert(api.newer('1.49.7-dev','1.49.6-dev') and not api.newer('1.49.5-dev','1.49.6-dev'))
+ assert(api.newer('1.49.6','1.49.6-dev') and not api.newer('1.49.6-dev','1.49.6'))
+end)
+test('updater promotion backs up and rollback restores exact source',function()
+ local f=assert(io.open(path,'rb'));local old=f:read('*a');f:close()
+ local candidate=tmp..'/candidate.lua'; f=assert(io.open(candidate,'wb'));f:write((source:gsub("addon.version = '1.49.6%-dev'","addon.version = '1.49.7-dev'")));f:close()
+ local ok,version=api.promote(candidate);assert(ok and version=='1.49.7-dev',tostring(ok)..' '..tostring(version))
+ f=assert(io.open(tmp..'/decker.lua.bak','rb'));assert(f:read('*a')==old);f:close()
+ api.rollback();assert(api.updater.installed);assert(requested[#requested]=='/addon reload decker')
+ f=assert(io.open(path,'rb'));assert(f:read('*a')==old);f:close()
+end)
+test('updater rejects invalid Lua without replacing live source',function()
+ local candidate=tmp..'/invalid.lua';local f=assert(io.open(candidate,'wb'));f:write("addon.version = '1.49.8-dev'\n"..string.rep('-- padding\n',100)..'function broken(');f:close()
+ local before=assert(io.open(path,'rb'));local old=before:read('*a');before:close()
+ local ok,reason=api.promote(candidate);assert(not ok and reason:find('syntax rejected'))
+ f=assert(io.open(path,'rb'));assert(f:read('*a')==old);f:close()
+end)
+test('updater process polling handles pending, timeout and failed download',function()
+ local originalNew=ffi.new;ffi.new=function() return {[0]=259} end
+ local exitCode=259;local closed=0;local terminated=0
+ api.setKernel({GetExitCodeProcess=function(_,p) p[0]=exitCode;return 1 end,CloseHandle=function() closed=closed+1 end,TerminateProcess=function() terminated=terminated+1 end})
+ api.updater.job={handle=1,mode='Check',started=os.time(),pollAt=0};api.poll();assert(api.updater.job and closed==0)
+ api.updater.job.started=os.time()-46;api.updater.job.pollAt=0;api.poll();assert(not api.updater.job and terminated==1 and api.updater.status:find('timed out'))
+ exitCode=1;api.updater.job={handle=1,mode='Download',started=os.time(),pollAt=0};api.poll();assert(not api.updater.job and api.updater.status:find('failed'))
+ ffi.new=originalNew;api.setKernel(nil)
+end)
+test('updater handles unsupported host explicitly',function()
+ api.updater.installed=false;api.start('Check');assert(not api.updater.job and api.updater.status:find('requires Windows'))
 end)
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')

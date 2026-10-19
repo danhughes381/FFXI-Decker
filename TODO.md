@@ -2,7 +2,7 @@
 
 ## Public-release blockers
 
-- [ ] Run v1.49.5-dev in Ashita v4 and Vanacor: Connect, mouse/native macro calls, all layouts, navigation and opt-in keyboard capture.
+- [ ] Run v1.49.6-dev in Ashita v4 and Vanacor: Connect, mouse/native macro calls, all layouts, navigation and opt-in keyboard capture.
 - [ ] Validate StateBar persistent colours, readable PDT/MDT labels, theme changes and InputText controls in both hosts.
 - [ ] Test commands against real game/addon handlers; confirm Utility preserves State and missing actions do not imply equipment success.
 - [ ] Salts → Pepper → Salts; logout/login, addon restart and full game reload; inspect separate files and renewed Connect/consent.
@@ -13,13 +13,16 @@
 
 ## Next development priorities
 
-- [ ] v1.49.6-dev: fix only failures reproduced from the live checklist before further features.
+- [ ] v1.49.7-dev: fix only failures reproduced from the live checklist before further features.
 - [ ] Verify native book/set getters before considering dedicated-book execution with reliable restoration.
 - [ ] Verify physical modifier handling before exposing StateBar modifier shortcuts.
 - [ ] Verify Vanacor ImGui position/vector APIs before restoring explicit position persistence.
 - [ ] Reliable chat/menu focus detection; automatically suspend experimental overrides only once trustworthy.
 - [ ] Atomic profile writes and actionable disk-write errors.
-- [ ] Optional update checks/rollback design; currently unavailable.
+- [x] Manual in-game check/install/reload and backup rollback implemented in 1.49.6-dev.
+- [ ] Validate Windows PowerShell launch, HTTPS/timeout failures, pinned downloads, installation and reload on Ashita/Vanacor.
+- [ ] Test rollback across an updater-capable version and a pre-updater version.
+- [ ] Publish a stable manifest only after stable acceptance; keep stable updates unavailable until then.
 
 ## Completed in 1.49.5-dev
 

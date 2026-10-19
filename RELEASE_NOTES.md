@@ -1,3 +1,9 @@
+# v1.49.6-dev
+
+Bootstrap build for in-game development updates: More → Updates. Adds background HTTPS download, pinned source/hash validation, LuaJIT syntax checking, source backup, rollback and addon-only reload. Settings files are preserved. Install this ZIP manually once. Windows transport and in-game reload still need live testing; no stable updater release is published.
+
+---
+
 # v1.49.5-dev
 
 Development candidate only. Integrates v1.49.4 with profile isolation fixes, State/Utility actions, validated direct commands, scoped defaults and LuaJIT mocked tests. See CHANGELOG.md and docs/VERIFICATION.md for current behaviour and live blockers. Install addons/decker/decker.lua; back up character configs.

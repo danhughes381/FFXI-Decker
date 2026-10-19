@@ -1,4 +1,4 @@
-# v1.49.5-dev verification
+# v1.49.6-dev verification
 
 ## Baseline and method
 
@@ -25,3 +25,12 @@ Sources consulted:
 6. Change appearance, slots and shortcuts on Salts; switch to Pepper. Confirm independent defaults/configuration, disconnected native macros and fresh consent. Change Pepper, return to Salts and repeat after addon/game restart.
 7. Inspect every Settings section at your actual UI scale, scroll advanced controls and long labels. Restore one section, cancel another reset; confirm unrelated values survive reload.
 8. Record host version, character, screenshots and result for each step. No stable release until blockers in TODO are resolved.
+
+## Updater verification
+
+Additional LuaJIT tests exercise manifests, numeric/prerelease ordering, source promotion with exact backup, rollback/reload request, invalid-source rejection, pending/timeout/error process states, and unsupported hosts. Windows PowerShell and Windows process creation are unavailable in this Linux environment; the worker script, HTTPS and CreateProcessW ABI remain live-validation requirements. The updater is not claimed in-game verified.
+
+First live test: install the bootstrap ZIP, choose development and Check (expect no newer version when current). Publish a newer test candidate before testing Install. Check stored source/backup versions and unchanged configs. Repeat with a disconnected network, folder write failure and rollback. Verify no game freeze during check/download and that only Decker reloads. The stable channel should currently report a fetch failure because no stable manifest is published.
+
+Win32 process APIs: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+Addon reload: https://docs.ashitaxi.com/usage/commands/

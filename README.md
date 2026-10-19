@@ -1,4 +1,4 @@
-# Decker — v1.49.5-dev
+# Decker — v1.49.6-dev
 
 Enhanced in-game macro interface for Final Fantasy XI, by **Mutant X**.
 Ashita v4 / Vanacor / CatsEyeXI. Apache 2.0; retain LICENSE and NOTICE.
@@ -58,4 +58,15 @@ See [CHANGELOG.md](CHANGELOG.md), [TODO.md](TODO.md), and [docs/VERIFICATION.md]
 luajit tests/regression.lua .
 ```
 
-No automatic updater/rollback is implemented. Download releases from this repository and retain your previous ZIP. This build is a development candidate, **not a stable release**.
+## In-game updates (development feature)
+
+Install v1.49.6-dev manually once to introduce the updater. Then use **More → Updates → development → Check for updates → Install update and reload Decker**. Only Decker reloads; the game stays open. Reconnect macros and renew keyboard consent after reload.
+
+- Windows PowerShell is launched without a console window. HTTPS downloads run outside the game thread with a timeout, so rendering is not blocked by network requests.
+- The channel manifest pins the source to a specific Git commit and SHA-256. Decker checks the downloaded source version and compiles it with the running LuaJIT before replacement; it never executes downloaded installer scripts.
+- Only `decker.lua` is replaced. Character `.cfg` files are untouched. The previous source is saved as `decker.lua.bak`; **Roll back previous version → Confirm rollback** restores it and reloads Decker. If you roll back to a version predating the updater, reinstall an updater-capable ZIP manually for subsequent updates.
+- Stable channel is reserved for verified releases; no stable updater manifest is published yet. Development channel follows the reviewed candidate manifest on `dev/decker-v1.49.5-integration`, not every unreviewed source commit.
+- Windows PowerShell, access to raw.githubusercontent.com and a writable addon folder are required. Download errors leave installed source unchanged. A failed final rename attempts to restore the original source. No admin elevation is requested.
+- The Windows process/HTTPS transport and reload still require live Ashita/Vanacor testing. There are no automatic background update checks or unattended installations. Protocol 1 supports single-file Decker builds only; a future multi-file migration needs a new protocol/manual bootstrap.
+
+This build is a development candidate, **not a stable release**.

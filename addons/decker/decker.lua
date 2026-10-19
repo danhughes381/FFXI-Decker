@@ -1,9 +1,9 @@
--- Decker 1.49.5-dev: native macro HUD for VanaCore/Ashita 4.
+-- Decker 1.49.6-dev: native macro HUD for VanaCore/Ashita 4.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.49.5-dev';
+addon.version = '1.49.6-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -943,7 +943,192 @@ ashita.events.register('command','decker_cmd',function(e)
     elseif cmd=='keysoff' then state.keybinds=false; state.acknowledgeKeys=false; state.savedKeybinds=false; state.savedAck=false; save_display(); state.held={}; say('Keyboard overrides disabled; captured keys release on key-up.')
     else say('/decker connect | debug on|off | show | hide | keysoff | book N | setlabel N',true); end
 end);
+-- Updater protocol 1 deliberately replaces only this single source file.
+-- HTTPS/PowerShell runs in a separate process; the game thread only polls its exit code.
+local updater={channel='development',status='Choose a channel, then check for updates.',job=nil,manifest=nil,installed=false}
+local function updater_dir()
+    local source=(debug.getinfo(1,'S') or {}).source or '';
+    return source:sub(1,1)=='@' and source:sub(2):match('^(.*[\\/])') or nil;
+end
+local function update_read(path)
+    local f=io.open(path,'rb'); if not f then return nil; end
+    local bytes=f:read('*a'); f:close(); return bytes;
+end
+local function update_exists(path)
+    local f=io.open(path,'rb'); if not f then return false; end; f:close(); return true;
+end
+local function update_write(path,bytes)
+    local f=io.open(path,'wb'); if not f then return false; end
+    local ok=f:write(bytes); local closed=f:close(); return ok~=nil and closed~=nil;
+end
+local function update_manifest(bytes)
+    if type(bytes)~='string' or #bytes>1024 then return nil; end
+    local m={}; for line in bytes:gmatch('[^\r\n]+') do
+        local k,v=line:match('^(%w+)=(.+)$'); if not k or m[k] then return nil; end; m[k]=v;
+    end
+    if m.protocol~='1' or not m.version or not m.version:match('^%d+%.%d+%.%d+%-?[%w.]*$') or not m.commit or #m.commit~=40 or m.commit:find('[^%x]') or not m.sha256 or #m.sha256~=64 or m.sha256:find('[^%x]') then return nil; end
+    return m;
+end
+local function update_newer(candidate,current)
+    local function parts(v) local a,b,c=v:match('^(%d+)%.(%d+)%.(%d+)'); return {tonumber(a) or 0,tonumber(b) or 0,tonumber(c) or 0}; end
+    local a,b=parts(candidate),parts(current);
+    for i=1,3 do if a[i]~=b[i] then return a[i]>b[i]; end end
+    -- A stable build can replace a development build of the same numeric version.
+    return not candidate:find('-',1,true) and current:find('-',1,true)~=nil;
+end
+local update_script=[=[
+param([ValidateSet('Check','Download')][string]$Mode,[ValidateSet('development','stable')][string]$Channel)
+$ErrorActionPreference='Stop'
+$dir=$PSScriptRoot
+$status=Join-Path $dir '.decker-update-status.txt'
+$meta=Join-Path $dir '.decker-update-manifest.txt'
+$stage=Join-Path $dir '.decker-update-source.lua'
+try {
+ [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+ Add-Type -AssemblyName System.Net.Http
+ $client=New-Object System.Net.Http.HttpClient
+ $client.Timeout=[TimeSpan]::FromSeconds(20)
+ $client.MaxResponseContentBufferSize=1048576
+ $client.DefaultRequestHeaders.UserAgent.ParseAdd('Decker-Updater/1')
+ if($Mode -eq 'Check') {
+  $branch=if($Channel -eq 'stable'){'main'}else{'dev/decker-v1.49.5-integration'}
+  $url='https://raw.githubusercontent.com/danhughes381/FFXI-Decker/'+$branch+'/updates/'+$Channel+'.txt'
+  $text=$client.GetStringAsync($url).GetAwaiter().GetResult()
+ } else { $text=[IO.File]::ReadAllText($meta) }
+ if($text.Length -gt 1024){throw 'Manifest too large'}
+ $m=@{}
+ foreach($line in ($text -split '\r?\n')) {
+  if($line -eq ''){continue}
+  if($line -notmatch '^(protocol|version|commit|sha256)=(.+)$'){throw 'Invalid manifest'}
+  if($m.ContainsKey($Matches[1])){throw 'Duplicate manifest field'}
+  $m[$Matches[1]]=$Matches[2]
+ }
+ if($m.Count -ne 4 -or $m.protocol -ne '1' -or $m.version -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$' -or $m.commit -notmatch '^[a-fA-F0-9]{40}$' -or $m.sha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'Unsupported manifest'}
+ if($Mode -eq 'Check') { [IO.File]::WriteAllText($meta,$text,[Text.Encoding]::ASCII) }
+ else {
+  $url='https://raw.githubusercontent.com/danhughes381/FFXI-Decker/'+$m.commit+'/addons/decker/decker.lua'
+  $bytes=$client.GetByteArrayAsync($url).GetAwaiter().GetResult()
+  $hash=[Security.Cryptography.SHA256]::Create()
+  $actual=([BitConverter]::ToString($hash.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
+  $hash.Dispose()
+  if($actual -ne $m.sha256.ToLowerInvariant()){throw 'SHA-256 mismatch; nothing installed'}
+  [IO.File]::WriteAllBytes($stage,$bytes)
+ }
+ $client.Dispose()
+ [IO.File]::WriteAllText($status,'OK',[Text.Encoding]::ASCII)
+ exit 0
+} catch {
+ [IO.File]::WriteAllText($status,('Update failed: '+$_.Exception.Message),[Text.Encoding]::ASCII)
+ exit 1
+}
+]=]
+local update_kernel=nil
+local function update_windows()
+    if ffi.os~='Windows' then return nil,'Updater requires Windows PowerShell; manual ZIP installation is available.'; end
+    if update_kernel then return update_kernel; end
+    local ok,result=pcall(function()
+        ffi.cdef[[
+        typedef struct { uint32_t cb; void* reserved; void* desktop; void* title; uint32_t x,y,xsize,ysize,xcount,ycount,fill,flags; uint16_t show,reservedSize; void* reservedBytes; void* input; void* output; void* error; } DeckerUpdateStartup;
+        typedef struct { void* process; void* thread; uint32_t processId; uint32_t threadId; } DeckerUpdateProcess;
+        int __stdcall CreateProcessW(const uint16_t*,uint16_t*,void*,void*,int,uint32_t,void*,const uint16_t*,DeckerUpdateStartup*,DeckerUpdateProcess*);
+        int __stdcall GetExitCodeProcess(void*,uint32_t*);
+        int __stdcall CloseHandle(void*);
+        int __stdcall TerminateProcess(void*,unsigned int);
+        int __stdcall MultiByteToWideChar(unsigned int,uint32_t,const char*,int,uint16_t*,int);
+        ]];
+        return ffi.load('kernel32');
+    end);
+    if not ok then return nil,'Windows updater API unavailable: '..tostring(result); end
+    update_kernel=result; return result;
+end
+local function update_wide(k,text)
+    local n=k.MultiByteToWideChar(65001,8,text,#text,nil,0); if n==0 then return nil; end
+    local w=ffi.new('uint16_t[?]',n+1); if k.MultiByteToWideChar(65001,8,text,#text,w,n)==0 then return nil; end; return w;
+end
+local function update_start(mode)
+    if updater.job or updater.installed then return; end
+    local k,why=update_windows(); if not k then updater.status=why; return; end
+    local dir=updater_dir(); if not dir then updater.status='Cannot locate Decker folder.'; return; end
+    local script=dir..'.decker-update.ps1';
+    if script:find('["%c]') then updater.status='Unsupported installation path.'; return; end
+    if not update_write(script,update_script) then updater.status='Cannot write updater script; check folder permissions.'; return; end
+    if mode=='Check' then updater.manifest=nil; os.remove(dir..'.decker-update-manifest.txt'); end
+    os.remove(dir..'.decker-update-status.txt'); os.remove(dir..'.decker-update-source.lua');
+    local system=os.getenv('SystemRoot') or 'C:\\Windows';
+    if system:find('["%c]') then updater.status='Invalid Windows system path.'; return; end
+    local exe=system..'\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    local command='"'..exe..'" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'..script..'" -Mode '..mode..' -Channel '..updater.channel;
+    local app=update_wide(k,exe); local cmd=update_wide(k,command);
+    if not app or not cmd then updater.status='Cannot encode Windows installation path.'; return; end
+    local si=ffi.new('DeckerUpdateStartup[1]'); si[0].cb=ffi.sizeof('DeckerUpdateStartup');
+    local pi=ffi.new('DeckerUpdateProcess[1]');
+    if k.CreateProcessW(app,cmd,nil,nil,0,0x08000000,nil,nil,si,pi)==0 then updater.status='Cannot start Windows PowerShell. Manual install remains available.'; return; end
+    k.CloseHandle(pi[0].thread);
+    updater.job={handle=pi[0].process,mode=mode,started=os.time(),pollAt=0};
+    updater.status=mode=='Check' and 'Checking for updates...' or 'Downloading and verifying update...';
+end
+local function update_promote(path)
+    local dir=updater_dir(); if not dir then return false,'Cannot locate Decker folder.'; end
+    local bytes=update_read(path);
+    if not bytes or #bytes<1000 or #bytes>1048576 then return false,'Invalid update size.'; end
+    local version=bytes:match("addon%.version%s*=%s*'([^']+)'");
+    if not version then return false,'Missing Decker version.'; end
+    local compiled,why=loadstring(bytes,'@'..dir..'decker.lua');
+    if not compiled then return false,'LuaJIT syntax rejected: '..tostring(why); end
+    local staged=dir..'.decker-install.lua';
+    if not update_write(staged,bytes) then return false,'Cannot stage update.'; end
+    local live=dir..'decker.lua'; local backup=dir..'decker.lua.bak';
+    if update_read(backup) and not os.remove(backup) then os.remove(staged); return false,'Cannot replace previous backup.'; end
+    if not os.rename(live,backup) then os.remove(staged); return false,'Cannot back up current Decker; nothing installed.'; end
+    if not os.rename(staged,live) then
+        local restored=os.rename(backup,live); os.remove(staged);
+        return false,restored and 'Install failed; original restored.' or 'Install and restore failed. Restore decker.lua.bak manually before reloading.';
+    end
+    return true,version;
+end
+local function update_reload()
+    save_display(); state.keybinds=false; state.navKeysEnabled=false; state.navToggleActive=false; state.navQueue={}; state.deferredNav={};
+    local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,'/addon reload decker'); end);
+    if not ok or result==false then updater.status='Installed. Run /addon reload decker to activate.'; end
+end
+local function update_poll()
+    local job=updater.job; if not job or os.time()<job.pollAt then return; end; job.pollAt=os.time()+1;
+    local k=update_kernel; local exit=ffi.new('uint32_t[1]');
+    if k.GetExitCodeProcess(job.handle,exit)==0 then k.TerminateProcess(job.handle,1); k.CloseHandle(job.handle); updater.job=nil; updater.status='Cannot read updater process status; nothing installed.'; return; end
+    if exit[0]==259 then
+        if os.time()-job.started>45 then k.TerminateProcess(job.handle,1); k.CloseHandle(job.handle); updater.job=nil; updater.status='Update timed out; nothing installed.'; end
+        return;
+    end
+    k.CloseHandle(job.handle); updater.job=nil;
+    local dir=updater_dir();
+    if exit[0]~=0 then updater.status=(update_read(dir..'.decker-update-status.txt') or 'PowerShell failed; check Windows permissions and network.'):sub(1,300); return; end
+    local manifest=update_manifest(update_read(dir..'.decker-update-manifest.txt'));
+    if not manifest then updater.status='Invalid update manifest; nothing installed.'; return; end
+    if job.mode=='Check' then
+        updater.manifest=manifest;
+        updater.status=update_newer(manifest.version,addon.version) and ('Available: v'..manifest.version) or 'No newer version on this channel.';
+        return;
+    end
+    if not updater.manifest or manifest.commit~=updater.manifest.commit or manifest.sha256~=updater.manifest.sha256 or manifest.version~=updater.manifest.version then updater.status='Manifest changed; check for updates again.'; return; end
+    local path=dir..'.decker-update-source.lua'; local bytes=update_read(path) or '';
+    if bytes:match("addon%.version%s*=%s*'([^']+)'")~=manifest.version then updater.status='Source version mismatch; nothing installed.'; return; end
+    local ok,detail=update_promote(path);
+    if not ok then updater.status=detail; return; end
+    updater.installed=true; updater.status='Installed v'..detail..'; reloading Decker...'; update_reload();
+end
+local function update_rollback()
+    if updater.job or updater.installed then return; end
+    local dir=updater_dir(); if not dir then return; end
+    local ok,detail=update_promote(dir..'decker.lua.bak');
+    if not ok then updater.status=detail; return; end
+    updater.installed=true; updater.status='Restored v'..detail..'; reloading Decker...'; update_reload();
+end
+ashita.events.register('unload','decker_updater_cleanup',function()
+    if updater.job and update_kernel then update_kernel.TerminateProcess(updater.job.handle,1); update_kernel.CloseHandle(updater.job.handle); updater.job=nil; end
+end);
+
 ashita.events.register('d3d_present','decker_draw',function()
+    update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
@@ -1118,8 +1303,30 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped('Profiles are saved separately per server and character. Settings are not copied between characters.');
             elseif state.settingsTab=='Updates' then
                 imgui.Text('Installed: v'..addon.version);
-                imgui.TextWrapped('Automatic updates and rollback are not enabled in this build. Download signed-off releases from GitHub and keep the previous ZIP for rollback.');
-                imgui.TextWrapped('GitHub: github.com/danhughes381/FFXI-Decker/releases');
+                if updater.channel=='stable' then imgui.TextWrapped('No stable updater release has been published yet.'); end
+                imgui.TextWrapped('Check, install and reload Decker here. Character settings are preserved. Development builds may have unverified changes.');
+                if not updater.job and not updater.installed then
+                    if imgui.BeginCombo('Update channel',updater.channel) then
+                        for _,channel in ipairs({'development','stable'}) do
+                            if imgui.Selectable(channel,updater.channel==channel) then updater.channel=channel; updater.manifest=nil; updater.status='Channel changed; check for updates.'; end
+                        end
+                        imgui.EndCombo();
+                    end
+                    if imgui.Button('Check for updates') then update_start('Check'); end
+                    if updater.manifest and update_newer(updater.manifest.version,addon.version) then
+                        if imgui.Button('Install update and reload Decker') then update_start('Download'); end
+                    end
+                    local directory=updater_dir();
+                    if directory and (updater.backupCheckedAt or 0)~=os.time() then updater.backupCheckedAt=os.time(); updater.backupAvailable=update_exists(directory..'decker.lua.bak'); end
+                    if updater.backupAvailable and imgui.Button('Roll back previous version') then updater.confirmRollback=true; end
+                    if updater.confirmRollback then
+                        imgui.Text('Restore the previous Decker source and reload?');
+                        if imgui.Button('Confirm rollback') then updater.confirmRollback=false; update_rollback(); end
+                        imgui.SameLine(); if imgui.Button('Cancel rollback') then updater.confirmRollback=false; end
+                    end
+                end
+                imgui.TextWrapped(updater.status);
+                imgui.TextWrapped('Windows PowerShell is required. Downloads run in the background over HTTPS, are SHA-256 checked and compiled before installation. A backup enables rollback. Reload affects Decker only; reconnect macros afterward.');
             elseif state.settingsTab=='StateBar' then
                 local enabled={state.statebarEnabled};
                 if imgui.Checkbox('Enable StateBar',enabled) then state.statebarEnabled=enabled[1]; save_display(); end
