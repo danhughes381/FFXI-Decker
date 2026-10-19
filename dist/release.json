@@ -1,12 +1,14 @@
 {
-  "version": "1.49.5-dev",
+  "version": "1.49.6-dev",
   "author": "Mutant X",
   "channel": "development",
-  "artifact": "Decker_v1.49.5_dev_Mutant_X.zip",
-  "sha256": "1f5e75eb6bd7f2947a595d83238da266fc1119d79a55e643b446e6a60db16463",
+  "artifact": "Decker_v1.49.6_dev_Mutant_X.zip",
+  "sha256": "8606eea729637210fd3d3906e1adfc2d48eac5d3ae0a20c76dcb8aa3cbfdb8b0",
+  "source_commit": "af62b3bcc2827e0483daa8f94f89d04d387d8526",
   "stable": false,
   "in_game_verified": false,
-  "tag": "v1.49.5-dev",
-  "tag_status": "prepared locally; remote tag publication unavailable through connected GitHub tools",
-  "next_version": "1.49.6-dev"
+  "updater_protocol": 1,
+  "tag": "v1.49.6-dev",
+  "tag_status": "local only; remote tag/release tools unavailable",
+  "next_version": "1.49.7-dev"
 }
