@@ -12,4 +12,4 @@ Files: addons/decker/decker.lua, tests/regression.lua, tests/run_lua54.py, tools
 
 Next action: install v1.50.0-dev ZIP manually and run the live checklist: draw/font ABI, both rows, execution/selection overlap, independent StateBar, dragging, auto-hide and per-character restart. Keep draft; no main merge, stable release or updater-channel promotion.
 
-Review link: see branch pull request on GitHub; the exact code commit can be read from its head. Test evidence: docs/FLOATING_GLASS.md and tests/regression.lua.
+Review: draft [PR #4](https://github.com/danhughes381/FFXI-Decker/pull/4). Implemented code/package commit: [`a1d4bc2`](https://github.com/danhughes381/FFXI-Decker/commit/a1d4bc2ebb24dfb8cb9c12ca7fc9c33aab0e6eec). Test evidence: docs/FLOATING_GLASS.md and tests/regression.lua.
