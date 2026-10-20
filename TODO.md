@@ -1,3 +1,9 @@
+# Floating glass candidate
+
+- [x] Implement and offline-check v1.50.0-dev styling on a dedicated branch.
+- [ ] Run docs/FLOATING_GLASS.md live checklist and attach actual screenshots.
+- [ ] Run regressions under LuaJIT; current workspace verification used Lua 5.4 with host mocks.
+
 # Development TODO
 
 ## Public-release blockers

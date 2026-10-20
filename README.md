@@ -1,9 +1,11 @@
-# Decker — v1.49.6-dev
+# Decker — v1.50.0-dev
 
 Enhanced in-game macro interface for Final Fantasy XI, by **Mutant X**.
 Ashita v4 / Vanacor / CatsEyeXI. Apache 2.0; retain LICENSE and NOTICE.
 
 **CatsEyeXI: T1 Sanctioned — approved 19 October 2026.** This records the existing staff approval; this development build has not been verified in game.
+
+Floating-glass first pass: see [appearance, verification and live checklist](docs/FLOATING_GLASS.md). Manual ZIP installation; updater channel pins are unchanged.
 
 ## Install and start
 
