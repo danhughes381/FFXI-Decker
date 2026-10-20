@@ -1,9 +1,9 @@
--- Decker 1.49.6-dev: native macro HUD for VanaCore/Ashita 4.
+-- Decker 1.50.0-dev: native macro HUD for VanaCore/Ashita 4.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.49.6-dev';
+addon.version = '1.50.0-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -34,10 +34,13 @@ local function copy_value(v)
     if type(v)~='table' then return v; end
     local t={}; for k,x in pairs(v) do t[k]=copy_value(x); end; return t;
 end
+-- Glass preferences are display-only and participate in character profile isolation.
+state.outerOpacity=.05; state.panelOpacity=.15; state.buttonOpacity=.85;
+state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
-    Appearance={'scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked'},
+    Appearance={'outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked'},
     StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
     General={'manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
 };
@@ -86,6 +89,7 @@ local function save_display()
     if not state.profileReady then return; end
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
+    f:write('glassversion=1\nouteropacity=',state.outerOpacity,'\npanelopacity=',state.panelOpacity,'\nbuttonopacity=',state.buttonOpacity,'\nmacrofont=',state.macroFont:gsub(' ','_'),'\nmacrofontsize=',state.macroFontSize,'\n');
     f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
     f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
     if state.hudPos then f:write('posx=',math.floor(state.hudPos[1]),'\nposy=',math.floor(state.hudPos[2]),'\n'); end
@@ -102,7 +106,7 @@ local function load_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'r'); if not ok or not f then return; end
     for line in f:lines() do
-        local key,value=line:match('^(%w+)=([%w.:]+)$');
+        local key,value=line:match('^(%w+)=([%w_.:]+)$');
         local n=tonumber(value);
         if key=='statebarcount' and n and n>=0 and n<=12 and n==math.floor(n) then state.statebarSlots={}; end
         local ti=key and tonumber(key:match('^statebartype(%d+)$'));
@@ -117,7 +121,7 @@ local function load_display()
             if li and #value<=48 and #value%2==0 and not value:find('[^%x]') then b.label=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end):gsub('[%c#]',''); end
             if xi and #value<=480 and #value%2==0 and not value:find('[^%x]') then b.command=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end); end
         end
-        if key=='statebaropacity' and n and n>=0.2 and n<=1 then state.statebarOpacity=n; end
+        if key=='statebaropacity' and n and n>=0 and n<=1 then state.statebarOpacity=n; end
         if key=='statebartheme' and n and n>=1 and n<=4 then state.statebarTheme=n; end
         if key=='statebarvisibility' and (value=='always' or value=='navigation' or value=='manual') then state.statebarVisibility=value; end
         if key=='statebarselected' and n and n>=0 and n<=12 then state.statebarSelected=n; end
@@ -145,6 +149,12 @@ local function load_display()
         if key=='autohidedelay' and (n==2 or n==5 or n==10 or n==15 or n==30) then state.autoHideDelay=n; end
         if key=='autohidemode' and (value=='hide' or value=='collapse') then state.autoHideMode=value; end
         if key=='echolock' and (value=='0' or value=='1') then state.echoLock=value=='1'; end
+        if key=='outeropacity' and n and n>=0 and n<=1 then state.outerOpacity=n; end
+        if key=='panelopacity' and n and n>=0 and n<=1 then state.panelOpacity=n; end
+        if key=='buttonopacity' and n and n>=0 and n<=1 then state.buttonOpacity=n; end
+        if key=='macrofontsize' and n and n>=10 and n<=28 then state.macroFontSize=n; end
+        if key=='macrofont' then value=value:gsub('_',' '); end
+        if key=='macrofont' and (value=='Arial Bold' or value=='Segoe UI Bold' or value=='Times New Roman Bold' or value=='Default') then state.macroFont=value; end
         if key=='opacity' and n and n>=0.2 and n<=1 then state.hudOpacity=n; end
         if key=='rowswitchkey' and (value=='END' or value=='HOME' or value=='INSERT' or value=='DELETE' or value=='N' or value=='F9' or value=='F10' or value=='F11' or value=='F12') then state.rowSwitchKey=value; end
         if key=='stickynav' and (value=='0' or value=='1') then state.stickyNavigation=value=='1'; end
@@ -587,69 +597,147 @@ local function connect_macros()
         state.navToggleActive=false;
     end
 end
--- Rendering uses normal imgui buttons; FFXI's original HUD is not modified.
-local palettes = {
-    {name='Classic', marker='', color={0.27,0.26,0.36,1}, text={1.0,0.94,0.75,1}},
-    {name='Blue', marker='', color={0.15,0.26,0.39,1}, text={0.74,0.91,1,1}},
-    {name='Purple', marker='', color={0.31,0.22,0.40,1}, text={0.94,0.80,1,1}},
-    {name='Minimal', marker='', color={0.19,0.19,0.20,1}, text={1,1,1,1}},
-};
+-- Display-only glass renderer. Native buttons retain hit testing, IDs and execution.
+-- No font atlas mutation in d3d_present; load a bounded set once in the load event.
+local glass={fonts={},diagnostic='Default font; awaiting load',custom=true};
+local fontFiles={['Arial Bold']='arialbd.ttf',['Segoe UI Bold']='segoeuib.ttf',['Times New Roman Bold']='timesbd.ttf'};
+local function load_glass_fonts()
+    if type(imgui.AddFontFromFileTTF)~='function' then glass.diagnostic='Custom fonts unavailable; using host default'; return; end
+    local root=os.getenv('WINDIR') or 'C:\\Windows';
+    for name,file in pairs(fontFiles) do
+        local path=root..'\\Fonts\\'..file;
+        local f=io.open(path,'rb');
+        if f then
+            f:close(); local ok,font=pcall(imgui.AddFontFromFileTTF,path,20);
+            if ok and font then glass.fonts[name]=font; end
+        end
+    end
+    glass.diagnostic=glass.fonts['Arial Bold'] and 'Arial Bold ready' or 'Arial Bold unavailable; using host default';
+end
+local function pair(a,b)
+    if type(a)=='number' then return a,b; end
+    if a then
+        local ok,x,y=pcall(function() return a[1] or a.x,a[2] or a.y; end);
+        if ok and type(x)=='number' and type(y)=='number' then return x,y; end
+        ok,x,y=pcall(function() return a.x,a.y; end);
+        if ok and type(x)=='number' and type(y)=='number' then return x,y; end
+    end
+end
+local function push_glass_background(opacity)
+    local n,v=0,0;
+    if imgui.PushStyleColor and imgui.PopStyleColor then
+        for _,entry in ipairs({{ImGuiCol_WindowBg,{0,0,0,opacity}},{ImGuiCol_Border,{0,0,0,0}}}) do
+            if type(entry[1])=='number' then imgui.PushStyleColor(entry[1],entry[2]); n=n+1; end
+        end
+    end
+    if imgui.PushStyleVar and imgui.PopStyleVar then
+        for _,id in pairs({ImGuiStyleVar_WindowBorderSize,ImGuiStyleVar_FrameBorderSize}) do
+            if type(id)=='number' then imgui.PushStyleVar(id,0); v=v+1; end
+        end
+    end
+    return n,v;
+end
+local function pop_glass_background(n,v)
+    if n>0 then imgui.PopStyleColor(n); end
+    for i=1,v do imgui.PopStyleVar(); end
+end
+local function glass_available()
+    for _,name in ipairs({'GetWindowDrawList','GetCursorScreenPos','GetFont','CalcTextSize','GetTextLineHeight','PushFont','PopFont','GetColorU32'}) do
+        if type(imgui[name])~='function' then return false; end
+    end
+    return glass.custom;
+end
+local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling)
+    local font=glass.fonts[state.macroFont] or imgui.GetFont();
+    imgui.PushFont(font);
+    local ok,err=pcall(function()
+        local natural=imgui.GetTextLineHeight();
+        local function width(t,size)
+            local tw=pair(imgui.CalcTextSize(t)); return (tw or 0)*size/natural;
+        end
+        local size=math.min(state.macroFontSize*state.scale,math.max(10,h-18));
+        local shown=text;
+        if width(shown,size)>w-10 then size=math.max(10,math.min(size,(w-10)/math.max(1,width(shown,1)))); end
+        while #shown>0 and width(shown,size)>w-10 do
+            -- Native macro names are byte strings. Do not split UTF-8 continuation bytes.
+            shown=shown:match('^(.*)[%z\1-\127\194-\244][\128-\191]*$') or '';
+        end
+        if shown~=text then
+            while #shown>0 and width(shown..'...',size)>w-10 do shown=shown:match('^(.*)[%z\1-\127\194-\244][\128-\191]*$') or ''; end
+            shown=shown..'...';
+        end
+        local col=imgui.GetColorU32(cooling and {1,.30,.30,1} or {.96,.96,.97,1});
+        local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-12-size)/2);
+        dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
+        dl:AddText(font,size,{tx,ty},col,shown);
+        local ks=math.min(10*state.scale,math.max(7,h/4));
+        dl:AddText(font,ks,{x+w-width(shortcut,ks)-5,y+h-ks-3},imgui.GetColorU32({.68,.70,.74,1}),shortcut);
+    end);
+    imgui.PopFont();
+    if not ok then error(err); end
+end
 local function draw_row(title,offset)
     local w=math.floor(state.hudWidth*state.scale);
     local h=math.floor(state.hudHeight*state.scale);
-    -- Let all ten buttons share resized client area; guard on VanaCore ImGui support.
     if type(imgui.GetContentRegionAvail)=='function' then
         local ok,avail=pcall(imgui.GetContentRegionAvail);
-        if ok and type(avail)=='table' and type(avail[1])=='number' then
-            w=math.max(42,math.floor((avail[1]-36)/10));
-        end
+        local aw=ok and pair(avail);
+        if aw then w=math.max(42,math.floor((aw-36)/10)); end
     end
-    local theme=palettes[state.theme] or palettes[1];
     for i=1,10 do
         if i>1 then imgui.SameLine(); end
         local name=state.names[offset+i] or '';
-        local shortcut;
-        -- Display selected mapping independently of direct-key activation.
-        if state.mappingMode=='numbers' then
-            shortcut=tostring(i==10 and 0 or i);
-        elseif state.mappingMode=='functions' then
-            shortcut='F'..tostring(i);
-        else
-            shortcut=DIRECT_NAMES[state.directKeys[(title=='CTRL' and 0 or 10)+i]] or '?';
+        local shortcut=state.mappingMode=='numbers' and tostring(i==10 and 0 or i)
+            or state.mappingMode=='functions' and ('F'..i)
+            or DIRECT_NAMES[state.directKeys[offset+i]] or '?';
+        local flashing=state.flashRow==title and state.flashSlot==i and os.clock()<state.flashUntil;
+        local e=state.lastExecuted;
+        local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
+        local selected=state.navRow==title and state.navSlot==i;
+        local cooling=cooldown_recast(state.cooldownBindings[offset+i]);
+        local a=state.buttonOpacity;
+        local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
+        local base=flashing and {.45,.34,.13,a} or remembered and (accents[state.theme] or accents[1]) or {.025,.028,.035,a};
+        local nc,nv=0,0;
+        local function colour(id,value) if type(id)=='number' and imgui.PushStyleColor and imgui.PopStyleColor then imgui.PushStyleColor(id,value); nc=nc+1; end end
+        colour(ImGuiCol_Button,base);
+        colour(ImGuiCol_ButtonHovered,{base[1]+.05,base[2]+.05,base[3]+.05,a});
+        colour(ImGuiCol_ButtonActive,{.45,.34,.13,a});
+        colour(ImGuiCol_Text,cooling and {1,.3,.3,1} or {.96,.96,.97,1});
+        colour(ImGuiCol_Border,selected and {.85,.68,.30,1} or {0,0,0,0});
+        if type(ImGuiStyleVar_FrameBorderSize)=='number' and imgui.PushStyleVar and imgui.PopStyleVar then
+            imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize,selected and 1 or 0); nv=1;
         end
-        -- Only the name and its compact key label belong on the button.
-        local label=(name=='' and ' ' or name)..'\n'..shortcut..'##decker_'..title..i;
-        local flashing=(state.flashRow==title and state.flashSlot==i and os.clock()<state.flashUntil);
-        local executed=state.lastExecuted;
-        local remembered=executed and executed.row==title and executed.slot==i
-            and executed.set==state.trackedSet and executed.name==name
-            and state.trackedSource~='unverified (same names)';
-        local selected=(state.navRow==title and state.navSlot==i);
-        local themed=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function'
-            and type(ImGuiCol_Button)=='number' and type(ImGuiCol_Text)=='number';
-        if themed then
-            local base=flashing and {0.64,0.51,0.23,1} or (remembered and {0.49,0.38,0.20,1} or (selected and {0.33,0.34,0.41,1} or theme.color));
-            imgui.PushStyleColor(ImGuiCol_Button,base);
-            -- Override ImGui's default blue hover/held states while the button is activated.
-            -- Hover alone remains subtle; keyboard/mouse activation uses the same amber tone.
-            if type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number' then
-                local hover=flashing and {0.77,0.60,0.27,1} or {0.44,0.43,0.52,1};
-                local active={0.77,0.60,0.27,1};
-                imgui.PushStyleColor(ImGuiCol_ButtonHovered,hover);
-                imgui.PushStyleColor(ImGuiCol_ButtonActive,active);
-            end
-            local binding=state.cooldownBindings[offset+i];
-            local cooling=cooldown_recast(binding);
-            imgui.PushStyleColor(ImGuiCol_Text,cooling and {1.0,0.25,0.25,1.0} or theme.text);
+        local custom=glass_available();
+        local x,y;
+        if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
+        local label=custom and '' or (name..'\n'..shortcut);
+        local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
+        if nc>0 then imgui.PopStyleColor(nc); end
+        if nv>0 then imgui.PopStyleVar(); end
+        if custom then
+            local ok,err=pcall(function()
+                local dl=imgui.GetWindowDrawList();
+                if dl.AddRectFilledMultiColor then
+                    local top=imgui.GetColorU32({1,1,1,.035*a}); local bottom=imgui.GetColorU32({0,0,0,.05*a});
+                    dl:AddRectFilledMultiColor({x+2,y+2},{x+w-2,y+h-2},top,top,bottom,bottom);
+                end
+                if selected then dl:AddRect({x+1,y+1},{x+w-1,y+h-1},imgui.GetColorU32({.85,.68,.30,1}),2,0,1); end
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling);
+            end);
+            if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
         end
-        local clicked=imgui.Button(label,{w,h});
-        if themed then
-            imgui.PopStyleColor((type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number') and 4 or 2);
-        end
-        if clicked then
-            execute_slot(title,i);
-        end
+        if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip('%s',name); end
+        if clicked then execute_slot(title,i); end
     end
+end
+-- Draw the panel behind the two rows without introducing a child window or changing layout.
+local function draw_macro_panel()
+    if not glass_available() then return; end
+    pcall(function()
+        local x,y=pair(imgui.GetCursorScreenPos()); local aw=pair(imgui.GetContentRegionAvail());
+        if x and aw then imgui.GetWindowDrawList():AddRectFilled({x-2,y-2},{x+aw,y+state.hudHeight*state.scale*2+6},imgui.GetColorU32({0,0,0,state.panelOpacity}),2); end
+    end);
 end
 -- DirectInput scancodes: 1..0 (2..11) and F1..F10 (59..68).
 -- Keyboard overrides remain OFF until explicit activation. Native FFXI chat/edit focus
@@ -895,7 +983,7 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
         if code<size and (state.suppressed[code] or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
     end
 end);
-ashita.events.register('load','decker_load',function() say('Decker v'..addon.version..' loaded',false); end);
+ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
 ashita.events.register('command','decker_cmd',function(e)
     local a=e.command:args(); if not a[1] or a[1]:lower()~='/decker' then return; end
     e.blocked=true;
@@ -1188,9 +1276,8 @@ ashita.events.register('d3d_present','decker_draw',function()
             local width=state.statebarVertical and (sw+32) or (count*(sw+5)+18);
             local height=state.statebarVertical and (count*36*state.statebarScale+50) or 85;
             imgui.SetNextWindowSize({width,height},ImGuiCond_FirstUseEver);
-            local barStyle=false;
-            if imgui.PushStyleVar and ImGuiStyleVar_Alpha then imgui.PushStyleVar(ImGuiStyleVar_Alpha,state.statebarOpacity); barStyle=true; end
-            if imgui.Begin('StateBar###DeckerStateBar',nil,flags) then
+            local barColours,barVars=push_glass_background(state.statebarOpacity);
+            if imgui.Begin('StateBar###DeckerStateBar',nil,flags+1) then
                 for i,b in ipairs(state.statebarSlots) do
                     local idx=(b.row=='ALT' and 10 or 0)+b.slot;
                     local name=b.label and b.label~='' and b.label or b.source=='command' and (b.command or 'Configure command') or (state.names[idx] or 'Unassigned');
@@ -1200,14 +1287,14 @@ ashita.events.register('d3d_present','decker_draw',function()
                     -- Keep the actual macro name legible; never prefix it with SELECTED.
                     local sbSelected=(b.kind~='utility' and state.statebarSelected==i);
                     local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
-                    if sbSelected and sbColours then
+                    if sbColours then
                         local colours={{0.12,0.57,0.28,1},{0.12,0.40,0.70,1},{0.50,0.25,0.65,1},{0.40,0.40,0.40,1}};
-                        imgui.PushStyleColor(ImGuiCol_Button,colours[state.statebarTheme] or colours[1]);
+                        imgui.PushStyleColor(ImGuiCol_Button,sbSelected and (colours[state.statebarTheme] or colours[1]) or {.025,.028,.035,state.buttonOpacity});
                         imgui.PushStyleColor(ImGuiCol_ButtonHovered,{0.17,0.68,0.34,1.0});
                         imgui.PushStyleColor(ImGuiCol_ButtonActive,{0.09,0.46,0.22,1.0});
                     end
                     local sbPressed=imgui.Button(name..'\n'..key..'##statebar'..i,{sw,math.floor(40*state.statebarScale)});
-                    if sbSelected and sbColours then imgui.PopStyleColor(3); end
+                    if sbColours then imgui.PopStyleColor(3); end
                     if sbPressed then
                         request_statebar(i);
                     end
@@ -1215,7 +1302,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.Button('Configure##statebarconfig') then state.showTests=true; state.settingsTab='StateBar'; end
             end
             imgui.End();
-            if barStyle then imgui.PopStyleVar(); end
+            pop_glass_background(barColours,barVars);
         end
     end
     if not state.visible then return; end
@@ -1241,15 +1328,14 @@ ashita.events.register('d3d_present','decker_draw',function()
     imgui.SetNextWindowSize({hudw, math.floor(2*state.hudHeight*state.scale+96)},ImGuiCond_FirstUseEver);
     -- Do not restore saved HUD coordinates through an unverified VanaCore ImGui ABI.
     -- Apply to the HUD only; Settings stays fully opaque.
-    local opacityPushed=false;
-    if type(imgui.PushStyleVar)=='function' and type(imgui.PopStyleVar)=='function' and ImGuiStyleVar_Alpha then
-        imgui.PushStyleVar(ImGuiStyleVar_Alpha,state.hudOpacity); opacityPushed=true;
-    end
-    if imgui.Begin(('Decker v'..addon.version..' - Book%02d (#%d)%s###DeckerMain'):format(state.manualBook or 1,state.trackedSet or 1,(state.navKeysEnabled and (state.stickyNavigation and (state.navToggleActive and ' [LOCKED]' or ' [UNLOCKED]') or (state.navModifierHeld and ' [HELD]' or ' [RELEASED]')) or '')..(state.trackedSource=='unverified (same names)' and ' [UNVERIFIED]' or '')),nil,(state.positionLocked and 4 or 0)) then
+    local hudColours,hudVars=push_glass_background(state.outerOpacity);
+    if imgui.Begin(('Decker v'..addon.version..' - Book%02d (#%d)%s###DeckerMain'):format(state.manualBook or 1,state.trackedSet or 1,(state.navKeysEnabled and (state.stickyNavigation and (state.navToggleActive and ' [LOCKED]' or ' [UNLOCKED]') or (state.navModifierHeld and ' [HELD]' or ' [RELEASED]')) or '')..(state.trackedSource=='unverified (same names)' and ' [UNVERIFIED]' or '')),nil,1+(state.positionLocked and 4 or 0)) then
         -- VanaCore ImGui positions may be math-backed vectors, not Lua arrays.
         -- Avoid numeric indexing of GetWindowPos results until its ABI is verified.
 
+        imgui.Text(('DECKER  |  Book %d (#%d)%s'):format(state.manualBook or 1,state.trackedSet or 1,state.navKeysEnabled and (state.navToggleActive and '  LOCKED' or state.navModifierHeld and '  HELD' or '  UNLOCKED') or '')..(state.trackedSource=='unverified (same names)' and '  UNVERIFIED' or ''));
         if #state.names==20 then
+            draw_macro_panel();
             draw_row('CTRL',0);
             draw_row('ALT',10);
             if state.allowSwitch then
@@ -1269,10 +1355,10 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.TextWrapped('Connect invokes native FFXI reading functions. As with earlier builds, incompatible clients may crash.');
             if state.phase~=0 then imgui.TextWrapped(state.nameSummary..' / '..state.pointerSummary); end
         end
-        imgui.Text('by Mutant X');
+        if imgui.TextDisabled then imgui.TextDisabled('By Mutant X'); else imgui.Text('By Mutant X'); end
     end
     imgui.End();
-    if opacityPushed then imgui.PopStyleVar(); end
+    pop_glass_background(hudColours,hudVars);
     if state.showTests then
         imgui.SetNextWindowSize({490,370},ImGuiCond_FirstUseEver);
         if imgui.Begin('Decker v'..addon.version..' - Settings',nil,0) then
@@ -1343,9 +1429,9 @@ ashita.events.register('d3d_present','decker_draw',function()
                 end
                 imgui.NewLine();
                 imgui.Text(('StateBar opacity: %d%%'):format(math.floor(state.statebarOpacity*100+0.5)));
-                if imgui.Button('Less opaque##sb') then state.statebarOpacity=math.max(.2,state.statebarOpacity-.1); save_display(); end
+                if imgui.Button('Less opaque##sb') then state.statebarOpacity=math.max(0,state.statebarOpacity-.05); save_display(); end
                 imgui.SameLine();
-                if imgui.Button('More opaque##sb') then state.statebarOpacity=math.min(1,state.statebarOpacity+.1); save_display(); end
+                if imgui.Button('More opaque##sb') then state.statebarOpacity=math.min(1,state.statebarOpacity+.05); save_display(); end
                 imgui.Text('StateBar colour theme:');
                 for i,name in ipairs({'Classic','Blue','Green','Purple'}) do
                     if imgui.Button((state.statebarTheme==i and '[X] ' or '')..name..'##sbtheme') then state.statebarTheme=i; save_display(); end
@@ -1421,10 +1507,23 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.Text('Auto-hide collapses to a recoverable tab (full hide disabled).')
             imgui.SameLine(); if imgui.Button('Collapse to tab'..(state.autoHideMode=='collapse' and ' [selected]' or '')) then state.autoHideMode='collapse'; save_display(); end
             imgui.TextWrapped('The macro display stays visible while navigation is active. Settings stays visible while open. Keyboard shortcuts keep working when hidden.')
-            imgui.Text(('Display opacity: %d%%'):format(math.floor(state.hudOpacity*100+0.5)));
-            if imgui.Button('More transparent') then state.hudOpacity=math.max(.2,math.floor(state.hudOpacity*10+0.5)/10-.1); save_display(); end
-            imgui.SameLine(); if imgui.Button('Less transparent') then state.hudOpacity=math.min(1,math.floor(state.hudOpacity*10+0.5)/10+.1); save_display(); end
-            if imgui.Button('Reset opacity to 100%') then state.hudOpacity=1; save_display(); end
+            for _,item in ipairs({{'Outer window','outerOpacity'},{'Inner macro panel','panelOpacity'},{'Macro buttons','buttonOpacity'}}) do
+                local key=item[2];
+                imgui.Text(('%s opacity: %d%%'):format(item[1],math.floor(state[key]*100+.5)));
+                if imgui.Button('Less##'..key) then state[key]=math.max(0,state[key]-.05); save_display(); end
+                imgui.SameLine(); if imgui.Button('More##'..key) then state[key]=math.min(1,state[key]+.05); save_display(); end
+            end
+            if imgui.BeginCombo('Macro font',state.macroFont) then
+                for _,name in ipairs({'Arial Bold','Segoe UI Bold','Times New Roman Bold','Default'}) do
+                    if imgui.Selectable(name,state.macroFont==name) then state.macroFont=name; save_display(); end
+                end
+                imgui.EndCombo();
+            end
+            imgui.Text(glass.diagnostic);
+            imgui.Text(state.macroFont=='Default' and 'Using host default font' or glass.fonts[state.macroFont] and ('Using '..state.macroFont) or (state.macroFont..' missing; using host default'));
+            imgui.Text(('Macro font size: %d'):format(state.macroFontSize));
+            if imgui.Button('Font smaller') then state.macroFontSize=math.max(10,state.macroFontSize-1); save_display(); end
+            imgui.SameLine(); if imgui.Button('Font larger') then state.macroFontSize=math.min(28,state.macroFontSize+1); save_display(); end
             if imgui.Button('Classic') then state.theme=1; save_display(); end
             imgui.SameLine(); if imgui.Button('Blue') then state.theme=2; save_display(); end
             imgui.SameLine(); if imgui.Button('Purple') then state.theme=3; save_display(); end

@@ -1,5 +1,15 @@
 # Version history
 
+## 1.50.0-dev — floating glass first pass
+
+- Preserve two rows, button sizing, input/execution and independent StateBar logic.
+- Add borderless black glass with separate outer/panel/button/StateBar background opacity; keep text opaque.
+- Add installed Arial Bold and alternative font choices, font size, centred fitted names and bottom-right keys; cache fonts outside rendering.
+- Distinguish persistent execution fill from gold navigation outline; retain active StateBar colours.
+- Add compatibility fallback, 7 regression groups and an explicitly labelled offline renderer simulation.
+- 22 mocked groups pass under Lua 5.4; LuaJIT and live Ashita/Vanacor verification pending. Manual development ZIP; no stable release or updater promotion.
+
+
 ## 1.49.6-dev — in-game updater
 
 - More → Updates now checks the development/stable channel and offers Install update and reload Decker.
