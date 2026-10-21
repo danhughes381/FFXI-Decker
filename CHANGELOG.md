@@ -1,5 +1,11 @@
 # Version history
 
+## 1.50.13-dev — clear updater status
+
+- Show installed and published channel versions for update available, up-to-date and older-channel results.
+- Remove obsolete text claiming Stable has no published updater release. Both channels are maintained.
+- 54 host-mocked regression groups pass, including both-channel check, update offer, install, exact backup and reload. Actual HTTPS manifests and pinned-source hashes verified; Windows PowerShell and in-game installation remain pending live confirmation.
+
 ## 1.50.12-dev — named header and inline book controls
 
 - Show the selected book name in the HUD heading, using the same alias/imported-title source as the Settings book selector. Keep fixed status/active-row columns and full-name hover. Long header titles abbreviate after 15 bytes.

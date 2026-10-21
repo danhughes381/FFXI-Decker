@@ -1,17 +1,17 @@
 {
-  "version": "1.50.12-dev",
+  "version": "1.50.13-dev",
   "author": "Mutant X",
   "channels": [
     "stable",
     "development"
   ],
-  "artifact": "Decker_v1.50.12_dev_Mutant_X_Floating_Glass.zip",
-  "sha256": "22a70461dae9ccac8ecc4790df9622458c760c481c3829f641f5d8f1447bd3d7",
-  "source_commit": "0f5ebdc03d882b7cdb36451f9f6ba8281fb9efcb",
-  "source_sha256": "f94c1e1a82d8a447ebfcc49545b718a65d7587de69e660ec1ba46a543a4f28b9",
+  "artifact": "Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip",
+  "sha256": "cffc03ed2ecf8269465045dc156424bf56ade663af4c5094c50c9bc64cba848a",
+  "source_commit": "e095b847876ee89badfda00027ccda6e4c474bdb",
+  "source_sha256": "e4866175eab0a909d44321c80f932716686ca15e68a858e9f0f7d33c112d6543",
   "stable": true,
-  "promotion_basis": "Owner explicitly requested Stable and Development on 21 October 2026",
+  "promotion_basis": "Owner requested both channels and updater verification",
   "in_game_verified": false,
-  "offline_regression_groups": 52,
+  "offline_regression_groups": 54,
   "updater_protocol": 1
 }

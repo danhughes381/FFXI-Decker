@@ -1,10 +1,10 @@
 # Decker — by Mutant X
 
-**Latest Stable and Development baseline: 1.50.12-dev** · Ashita v4 / Vanacor / CatsEyeXI
+**Latest Stable and Development baseline: 1.50.13-dev** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
-[Download the latest baseline ZIP](dist/Decker_v1.50.12_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.12.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
+[Download the latest baseline ZIP](dist/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
 
 ## Install
 
@@ -13,13 +13,13 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 3. New profiles use **Both rows: 1–0**. Under **Advanced keys**, enable the mod/arrow hotkeys. Choose **Hold key pressed down** or **Press key once (Toggle)**. Right Shift and End are the default mod and row-switch keys.
 4. Use **Macro set** and the adjacent **Book** controls to select sets 1–10 and books 1–20. Book names use your Decker label or imported saved game title.
 
-Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.12.md).
+Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.13.md).
 
 ## Baseline status
 
-This main-branch baseline was selected by the owner on 21 October 2026 and includes the feedback passes through 1.50.12-dev. **52 host-mocked regression groups pass** under Lua 5.4 with the existing compatibility shims. Archive integrity, exact source and SHA-256 are checked. The owner confirmed shared number-key control and native book changes in earlier candidates. The complete 1.50.12 build still needs live Ashita/Vanacor confirmation; LuaJIT and native execution are unavailable in this workspace. See [release-readiness issue #3](https://github.com/danhughes381/FFXI-Decker/issues/3).
+This main-branch baseline was selected by the owner on 21 October 2026 and includes the feedback passes through 1.50.13-dev. **54 host-mocked regression groups pass** under Lua 5.4 with the existing compatibility shims. Archive integrity, exact source and SHA-256 are checked. The owner confirmed shared number-key control and native book changes in earlier candidates. The complete 1.50.13 build still needs live Ashita/Vanacor confirmation; LuaJIT and native execution are unavailable in this workspace. See [release-readiness issue #3](https://github.com/danhughes381/FFXI-Decker/issues/3).
 
-The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.12-dev. Channel promotion does not add live verification. The ZIP is the exact previously delivered 1.50.12 artifact, with the same source and checksum; some historical instructions inside it describe its pre-promotion development status.
+The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.13-dev. Channel promotion does not add live verification. The updater now shows installed and published versions explicitly. Stable and Development offer the same current build.
 
 **CatsEyeXI: T1 Sanctioned — approved 19 October 2026.** This records the existing addon approval; it does not claim every subsequent development build was separately reviewed.
 
