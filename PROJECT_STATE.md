@@ -26,7 +26,7 @@ Next action: on a 1.50.12-dev installation, select either channel, Check for upd
 
 ## Published GitHub release — 21 October 2026
 
-[v1.50.13-dev](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev) is now the newest public GitHub release, labelled Pre-release. Tag/source commit: `e095b847876ee89badfda00027ccda6e4c474bdb`. Previous v1.47 release is preserved. GitHub's Latest badge is reserved for non-prereleases; no final production promotion is implied.
+[v1.50.13-dev](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev) is now the latest public GitHub release, titled **Decker v1.50.13-dev**, published as a regular release at the owner's explicit request. Tag/source commit: `e095b847876ee89badfda00027ccda6e4c474bdb`. Previous v1.47 release is preserved. GitHub displays the Latest badge. The -dev tag/version, existing verification limits and updater source pins are retained.
 
 Attached unchanged installation ZIP: `Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip` (114760 bytes). Downloaded release asset SHA-256 matches `cffc03ed2ecf8269465045dc156424bf56ade663af4c5094c50c9bc64cba848a`. Archive integrity and exact packaged-source equality passed. All 54 mocked-host offline regression groups passed again. Live HTTPS Stable, Development and legacy Development manifests and immutable source hash passed verification. Both channels remain 1.50.13-dev; publishing does not change the updater protocol or source pins.
 
