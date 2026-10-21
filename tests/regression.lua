@@ -507,5 +507,37 @@ test('HUD Macro set and book controls select native books 1-20 with wrapping arr
  ui.Button=button;ui.Selectable=select;ffi.cast=cast;ui.Text=text
 end)
 
+test('both updater channels offer newer versions and complete mocked install backup and reload',function()
+ local originalNew=ffi.new;local button=ui.Button;local running=addon.version
+ ffi.new=function() return {[0]=0} end
+ api.setKernel({GetExitCodeProcess=function(_,p) p[0]=0;return 1 end,CloseHandle=function() end})
+ local function write(name,bytes) local file=assert(io.open(tmp..'/'..name,'wb'));file:write(bytes);file:close() end
+ local function job(mode) api.updater.job={handle=1,mode=mode,started=os.time(),pollAt=0};api.poll() end
+ for _,channel in ipairs({'stable','development'}) do
+  ready();s.visible=true;s.showTests=true;s.settingsTab='Updates';s.statebarEnabled=false;s.navKeysEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0;s.lastProfileCheck=os.clock()
+  api.updater.channel=channel;api.updater.installed=false;api.updater.manifest=nil;addon.version='1.50.12-dev'
+  local manifest='protocol=1\nversion='..running..'\ncommit='..string.rep('b',40)..'\nsha256='..string.rep('a',64)..'\n'
+  write('.decker-update-manifest.txt',manifest);job('Check')
+  assert(api.updater.status:find('Update available.',1,true) and api.updater.status:find('Installed: v1.50.12-dev',1,true) and api.updater.status:find(channel..' channel: v'..running,1,true))
+  local offers=0;ui.Button=function(label) if label=='Install update and reload Decker' then offers=offers+1 end;return false end
+  events.decker_draw();assert(offers==1)
+  local file=assert(io.open(path,'rb'));local before=file:read('*a');file:close()
+  write('.decker-update-source.lua',source);job('Download')
+  assert(api.updater.installed and requested[#requested]=='/addon reload decker')
+  file=assert(io.open(path,'rb'));assert(file:read('*a')==source);file:close()
+  file=assert(io.open(tmp..'/decker.lua.bak','rb'));assert(file:read('*a')==before);file:close()
+  addon.version=running;api.updater.installed=false;write('.decker-update-manifest.txt',manifest);job('Check');offers=0;events.decker_draw()
+  assert(offers==0 and api.updater.status:find('Up to date.',1,true) and api.updater.status:find(channel..' channel: v'..running,1,true))
+ end
+ ffi.new=originalNew;ui.Button=button;addon.version=running;api.setKernel(nil);s.showTests=false
+end)
+test('Stable update page no longer claims the channel is unpublished',function()
+ ready();s.visible=true;s.showTests=true;s.settingsTab='Updates';s.statebarEnabled=false;s.navKeysEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0
+ api.updater.channel='stable';api.updater.installed=false
+ local wrapped=ui.TextWrapped;local found=false
+ ui.TextWrapped=function(t) assert(not t:find('No stable updater release has been published yet',1,true));if t:find('Stable and Development channels are available',1,true) then found=true end end
+ events.decker_draw();assert(found);ui.TextWrapped=wrapped
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')

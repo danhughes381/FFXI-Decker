@@ -50,4 +50,6 @@ PASS read-only twenty-book title import persists isolated aliases
 PASS native book requests use zero-based indices through book twenty with connection gates
 PASS HUD heading uses the selected book alias or imported game title
 PASS HUD Macro set and book controls select native books 1-20 with wrapping arrows
-52 regression groups passed (mocked host; not in-game validation)
+PASS both updater channels offer newer versions and complete mocked install backup and reload
+PASS Stable update page no longer claims the channel is unpublished
+54 regression groups passed (mocked host; not in-game validation)
