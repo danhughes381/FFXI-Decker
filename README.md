@@ -29,4 +29,4 @@ Decker uses existing FFXI macros and does not rewrite game macro data. Equipment
 
 Created by **Mutant X**. Licensed under [Apache 2.0](LICENSE); retain [NOTICE](NOTICE). If sharing a modified version, acknowledge the original project and identify your changes.
 
-Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev), the newest public release, labelled Pre-release. The existing ZIP is unchanged; preserve character .cfg files when installing. Previous releases remain available.
+Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev), the latest public release, titled **Decker v1.50.13-dev**, published as a regular release at the owner's request. The existing ZIP is unchanged; preserve character .cfg files when installing. Previous releases remain available.
