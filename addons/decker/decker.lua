@@ -1,9 +1,9 @@
--- Decker 1.50.12-dev: native macro HUD for VanaCore/Ashita 4.
+-- Decker 1.50.13-dev: native macro HUD for VanaCore/Ashita 4.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.12-dev';
+addon.version = '1.50.13-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1307,7 +1307,8 @@ local function update_poll()
     if not manifest then updater.status='Invalid update manifest; nothing installed.'; return; end
     if job.mode=='Check' then
         updater.manifest=manifest;
-        updater.status=update_newer(manifest.version,addon.version) and ('Available: v'..manifest.version) or 'No newer version on this channel.';
+        local versions=('Installed: v%s | %s channel: v%s'):format(addon.version,updater.channel,manifest.version);
+        updater.status=update_newer(manifest.version,addon.version) and ('Update available. '..versions) or manifest.version==addon.version and ('Up to date. '..versions) or ('No newer update. '..versions);
         return;
     end
     if not updater.manifest or manifest.commit~=updater.manifest.commit or manifest.sha256~=updater.manifest.sha256 or manifest.version~=updater.manifest.version then updater.status='Manifest changed; check for updates again.'; return; end
@@ -1569,7 +1570,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped('Profiles are saved separately per server and character. Settings are not copied between characters.');
             elseif state.settingsTab=='Updates' then
                 imgui.Text('Installed: v'..addon.version);
-                if updater.channel=='stable' then imgui.TextWrapped('No stable updater release has been published yet.'); end
+                imgui.TextWrapped('Stable and Development channels are available. Check to see the published version on your selected channel.');
                 imgui.TextWrapped('Check, install and reload Decker here. Character settings are preserved. Development builds may have unverified changes.');
                 if not updater.job and not updater.installed then
                     if imgui.BeginCombo('Update channel',updater.channel) then
