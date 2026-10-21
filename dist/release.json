@@ -1,0 +1,17 @@
+{
+  "version": "1.50.12-dev",
+  "author": "Mutant X",
+  "channels": [
+    "stable",
+    "development"
+  ],
+  "artifact": "Decker_v1.50.12_dev_Mutant_X_Floating_Glass.zip",
+  "sha256": "22a70461dae9ccac8ecc4790df9622458c760c481c3829f641f5d8f1447bd3d7",
+  "source_commit": "0f5ebdc03d882b7cdb36451f9f6ba8281fb9efcb",
+  "source_sha256": "f94c1e1a82d8a447ebfcc49545b718a65d7587de69e660ec1ba46a543a4f28b9",
+  "stable": true,
+  "promotion_basis": "Owner explicitly requested Stable and Development on 21 October 2026",
+  "in_game_verified": false,
+  "offline_regression_groups": 52,
+  "updater_protocol": 1
+}
