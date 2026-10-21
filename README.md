@@ -4,7 +4,7 @@
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
-[Download the latest baseline ZIP](dist/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
+[Download the latest release ZIP](https://github.com/danhughes381/FFXI-Decker/releases/download/v1.50.13-dev/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
 
 ## Install
 
@@ -17,7 +17,7 @@ Hold shows macros while the mod is physically held and hides them on release. To
 
 ## Baseline status
 
-This main-branch baseline was selected by the owner on 21 October 2026 and includes the feedback passes through 1.50.13-dev. **54 host-mocked regression groups pass** under Lua 5.4 with the existing compatibility shims. Archive integrity, exact source and SHA-256 are checked. The owner confirmed shared number-key control and native book changes in earlier candidates. The complete 1.50.13 build still needs live Ashita/Vanacor confirmation; LuaJIT and native execution are unavailable in this workspace. See [release-readiness issue #3](https://github.com/danhughes381/FFXI-Decker/issues/3).
+This main-branch baseline was selected by the owner on 21 October 2026 and includes the feedback passes through 1.50.13-dev. **54 host-mocked regression groups pass** under Lua 5.4 with the existing compatibility shims. Archive integrity, exact source and SHA-256 are checked. The owner confirmed shared number-key control and native book changes in earlier candidates. The owner confirms in-game testing of this build using VanaCore/Ashita; individual features and the complete Windows updater install/reload flow have not all been independently verified. LuaJIT and native execution are unavailable in this workspace. See [release-readiness issue #3](https://github.com/danhughes381/FFXI-Decker/issues/3).
 
 The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.13-dev. Channel promotion does not add live verification. The updater now shows installed and published versions explicitly. Stable and Development offer the same current build.
 
@@ -28,3 +28,5 @@ Decker uses existing FFXI macros and does not rewrite game macro data. Equipment
 ## Attribution
 
 Created by **Mutant X**. Licensed under [Apache 2.0](LICENSE); retain [NOTICE](NOTICE). If sharing a modified version, acknowledge the original project and identify your changes.
+
+Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev), the newest public release, labelled Pre-release. The existing ZIP is unchanged; preserve character .cfg files when installing. Previous releases remain available.
