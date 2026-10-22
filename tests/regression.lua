@@ -639,8 +639,10 @@ test('motion effects are draw-only, bounded, and opt-out',function()
       d.AddRectFilledMultiColor=function() fx=fx+1 end
       return d
     end
-    api.drawrow('CTRL',0);assert(fx>=1 and fontDepth==0 and styles==0 and vars==0,'flash adds only bounded draw calls')
-    s.motionEnabled=false;fx=0;api.drawrow('CTRL',0);assert(fx==0,'reduced motion draws no extra flash')
+    s.motionEnabled=false;fx=0;api.drawrow('CTRL',0)
+    local baseline=fx;assert(baseline==10,'baseline glass gradient stays intact with reduced motion')
+    s.motionEnabled=true;fx=0;api.drawrow('CTRL',0)
+    assert(fx==baseline+1 and fontDepth==0 and styles==0 and vars==0,'one extra bounded flash strip per executing slot')
     ui.GetWindowDrawList=old;s.motionEnabled=true;s.flashUntil=0
 end)
 
