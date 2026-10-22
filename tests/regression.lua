@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,bookLabel=book_label,drawrow=draw_row,pair=pair,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -537,6 +537,53 @@ test('Stable update page no longer claims the channel is unpublished',function()
  local wrapped=ui.TextWrapped;local found=false
  ui.TextWrapped=function(t) assert(not t:find('No stable updater release has been published yet',1,true));if t:find('Stable and Development channels are available',1,true) then found=true end end
  events.decker_draw();assert(found);ui.TextWrapped=wrapped
+end)
+
+-- YunaUI-inspired 1.50.14 hardening: no game native calls in these checks.
+test('multi-size fonts keep the default 20px face and select 28px for large macro text',function()
+ ready();s.visible=true;s.scale=1;s.macroFont='Arial Bold';s.hudHeight=60
+ local oldPush=ui.PushFont;local selected={}
+ local oldTiers=api.glass.fontTiers['Arial Bold'];local oldFont=api.glass.fonts['Arial Bold']
+ api.glass.fonts['Arial Bold']='font20'
+ api.glass.fontTiers['Arial Bold']={[16]='font16',[20]='font20',[28]='font28'}
+ ui.PushFont=function(font) selected[#selected+1]=font;oldPush(font) end
+ s.macroFontSize=18;api.glass.custom=true;api.drawrow('CTRL',0)
+ assert(selected[1]=='font20','default size should use the original 20px font')
+ selected={};s.macroFontSize=27;api.drawrow('CTRL',0)
+ assert(selected[1]=='font28','larger names should use the preloaded 28px font')
+ assert(fontDepth==0 and styles==0 and vars==0)
+ ui.PushFont=oldPush;api.glass.fontTiers['Arial Bold']=oldTiers;api.glass.fonts['Arial Bold']=oldFont
+ s.hudHeight=43;s.macroFontSize=18
+end)
+test('lost direct-key release is recovered by physical key_state',function()
+ ready();s.navKeysEnabled=false;s.mappingMode='split';s.keybinds=true;s.acknowledgeKeys=true
+ s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[10+i]=i==10 and 11 or i+1 end
+ s.held={};s.suppressed={}
+ local before=#requested
+ local press={key=59,down=true};events.decker_exclusive_key_press(press)
+ assert(press.blocked and s.suppressed[59] and #requested==before+1)
+ local raw={};for i=0,255 do raw[i]=0 end
+ raw[59]=128;events.decker_exclusive_key_state({data_raw=raw,size=256})
+ assert(raw[59]==0 and s.suppressed[59],'held key must remain suppressed')
+ raw[59]=0;events.decker_exclusive_key_state({data_raw=raw,size=256})
+ assert(not s.suppressed[59] and not s.held[59],'physical release must clear missed key_data release')
+ events.decker_exclusive_key_press({key=59,down=true})
+ assert(#requested==before+2,'next press should execute exactly once')
+ events.decker_exclusive_key_press({key=59,down=false})
+ s.keybinds=false;s.acknowledgeKeys=false
+end)
+test('locked windows clamp within a reduced display without moving unlocked windows',function()
+ local oldIO=ui.GetIO;local oldSet=ui.SetNextWindowPos;local requestedPosition=nil
+ ui.GetIO=function() return {DisplaySize={320,180}} end
+ ui.SetNextWindowPos=function(pos) requestedPosition=pos end
+ local g=api.geometry('viewport_test');g.w=200;g.h=80;g.pos={500,220}
+ api.pin('viewport_test',true)
+ assert(requestedPosition[1]==120 and requestedPosition[2]==100,'locked position should fit viewport')
+ g.pos={10,20};api.pin('viewport_test',true)
+ assert(requestedPosition[1]==10 and requestedPosition[2]==20,'valid position must remain unchanged')
+ requestedPosition=nil;api.pin('viewport_test',false)
+ assert(requestedPosition==nil,'unlocked window must not be forcibly positioned')
+ ui.GetIO=oldIO;ui.SetNextWindowPos=oldSet
 end)
 
 os.execute('rm -r '..tmp)
