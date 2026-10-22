@@ -1,6 +1,6 @@
 # Decker — by Mutant X
 
-**Stable: v1.50.13-dev · Development updater: v1.50.15-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
+**Stable: v1.50.13-dev · Development updater: v1.50.16-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
@@ -15,7 +15,7 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 
 Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.13.md).
 
-Development v1.50.15-dev is an updater-only test candidate that includes the v1.50.14 font/key/viewport changes and the v1.50.15 animated HUD/interactive guide. It has 61/61 reported Lua 5.4 and LuaJIT mocked regression groups passing, but has **not** yet completed in-game acceptance. [Test guide](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.15-ui-experience-lab/docs/UI_EXPERIENCE_LAB_1.50.15.md). Stable remains v1.50.13-dev. No new GitHub Release was created.
+Development v1.50.16-dev adds an optional **Immediately (0s)** post-action auto-hide setting for Toggle mode on top of the v1.50.14/15 font, keyboard, animated HUD and interactive guide experiments. **65/65 mocked regression groups pass under Lua 5.4 and LuaJIT**; live Windows/VanaCore testing is still required. [0s testing instructions](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md). Stable and the latest public GitHub Release remain v1.50.13-dev. No Stable merge or public release has been created.
 
 ## Baseline status
 
