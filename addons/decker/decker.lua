@@ -1,9 +1,9 @@
--- Decker 1.50.14-dev: optional YunaUI-informed HUD and input hardening.
+-- Decker 1.50.15-dev: opt-out micro-motion and a simulated, non-executing guided preview.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.14-dev';
+addon.version = '1.50.15-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -47,10 +47,12 @@ state.bookNames={}; state.bookAliases={}; state.bookPath=''; state.bookNameStatu
 state.showScrollbars=true;
 state.outerOpacity=.05; state.panelOpacity=.15; state.buttonOpacity=.85;
 state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
+state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, per profile.
+state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
-    Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked'},
+    Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
     StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
     General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
 };
@@ -100,6 +102,7 @@ local function save_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
     f:write('showscrollbars=',state.showScrollbars and '1' or '0','\n');
+    f:write('motionenabled=',state.motionEnabled and '1' or '0','\n');
     f:write('glassversion=1\nouteropacity=',state.outerOpacity,'\npanelopacity=',state.panelOpacity,'\nbuttonopacity=',state.buttonOpacity,'\nmacrofont=',state.macroFont:gsub(' ','_'),'\nmacrofontsize=',state.macroFontSize,'\n');
     f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nkeybinds=',state.keybinds and '1' or '0','\nackkeys=',state.acknowledgeKeys and '1' or '0','\n');
     f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
@@ -166,6 +169,7 @@ local function load_display()
             end
         end
         if key=='showscrollbars' then state.showScrollbars=value=='1'; end
+        if key=='motionenabled' and (value=='0' or value=='1') then state.motionEnabled=value=='1'; end
         if key=='mappingmode' and (value=='split' or value=='numbers' or value=='functions' or value=='custom') then state.mappingMode=value; end
         if key=='positionlocked' then state.positionLocked=value=='1'; end
         if key=='navrow' and (value=='CTRL' or value=='ALT') then state.navRow=value; end
@@ -274,6 +278,7 @@ local function refresh_profile()
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navQueue={}; state.deferredNav={};
     state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
     state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
+    state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoMode='Hold';
     state.hudReadySince=nil; state.hudLastActivity=os.clock();
     if id then
         load_display(); state.profileReady=true;
@@ -576,6 +581,7 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
 end
 local function execute_slot(row,slot)
+    if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     if not state.allowAllClicks then
         if row=='CTRL' and slot==1 and state.clickConsent then try_ctrl1();
         else state.clickSummary='BLOCKED: mouse execution not ready; scan, validate and read names first.'; end
@@ -619,6 +625,7 @@ local function valid_command(command)
     return false;
 end
 local function request_statebar(i)
+    if state.guideOpen then return false; end -- Guide cannot fire StateBar commands or macros.
     local b=state.statebarSlots[i]; if not b or not state.profileReady then return false; end
     local requested=false;
     if b.source=='command' then
@@ -798,6 +805,7 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
     if not ok then error(err); end
 end
 local function draw_row(title,offset)
+    local now=os.clock(); -- One animation clock sample for the entire row.
     local w=math.floor(state.hudWidth*state.scale);
     local h=math.floor(state.hudHeight*state.scale);
     for i=1,10 do
@@ -807,7 +815,7 @@ local function draw_row(title,offset)
             or state.mappingMode=='functions' and ('F'..i)
             or DIRECT_NAMES[state.directKeys[offset+i]] or '?';
         if not state.compactKeys then shortcut=title..' '..tostring(i==10 and 0 or i)..' | '..shortcut; end
-        local flashing=state.flashRow==title and state.flashSlot==i and os.clock()<state.flashUntil;
+        local flashing=state.flashRow==title and state.flashSlot==i and now<state.flashUntil;
         local e=state.lastExecuted;
         local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=state.navRow==title and state.navSlot==i;
@@ -840,6 +848,19 @@ local function draw_row(title,offset)
                     dl:AddRectFilledMultiColor({x+2,y+2},{x+w-2,y+h-2},top,top,bottom,bottom);
                 end
                 if selected then dl:AddRect({x+1,y+1},{x+w-1,y+h-1},imgui.GetColorU32({.85,.68,.30,1}),2,0,1); end
+                -- Bounded draw-only micro-motion: no textures, input changes or extra windows.
+                if state.motionEnabled then
+                    if selected and type(dl.AddRect)=='function' then
+                        local glow=.15+.13*(.5+.5*math.sin(now*3.2));
+                        dl:AddRect({x+2,y+2},{x+w-2,y+h-2},imgui.GetColorU32({.95,.79,.45,glow}),2,0,1);
+                    end
+                    if flashing and type(dl.AddRectFilledMultiColor)=='function' then
+                        local fade=math.max(0,math.min(1,(state.flashUntil-now)/.30));
+                        dl:AddRectFilledMultiColor({x+3,y+h-5},{x+w-3,y+h-3},
+                            imgui.GetColorU32({.95,.73,.35,fade*.85}),imgui.GetColorU32({1,.94,.65,fade*.85}),
+                            imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
+                    end
+                end
                 draw_glass_text(dl,name,x,y,w,h,shortcut,cooling);
             end);
             if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
@@ -856,6 +877,83 @@ local function draw_macro_panel()
         if x and aw then imgui.GetWindowDrawList():AddRectFilled({x-2,y-2},{x+aw,y+state.hudHeight*state.scale*2+6},imgui.GetColorU32({0,0,0,state.panelOpacity}),2); end
     end);
 end
+
+-- Small, original preview UI. A guide click only changes guideDemoRow/guideDemoMode;
+-- it NEVER reaches native macro execution, SetBook/SetPage or the StateBar.
+local GUIDE_STEPS={
+    {'Meet your two rows','Your original FFXI CTRL and ALT macro rows remain together in Decker. Tap the example labels below to explore them; these are fictional examples, NOT your actual macros.'},
+    {'Selecting versus executing','A selection highlight is not an execution. Decker executes only on your actual approved mouse/keyboard input outside this guide. Tap Flash or Cure to move the example highlight safely.'},
+    {'Hold and Toggle','Hold shows the macro HUD while the modifier is pressed. Toggle locks its visibility until switched off or auto-hide. Try the two demonstration modes; your real preference does not change.'},
+    {'Books, sets and StateBar','The Macro set selector moves across sets 1-10, and Book across books 1-20 when connected. StateBar provides separate state/utility slots; its highlights only record a request, not verified equipment.'},
+};
+local function open_guide()
+    state.guideOpen=true; state.guideStep=1;
+    state.guideDemoRow='CTRL'; state.guideDemoMode='Hold'; state.guideDemoAt=os.clock();
+end
+local function guide_draw()
+    if not state.guideOpen then return; end
+    imgui.SetNextWindowSize({530,300},ImGuiCond_FirstUseEver);
+    local opened={state.guideOpen};
+    if imgui.Begin('Decker Interactive Guide - SAFE PREVIEW##decker_guide',opened,scrollbar_flags()) then
+        local step=math.max(1,math.min(#GUIDE_STEPS,state.guideStep or 1));
+        local detail=GUIDE_STEPS[step];
+        imgui.Text(('GUIDE %d/%d | %s'):format(step,#GUIDE_STEPS,detail[1]));
+        imgui.Separator();
+        imgui.TextWrapped(detail[2]);
+        imgui.Text('SIMULATED INPUT - NO IN-GAME MACROS OR GEAR CHANGES');
+        local preview={
+            {'CTRL','Flash','Provoke'},
+            {'ALT','Cure III','Protect'},
+        };
+        for _,row in ipairs(preview) do
+            imgui.Text(row[1]..' row');
+            imgui.SameLine();
+            for n=2,3 do
+                if n>2 then imgui.SameLine(); end
+                local picked=state.guideDemoRow==row[1] and n==2;
+                local txt=(picked and '[ SELECTED ] ' or '')..row[n]..'##guide_'..row[1]..n;
+                local p=imgui.GetCursorScreenPos and {pair(imgui.GetCursorScreenPos())} or nil;
+                if imgui.Button(txt,{145,32}) then
+                    state.guideDemoRow=row[1]; state.guideDemoAt=os.clock();
+                end
+                if picked and state.motionEnabled and p and type(p[1])=='number' and type(p[2])=='number'
+                    and type(imgui.GetWindowDrawList)=='function' and type(imgui.GetColorU32)=='function' then
+                    pcall(function()
+                        local draw=imgui.GetWindowDrawList();
+                        if type(draw.AddRect)=='function' then
+                            local k=.35+.2*math.sin(os.clock()*3);
+                            draw:AddRect({p[1]+1,p[2]+1},{p[1]+144,p[2]+31},imgui.GetColorU32({.95,.75,.38,k}),3,0,1);
+                        end
+                    end);
+                end
+            end
+        end
+        if step==3 then
+            imgui.Text('Preview mode: '..state.guideDemoMode..' (your saved setting is unchanged)');
+            if imgui.Button('Try Hold##guide_hold') then state.guideDemoMode='Hold'; end
+            imgui.SameLine(); if imgui.Button('Try Toggle##guide_toggle') then state.guideDemoMode='Toggle'; end
+        elseif step==4 then
+            imgui.Text('Example: Book 1 / 20   |   Macro set 1 / 10   |   StateBar: PDT');
+        else
+            imgui.Text('Preview selection: '..(state.guideDemoRow=='CTRL' and 'Flash' or 'Cure III'));
+        end
+        imgui.Separator();
+        if step>1 then
+            if imgui.Button('Back##guide_back') then state.guideStep=step-1; end
+            imgui.SameLine();
+        end
+        if step<#GUIDE_STEPS then
+            if imgui.Button('Next##guide_next') then state.guideStep=step+1; end
+        else
+            if imgui.Button('Finish##guide_finish') then state.guideOpen=false; end
+        end
+        imgui.SameLine();
+        if imgui.Button('Close guide##guide_close') then state.guideOpen=false; end
+    end
+    imgui.End();
+    if not opened[1] then state.guideOpen=false; end
+end
+
 -- DirectInput scancodes: 1..0 (2..11) and F1..F10 (59..68).
 -- Keyboard overrides remain OFF until explicit activation. Native FFXI chat/edit focus
 -- cannot yet be identified reliably in VanaCore. Warn in UI before enabling.
@@ -900,6 +998,7 @@ local function other_modifier_down()
     return false;
 end
 local function navigate_once(key)
+    if state.guideOpen then return; end
     if state.phase<4 or not state.allowSwitch then return; end
     local page=state.trackedSet or 1;
     state.setRequestSource='keyboard';
@@ -928,6 +1027,7 @@ end
 -- Navigation is queued and run from the UI frame. Set changes are deferred
 -- a few frames so native input state can settle before calling set_page.
 local function nav_command(key)
+    if state.guideOpen then return; end -- No real set/page actions during a tutorial.
     state.hudLastActivity=os.clock();
     if key==200 or key==208 then
         state.deferredNav=state.deferredNav or {};
@@ -1162,10 +1262,11 @@ ashita.events.register('command','decker_cmd',function(e)
                 state.cooldownBindings[index]={kind=kind,id=id}; save_display(); say('Cooldown mapping saved for '..row..' '..slot,true);
             else say('Usage: /decker cooldown ctrl 1 spell 123 | ability TIMER_ID | clear',true); end
         else say('Usage: /decker cooldown ctrl|alt SLOT spell|ability ID',true); end
+    elseif cmd=='guide' then open_guide()
     elseif cmd=='settings' then state.showTests=true
     elseif cmd=='closesettings' then state.showTests=false
     elseif cmd=='help' then
-        say('/decker settings - open Settings | /decker closesettings - close Settings',true);
+        say('/decker settings - open Settings | /decker closesettings - close Settings | /decker guide - simulated tutorial',true);
         say('/decker show | hide | toggle - macro HUD visibility | /decker connect - connect native macros',true);
         say('/decker keysoff - disable main and StateBar hotkeys | /decker navoff - disable navigation',true);
     elseif cmd=='connect' then connect_macros()
@@ -1576,7 +1677,8 @@ ashita.events.register('d3d_present','decker_draw',function()
         if imgui.Begin('Decker v'..addon.version..' - Settings',settingsOpen,scrollbar_flags()) then
             if imgui.Button('X  Close Settings') then state.showTests=false; end
             imgui.SameLine(); if imgui.Button('Show macros##settings') then state.visible=true; state.hudLastActivity=os.clock(); state.hudForceReveal=true; end
-            imgui.TextWrapped('Chat commands: /decker settings | show | hide | help');
+            imgui.SameLine(); if imgui.Button('Interactive guide##settingsguide') then open_guide(); end
+            imgui.TextWrapped('Chat commands: /decker settings | guide | show | hide | help');
             imgui.Text('v'..addon.version..' | '..(state.profileId or 'Waiting for login'));
             imgui.Separator();
             -- Four user-facing sections; technical pages live under More.
@@ -1727,6 +1829,9 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.SameLine(); if imgui.Button('Keep small Decker button'..(state.autoHideMode=='collapse' and ' [selected]' or '')) then state.autoHideMode='collapse'; save_display(); end
             imgui.TextWrapped('First-time setup: select Hide completely only after Decker is working and you know how to reopen it with /decker settings or /decker show.');
             imgui.TextWrapped('/decker settings opens Settings. /decker show reveals macros. /decker hide hides macros. /decker help lists commands.');
+            local motion={state.motionEnabled};
+            if imgui.Checkbox('Subtle animations (uncheck for reduced motion)',motion) then state.motionEnabled=motion[1]; save_display(); end
+            imgui.TextWrapped('Animation is visual-only: selection glow and a brief confirmation line after a macro request. Disabling motion leaves the normal selected/pressed highlights.');
             local scroll={state.showScrollbars};
             if imgui.Checkbox('Show scrollbars',scroll) then state.showScrollbars=scroll[1]; save_display(); end
             imgui.TextWrapped('Scrollbar visibility applies to the macro HUD, StateBar and Settings. Mouse-wheel scrolling remains available.');
@@ -1956,4 +2061,5 @@ ashita.events.register('d3d_present','decker_draw',function()
         if thinScroll then imgui.PopStyleVar(); end
         if not settingsOpen[1] then state.showTests=false; end
     end
+    guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.
 end);
