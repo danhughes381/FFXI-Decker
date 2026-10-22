@@ -33,3 +33,12 @@ Attached unchanged installation ZIP: `Decker_v1.50.13_dev_Mutant_X_Floating_Glas
 Owner confirms in-game testing using VanaCore/Ashita. This supersedes earlier statements that no latest-build live testing had been reported; it does not independently establish every feature or the complete Windows updater install/reload flow. Issue #3 remains open for detailed acceptance evidence.
 
 Publication changes only release metadata and documentation (PROJECT_STATE.md, RELEASE_NOTES.md, README.md). Addon code, packaged ZIP, updater manifests and character settings are unchanged. No Actions workflow was dispatched or modified; the existing import workflow does not trigger on release publication or documentation changes. Next action: record specific live updater and feature results in issue #3 before final production acceptance.
+
+
+## YunaUI-informed hardening candidate — 22 October 2026
+
+Development experiment on `dev/decker-v1.50.14-yunaui-hardening`, based on the aligned 1.50.13-dev source at `77e0e0701b7fb925c3161e9fdcde7594e09afa71`. Source file version in the experiment is `1.50.14-dev`. **Neither main/stable/development nor any updater manifest, ZIP, or published release changed.**
+
+Scope: preloaded three font sizes (16/20/28px) with unchanged default appearance, physical `key_state` recovery for missed direct-key releases, and viewport clamping only for locked window positions. Three mocked regression tests added (suite is now 57 groups). See `docs/YUNAUI_HARDENING_1.50.14.md`.
+
+**Verification:** exact repository source and code paths inspected; changes committed on an isolated branch; regression cases written but **not run**; no LuaJIT/Windows/VanaCore live verification. No measured visual, input, or performance improvement is claimed yet. Next action: run `python3 tests/run_lua54.py` / `luajit tests/regression.lua .`, then test the candidate in-game and record screenshots/key behaviour. Keep readiness issue #3 open and do not promote before acceptance.
