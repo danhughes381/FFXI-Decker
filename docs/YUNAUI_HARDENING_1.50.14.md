@@ -10,13 +10,14 @@ User-visible HUD layout, two ten-slot rows, native execution, book/set routing, 
 3. **Locked positions** — When GetIO/DisplaySize is supported, pinned (locked) windows clamp saved coordinates to the current screen bounds. Unlocked windows are not repositioned; saved character configurations are unchanged.
 
 ## Verification
-- Three new **mock regression groups** were added to `tests/regression.lua` (57 total):
-  - font-selection default 20px / requested large 28px
-  - direct-key release missed by `key_data`, recovered by `key_state`, followed by exactly one new execution
-  - locked window offscreen clamp and no interference with unlocked windows
-- **Status: tests have been written but not executed** in this session; Lua 5.4 / LuaJIT host and VanaCore client validation remain outstanding.
-- Run `python3 tests/run_lua54.py` from the repository root when available, then `luajit tests/regression.lua .` where supported.
-- These tests use mocked native calls and cannot prove actual input interception or font-atlas compatibility in the client.
+- **22 October 2026: all 57 mocked regression groups PASS on both Lua 5.4 and LuaJIT**, along with source syntax checks. [GitHub Actions run 39739369038](https://github.com/danhughes381/FFXI-Decker/actions/runs/39739369038), commit `f93ffa9ddd36d6ed4074c0a899373991b7d707df`.
+- Three new checks cover: default 20px/large 28px font selection, direct-key release recovery after missing a `key_data` release and one subsequent execution, and offscreen locked-window clamp with unaffected unlocked windows.
+- The successful workflow created an **experimental test-only ZIP** inside the downloadable `Decker-v1.50.14-dev-TEST-ONLY` Actions artifact. This is not a GitHub Release or an updater channel publication.
+- Source SHA-256: `52aafe5c8e0ecb3253bd2ca3c235edeb8c2ad70e4c35a8972e96f4e0ecb5fe7c`.
+- Inner ZIP SHA-256: `b2ca18b01dbfbdba1385479e779a16f9a426b58feeed04083e2cca106310da1e`.
+- ZIP integrity independently checked after downloading the GitHub Actions artifact.
+- Re-run locally: `python3 tests/run_lua54.py` and `luajit tests/regression.lua .`.
+- **In-game behaviour remains untested**; mocked native calls and draw functions cannot prove target-client input interception, installed fonts, positioning or Windows-specific compatibility.
 
 ## In-game acceptance
 1. Back up `addons/decker/decker.lua` and character cfg files. Install the **source from this branch only in a test installation**, not via Stable or Development updaters.
@@ -31,4 +32,4 @@ Engineering ideas were independently implemented after reviewing [YunaUI 1.0.29]
 No YunaUI GPL code, textures or fonts were copied. Existing Decker license remains unchanged. YunaUI source and assets have their own obligations.
 
 ## Release discipline
-No ZIP, release, merge, tag, updater manifest changes, CI dispatch or new external installation were made. Treat this as an unverified prototype until the offline tests and target-client acceptance pass.
+A temporary **test-only ZIP** was packaged and uploaded by a single branch-scoped GitHub Actions check. No regular release, merge, tag, updater manifest change, main/stable/development promotion or external installation was made. Treat this as an unverified-in-game prototype until target-client acceptance passes.
