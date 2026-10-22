@@ -48,7 +48,7 @@ state.showScrollbars=true;
 state.outerOpacity=.05; state.panelOpacity=.15; state.buttonOpacity=.85;
 state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
 state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, per profile.
-state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
+state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
@@ -278,7 +278,7 @@ local function refresh_profile()
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navQueue={}; state.deferredNav={};
     state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
     state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
-    state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoMode='Hold';
+    state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold';
     state.hudReadySince=nil; state.hudLastActivity=os.clock();
     if id then
         load_display(); state.profileReady=true;
@@ -888,7 +888,7 @@ local GUIDE_STEPS={
 };
 local function open_guide()
     state.guideOpen=true; state.guideStep=1;
-    state.guideDemoRow='CTRL'; state.guideDemoMode='Hold'; state.guideDemoAt=os.clock();
+    state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=os.clock();
 end
 local function guide_draw()
     if not state.guideOpen then return; end
@@ -910,11 +910,11 @@ local function guide_draw()
             imgui.SameLine();
             for n=2,3 do
                 if n>2 then imgui.SameLine(); end
-                local picked=state.guideDemoRow==row[1] and n==2;
+                local picked=state.guideDemoRow==row[1] and state.guideDemoSlot==n;
                 local txt=(picked and '[ SELECTED ] ' or '')..row[n]..'##guide_'..row[1]..n;
                 local p=imgui.GetCursorScreenPos and {pair(imgui.GetCursorScreenPos())} or nil;
                 if imgui.Button(txt,{145,32}) then
-                    state.guideDemoRow=row[1]; state.guideDemoAt=os.clock();
+                    state.guideDemoRow=row[1]; state.guideDemoSlot=n; state.guideDemoAt=os.clock();
                 end
                 if picked and state.motionEnabled and p and type(p[1])=='number' and type(p[2])=='number'
                     and type(imgui.GetWindowDrawList)=='function' and type(imgui.GetColorU32)=='function' then
@@ -935,7 +935,7 @@ local function guide_draw()
         elseif step==4 then
             imgui.Text('Example: Book 1 / 20   |   Macro set 1 / 10   |   StateBar: PDT');
         else
-            imgui.Text('Preview selection: '..(state.guideDemoRow=='CTRL' and 'Flash' or 'Cure III'));
+            imgui.Text('Preview selection: '..(state.guideDemoRow=='CTRL' and 'Upper' or 'Lower')..' - '..(state.guideDemoRow=='CTRL' and (state.guideDemoSlot==2 and 'Flash' or 'Provoke') or (state.guideDemoSlot==2 and 'Cure III' or 'Protect')));
         end
         imgui.Separator();
         if step>1 then
