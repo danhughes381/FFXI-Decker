@@ -1,9 +1,9 @@
--- Decker 1.50.15-dev: opt-out micro-motion and a simulated, non-executing guided preview.
+-- Decker 1.50.16-dev: opt-in immediate (0s) post-action HUD hide for Toggle mode.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.15-dev';
+addon.version = '1.50.16-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -48,6 +48,7 @@ state.showScrollbars=true;
 state.outerOpacity=.05; state.panelOpacity=.15; state.buttonOpacity=.85;
 state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
 state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, per profile.
+state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after Toggle navigation ends.
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 local profileDefaults=copy_value(state);
 local sectionKeys={
@@ -181,7 +182,7 @@ local function load_display()
         local directIndex=key and tonumber(key:match('^direct(%d+)$'));
         if directIndex and directIndex>=1 and directIndex<=20 and n and DIRECT_NAMES[n] then state.directKeys[directIndex]=n; end
         if key=='autohide' and (value=='0' or value=='1') then state.autoHide=value=='1'; end
-        if key=='autohidedelay' and (n==2 or n==5 or n==10 or n==15 or n==30) then state.autoHideDelay=n; end
+        if key=='autohidedelay' and (n==0 or n==2 or n==5 or n==10 or n==15 or n==30) then state.autoHideDelay=n; end
         if key=='autohidemode' and (value=='hide' or value=='collapse') then state.autoHideMode=value; end
         if key=='echolock' and (value=='0' or value=='1') then state.echoLock=value=='1'; end
         if key=='outeropacity' and n and n>=0 and n<=1 then state.outerOpacity=n; end
@@ -279,7 +280,7 @@ local function refresh_profile()
     state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
     state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
     state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold';
-    state.hudReadySince=nil; state.hudLastActivity=os.clock();
+    state.hudReadySince=nil; state.hudLastActivity=os.clock(); state.hudImmediateHide=false;
     if id then
         load_display(); state.profileReady=true;
         state.navKeysEnabled=state.savedNavEnabled;
@@ -579,6 +580,7 @@ local function record_execution(row,slot,source)
     state.navRow=row; state.navSlot=slot; state.navSource=source;
     state.lastExecuted={row=row,slot=slot,name=state.names[(row=='CTRL' and 0 or 10)+slot] or '',set=state.trackedSet};
     flash_slot(row,slot);
+    if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
 local function execute_slot(row,slot)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
@@ -632,6 +634,7 @@ local function request_statebar(i)
         if not state.allowAllClicks or not valid_command(b.command) then state.clickSummary='StateBar command blocked: connect and use a supported single command.'; return false; end
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
     else requested=execute_slot(b.row,b.slot); end
+    if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
     if requested and b.kind~='utility' then state.statebarSelected=i; save_display(); end
     return requested;
 end
@@ -1571,15 +1574,23 @@ ashita.events.register('d3d_present','decker_draw',function()
         end
     end
     local activeNav=state.navKeysEnabled and (state.stickyNavigation and state.navToggleActive or (not state.stickyNavigation and state.navModifierHeld));
+    -- Explicit wake requests must not be consumed by the 0s mode before interaction.
+    if state.hudForceReveal then state.hudImmediateHide=false; end
+    -- With 0s selected, release of active Toggle navigation is an end-of-activity event.
+    if state.hudWasActive and not activeNav and state.autoHide and state.autoHideDelay==0 then
+        state.hudImmediateHide=true;
+    end
     if activeNav and not state.hudWasActive then state.hudLastActivity=os.clock(); end
     state.hudWasActive=activeNav;
-    -- Startup grace allows discovery; afterwards normal auto-hide applies even without clicks.
-    -- The configured modifier and /decker show can always reveal the HUD.
+    -- Timed options keep the existing startup grace and idle behaviour.
+    -- 0s is event-based: do not hide on startup or before the first usable action.
     if not state.hudReadySince then state.hudReadySince=os.clock(); end
     -- Hold visibility follows the physical key immediately; timers belong to Toggle.
     local holdMode=state.navKeysEnabled and not state.stickyNavigation;
     local holdHidden=holdMode and not state.navModifierHeld;
-    local idleHidden=not holdMode and state.autoHide and not state.hudForceReveal and not activeNav and not state.showTests and (os.clock()-state.hudLastActivity)>=state.autoHideDelay and (os.clock()-state.hudReadySince)>=10;
+    local timedHide=state.autoHideDelay>0 and (os.clock()-state.hudLastActivity)>=state.autoHideDelay and (os.clock()-state.hudReadySince)>=10;
+    local instantHide=state.autoHideDelay==0 and state.hudImmediateHide;
+    local idleHidden=not holdMode and state.autoHide and not state.hudForceReveal and not activeNav and not state.showTests and (instantHide or timedHide);
     state.hudForceReveal=false;
     -- /decker settings and /decker show recover the HUD without a permanent window.
     if state.visible and idleHidden and state.autoHideMode=='collapse' then
@@ -1818,12 +1829,14 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.Text('Character profile: '..(state.profileId or 'waiting for login'));
             if imgui.Button('Unlock HUD for dragging') then state.hudPos=nil; state.positionLocked=false; save_display(); end
             imgui.TextWrapped('Hold mode shows macros while the mod key is down and hides them on release. These inactivity settings apply to Toggle mode.');
-            if imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; save_display(); end
-            imgui.Text('Hide after inactivity:');
-            for _,seconds in ipairs({2,5,10,15,30}) do
-                if seconds~=2 then imgui.SameLine(); end
-                if imgui.Button((state.autoHideDelay==seconds and '[' or '')..seconds..'s'..(state.autoHideDelay==seconds and ']' or '')..'##hide'..seconds) then state.autoHideDelay=seconds; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; save_display(); end
+            if imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudImmediateHide=false; save_display(); end
+            imgui.Text('Hide after activity / inactivity:');
+            for _,seconds in ipairs({0,2,5,10,15,30}) do
+                if seconds~=0 then imgui.SameLine(); end
+                local duration=seconds==0 and 'Immediately (0s)' or (seconds..'s');
+                if imgui.Button((state.autoHideDelay==seconds and '[' or '')..duration..(state.autoHideDelay==seconds and ']' or '')..'##hide'..seconds) then state.autoHideDelay=seconds; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudImmediateHide=false; save_display(); end
             end
+            imgui.TextWrapped('0s hides just after a macro or StateBar action, or when Toggle navigation ends. It never hides before your first action. The 2-30s choices retain inactivity timing.');
             imgui.Text('When the macros auto-hide:');
             if imgui.Button('Hide completely'..(state.autoHideMode=='hide' and ' [selected]' or '')) then state.autoHideMode='hide'; save_display(); end
             imgui.SameLine(); if imgui.Button('Keep small Decker button'..(state.autoHideMode=='collapse' and ' [selected]' or '')) then state.autoHideMode='collapse'; save_display(); end

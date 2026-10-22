@@ -648,5 +648,57 @@ test('motion effects are draw-only, bounded, and opt-out',function()
     ui.GetWindowDrawList=old;s.motionEnabled=true;s.flashUntil=0
 end)
 
+
+-- v1.50.16: 0s is post-action hiding, never a 0-second startup countdown.
+test('0s auto-hide persists and is visible in Appearance',function()
+    s.autoHideDelay=0;api.save();s.autoHideDelay=5;api.load();assert(s.autoHideDelay==0,'0s must survive profile reload')
+    s.visible=true;s.autoHide=true;s.hudImmediateHide=false;s.showTests=true;s.settingsTab='Appearance'
+    local button=ui.Button;local seen=false
+    ui.Button=function(label) if label:find('Immediately (0s)',1,true) then seen=true end;return false end
+    events.decker_draw();assert(seen,'Appearance needs a clear immediate option')
+    ui.Button=button;s.showTests=false;s.autoHide=false;s.autoHideDelay=10;s.hudImmediateHide=false
+end)
+test('0s leaves HUD usable until a successful macro and then hides',function()
+    ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.navKeysEnabled=false
+    s.autoHide=true;s.autoHideMode='hide';s.autoHideDelay=0;s.hudReadySince=os.clock()-30
+    s.hudLastActivity=os.clock()-30;s.hudImmediateHide=false;s.hudForceReveal=false;s.hudWasActive=false
+    local begin=ui.Begin;local drawn={}
+    ui.Begin=function(label) drawn[#drawn+1]=label;return true end
+    events.decker_draw();assert(#drawn==1 and drawn[1]=='###DeckerMain','0s must not hide on its own')
+    assert(api.execute('CTRL',1));assert(s.hudImmediateHide)
+    drawn={};events.decker_draw();assert(#drawn==0,'HUD should hide on next frame after execution')
+    local e={command={args=function()return {'/decker','show'} end}}
+    events.decker_cmd(e);drawn={};events.decker_draw()
+    assert(e.blocked and drawn[1]=='###DeckerMain' and not s.hudImmediateHide,'explicit show must recover HUD')
+    drawn={};events.decker_draw();assert(drawn[1]=='###DeckerMain','HUD should remain visible until another action')
+    s.hudImmediateHide=false;s.autoHide=false;ui.Begin=begin
+end)
+test('0s hides on StateBar utility action and on Toggle navigation release',function()
+    ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=true
+    s.autoHideMode='hide';s.autoHideDelay=0;s.hudImmediateHide=false
+    s.statebarSlots={{row='CTRL',slot=1,kind='utility',source='command',command='/lac set PDT'}}
+    assert(api.request(1) and s.hudImmediateHide,'StateBar action ends 0s display session')
+    s.hudImmediateHide=false;s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+    s.hudWasActive=false;s.hudForceReveal=false
+    local begin=ui.Begin;local labels={}
+    ui.Begin=function(label) labels[#labels+1]=label;return true end
+    events.decker_draw();assert(labels[1]=='###DeckerMain')
+    s.navToggleActive=false;labels={};events.decker_draw();assert(#labels==0 and s.hudImmediateHide,'Toggle release must hide immediately')
+    ui.Begin=begin;s.navKeysEnabled=false;s.hudImmediateHide=false;s.hudWasActive=false;s.autoHide=false
+end)
+test('0s does not override Hold visibility or existing timed behaviour',function()
+    ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=true
+    s.autoHideDelay=0;s.hudImmediateHide=true;s.navKeysEnabled=true;s.stickyNavigation=false;s.navModifierHeld=true
+    local begin=ui.Begin;local seen={}
+    ui.Begin=function(label) seen[#seen+1]=label;return true end
+    events.decker_draw();assert(seen[1]=='###DeckerMain','Hold mode stays visible while pressed')
+    s.navModifierHeld=false;seen={};events.decker_draw();assert(#seen==0,'Hold releases immediately')
+    s.navKeysEnabled=false;s.stickyNavigation=true;s.autoHideDelay=5;s.hudImmediateHide=true
+    s.hudForceReveal=false;s.hudReadySince=os.clock()-30;s.hudLastActivity=os.clock()
+    seen={};events.decker_draw();assert(seen[1]=='###DeckerMain','timed setting must ignore event flag')
+    s.hudLastActivity=os.clock()-8;seen={};events.decker_draw();assert(#seen==0,'timed setting must still expire normally')
+    ui.Begin=begin;s.autoHide=false;s.autoHideDelay=10;s.hudImmediateHide=false;s.navModifierHeld=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
