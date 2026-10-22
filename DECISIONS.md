@@ -55,3 +55,8 @@ The user explicitly selected v1.50.12-dev as the latest GitHub base. Promote its
 ## Stable and Development promotion, 21 October 2026
 
 Owner explicitly requested both channels. Align branch trees/manifests to the same tested source, preserving its version and delivered ZIP. Maintain the old Development manifest branch for already installed clients. Channel designation records the owner's publication choice; it does not invent full in-game verification.
+
+
+## YunaUI-informed hardening experiment, 22 October 2026
+
+Preserve Decker's single-file drop-in and existing 20 macro-button hit targets. For readability, preload a small, bounded number of fonts at load rather than recreate an atlas during frame rendering. Retain the original 20px default; make larger sizes opt-in through existing settings. For DirectInput reliability, use physical key-up state to release captured input if a key_data-up event was missed, without sending synthetic presses or changing execution routing. Clamp only locked windows when a real screen size is available; don't alter user-initiated drag positions. No code or assets from YunaUI (GPL-3.0) are copied. Before rollout, require mocked test execution and target-client verification.
