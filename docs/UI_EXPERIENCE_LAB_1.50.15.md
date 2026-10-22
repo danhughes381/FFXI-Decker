@@ -1,6 +1,6 @@
 # Decker 1.50.15-dev — UI Experience Lab
 
-**Status:** Experimental source on isolated branch; not live-validated in VanaCore. This is a stacked extension of the still-draft 1.50.14-dev hardening branch. Do not publish to Stable / Development updaters or merge without acceptance.
+**Status (22 October 2026):** Experimental source on isolated branch; not live-validated in VanaCore. This is a stacked extension of the still-draft 1.50.14-dev hardening branch. At the owner's request, the **Development updater only** now offers v1.50.15-dev for in-game evaluation, pinned to immutable source commit `511240f99e3a4ae24d77cdf6b1d61ac898279290` (SHA-256 `6789da96690d1a685d1e7fa10fd054988c075bf385c79a41a77c8ec1c4162b28`). Stable remains v1.50.13-dev. Draft PRs remain unmerged; do not promote to Stable or a public release without acceptance.
 
 ## Purpose
 
