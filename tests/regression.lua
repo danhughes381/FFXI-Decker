@@ -622,9 +622,11 @@ test('interactive guide command and simulated slot clicks never launch a macro',
     assert(s.guideOpen and s.guideStep==1)
     local before=#requested;local button=ui.Button
     ui.Button=function(label) return label:find('Flash##guide_CTRL2',1,true)~=nil end
-    events.decker_draw();assert(s.guideOpen and s.guideDemoRow=='CTRL' and #requested==before)
+    events.decker_draw();assert(s.guideOpen and s.guideDemoRow=='CTRL' and s.guideDemoSlot==2 and #requested==before)
+    ui.Button=function(label) return label:find('Provoke##guide_CTRL3',1,true)~=nil end
+    events.decker_draw();assert(s.guideDemoRow=='CTRL' and s.guideDemoSlot==3 and #requested==before)
     ui.Button=function(label) return label:find('Cure III##guide_ALT2',1,true)~=nil end
-    events.decker_draw();assert(s.guideDemoRow=='ALT' and #requested==before)
+    events.decker_draw();assert(s.guideDemoRow=='ALT' and s.guideDemoSlot==2 and #requested==before)
     ui.Button=function(label) return label=='Close guide##guide_close' end
     events.decker_draw();assert(not s.guideOpen)
     ui.Button=button;s.visible=true
