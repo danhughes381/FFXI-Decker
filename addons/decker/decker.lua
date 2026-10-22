@@ -1,9 +1,9 @@
--- Decker 1.50.13-dev: native macro HUD for VanaCore/Ashita 4.
+-- Decker 1.50.14-dev: optional YunaUI-informed HUD and input hardening.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.13-dev';
+addon.version = '1.50.14-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -661,20 +661,36 @@ local function connect_macros()
 end
 -- Display-only glass renderer. Native buttons retain hit testing, IDs and execution.
 -- No font atlas mutation in d3d_present; load a bounded set once in the load event.
-local glass={fonts={},diagnostic='Default font; awaiting load',custom=true};
+local glass={fonts={},fontTiers={},diagnostic='Default font; awaiting load',custom=true};
 local fontFiles={['Arial Bold']='arialbd.ttf',['Segoe UI Bold']='segoeuib.ttf',['Times New Roman Bold']='timesbd.ttf'};
+local fontSizes={16,20,28};
 local function load_glass_fonts()
+    -- Fonts are registered on load only, never while presenting a frame.
+    -- Keep 20px as the default so existing profiles have the same appearance.
     if type(imgui.AddFontFromFileTTF)~='function' then glass.diagnostic='Custom fonts unavailable; using host default'; return; end
     local root=os.getenv('WINDIR') or 'C:\\Windows';
     for name,file in pairs(fontFiles) do
         local path=root..'\\Fonts\\'..file;
         local f=io.open(path,'rb');
         if f then
-            f:close(); local ok,font=pcall(imgui.AddFontFromFileTTF,path,20);
-            if ok and font then glass.fonts[name]=font; end
+            f:close(); local tiers={};
+            for _,px in ipairs(fontSizes) do
+                local ok,font=pcall(imgui.AddFontFromFileTTF,path,px);
+                if ok and font then tiers[px]=font; end
+            end
+            glass.fontTiers[name]=tiers;
+            glass.fonts[name]=tiers[20] or tiers[16] or tiers[28];
         end
     end
-    glass.diagnostic=glass.fonts['Arial Bold'] and 'Arial Bold ready' or 'Arial Bold unavailable; using host default';
+    glass.diagnostic=glass.fonts['Arial Bold'] and 'Arial Bold ready (multi-size)' or 'Arial Bold unavailable; using host default';
+end
+local function glass_font_for(size)
+    local tiers=glass.fontTiers[state.macroFont];
+    if tiers then
+        for _,px in ipairs(fontSizes) do if px>=size and tiers[px] then return tiers[px]; end end
+        for i=#fontSizes,1,-1 do if tiers[fontSizes[i]] then return tiers[fontSizes[i]]; end end
+    end
+    return glass.fonts[state.macroFont] or imgui.GetFont();
 end
 local function pair(a,b)
     if type(a)=='number' then return a,b; end
@@ -696,6 +712,17 @@ end
 local function pin_window(id,locked)
     local g=geometry(id);
     if locked and g.pos and type(imgui.SetNextWindowPos)=='function' then
+        -- A saved locked position must remain usable after monitor/resolution changes.
+        -- Never reposition during an unlocked drag; absent GetIO leaves the old behaviour.
+        if type(imgui.GetIO)=='function' then
+            local ok,sw,sh=pcall(function() return pair(imgui.GetIO().DisplaySize); end);
+            local x,y=pair(g.pos);
+            if ok and x and y and type(sw)=='number' and type(sh)=='number' and sw>0 and sh>0 then
+                local xmax=math.max(0,sw-math.min(g.w or 1,sw));
+                local ymax=math.max(0,sh-math.min(g.h or 1,sh));
+                g.pos={math.max(0,math.min(xmax,x)),math.max(0,math.min(ymax,y))};
+            end
+        end
         imgui.SetNextWindowPos(g.pos,ImGuiCond_Always or 1);
     end
 end
@@ -740,14 +767,15 @@ local function glass_available()
 end
 local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
     local textScale=displayScale or state.scale;
-    local font=glass.fonts[state.macroFont] or imgui.GetFont();
+    local initialSize=math.min(state.macroFontSize*textScale,math.max(10,h-18));
+    local font=glass_font_for(initialSize);
     imgui.PushFont(font);
     local ok,err=pcall(function()
         local natural=imgui.GetTextLineHeight();
         local function width(t,size)
             local tw=pair(imgui.CalcTextSize(t)); return (tw or 0)*size/natural;
         end
-        local size=math.min(state.macroFontSize*textScale,math.max(10,h-18));
+        local size=initialSize;
         local shown=text;
         if width(shown,size)>w-10 then size=math.max(10,math.min(size,(w-10)/math.max(1,width(shown,1)))); end
         while #shown>0 and width(shown,size)>w-10 do
@@ -1079,6 +1107,11 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     end
     for code,_ in pairs(state.suppressed) do keys[code]=true; end
     for code,_ in pairs(keys) do
+        -- If key_data misses a release, the physical state is authoritative.
+        -- Clear captured direct keys as well as StateBar keys before suppression.
+        if code<size and state.suppressed[code] and ptr[code]==0 then
+            state.suppressed[code]=nil; state.held[code]=nil;
+        end
         if code<size and statebar_hotkey_slot(code) then
             local down=ptr[code]~=0;
             if down and not state.held[code] then
