@@ -126,12 +126,12 @@ local previewPaints
  test('custom draw: 20 buttons, key corners and independent execution/selection',function()
  ready();s.macroFontSize=18;s.scale=1;s.buttonOpacity=.85;s.theme=1;s.mappingMode='split';s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[10+i]=i==10 and 11 or i+1 end
  s.names={'Provoke','Flash','Sentinel','Rampart','Cure IV','Cover','Bash','Invincible','Chivalry','Shield','PDT','MDT','Idle','Auto','Food','Protect','Shell','Reprisal','Cure III','Cancel'}
- s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true
+ s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true;s.motionEnabled=false -- Legacy pixel/draw-order assertion checks baseline appearance.
  cursorX=20;cursorY=50;api.drawrow('CTRL',0);cursorX=20;cursorY=98;api.drawrow('ALT',10)
  assert(texts==60 and outlines==1 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
  assert(api.glass.custom,api.glass.diagnostic)
  local key=paints[4];assert(key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
- previewPaints=paints
+ previewPaints=paints;s.motionEnabled=true
 end)
 test('mouse and direct keyboard dispatch update execution only once',function()
  ready();s.navKeysEnabled=false;s.keybinds=true;s.acknowledgeKeys=true;s.mappingMode='split';s.held={};s.suppressed={};s.statebarSelected=1
