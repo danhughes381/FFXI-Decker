@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -126,12 +126,12 @@ local previewPaints
  test('custom draw: 20 buttons, key corners and independent execution/selection',function()
  ready();s.macroFontSize=18;s.scale=1;s.buttonOpacity=.85;s.theme=1;s.mappingMode='split';s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[10+i]=i==10 and 11 or i+1 end
  s.names={'Provoke','Flash','Sentinel','Rampart','Cure IV','Cover','Bash','Invincible','Chivalry','Shield','PDT','MDT','Idle','Auto','Food','Protect','Shell','Reprisal','Cure III','Cancel'}
- s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true
+ s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true;s.motionEnabled=false -- Legacy pixel/draw-order assertion checks baseline appearance.
  cursorX=20;cursorY=50;api.drawrow('CTRL',0);cursorX=20;cursorY=98;api.drawrow('ALT',10)
  assert(texts==60 and outlines==1 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
  assert(api.glass.custom,api.glass.diagnostic)
  local key=paints[4];assert(key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
- previewPaints=paints
+ previewPaints=paints;s.motionEnabled=true
 end)
 test('mouse and direct keyboard dispatch update execution only once',function()
  ready();s.navKeysEnabled=false;s.keybinds=true;s.acknowledgeKeys=true;s.mappingMode='split';s.held={};s.suppressed={};s.statebarSelected=1
@@ -584,6 +584,68 @@ test('locked windows clamp within a reduced display without moving unlocked wind
  requestedPosition=nil;api.pin('viewport_test',false)
  assert(requestedPosition==nil,'unlocked window must not be forcibly positioned')
  ui.GetIO=oldIO;ui.SetNextWindowPos=oldSet
+end)
+
+
+-- v1.50.15 experience lab: guide is disconnected from game macro, command and set actions.
+test('reduced-motion preference saves, restores and isolates by character',function()
+    s.motionEnabled=false;api.save();s.motionEnabled=true;api.load();assert(not s.motionEnabled)
+    character='AnotherMotion';api.refresh();assert(s.motionEnabled==true,'fresh profile starts with motion enabled')
+    character='Salts';api.refresh();assert(s.motionEnabled==false,'prior profile keeps reduced motion')
+    api.reset('Appearance');assert(s.motionEnabled==true)
+end)
+test('guided preview opens disconnected and keeps native actions inert',function()
+    ready();s.visible=false;s.showTests=false;s.statebarEnabled=false;s.autoRefresh=false;s.pendingRefreshFrames=0;s.lastProfileCheck=os.clock();
+    s.allowSwitch=true;s.macroObject=65536;s.addresses.macro_object=65536;s.addresses.set_page=65536
+    s.statebarSlots={{row='CTRL',slot=1,source='command',command='/lac set PDT',kind='state'}}
+    api.guide();assert(s.guideOpen and s.guideStep==1)
+    local before=#requested;local setBefore=s.trackedSet;local selectBefore=s.navSlot;local label=s.names[1]
+    assert(not api.execute('CTRL',1));assert(not api.request(1))
+    api.nav(200);api.nav(205);api.nav(28);
+    assert(#requested==before and s.trackedSet==setBefore and s.navSlot==selectBefore and s.names[1]==label,'guide may not touch actual game macros')
+    local oldButton=ui.Button;local oldWrapped=ui.TextWrapped;local seenPreview=false
+    ui.TextWrapped=function(t) if t:find('fictional examples',1,true) then seenPreview=true end;oldWrapped(t) end
+    ui.Button=function(lbl) return lbl=='Next##guide_next' end
+    events.decker_draw();assert(seenPreview and s.guideStep==2)
+    events.decker_draw();assert(s.guideStep==3)
+    ui.Button=function(lbl) return lbl=='Try Toggle##guide_toggle' end
+    events.decker_draw();assert(s.guideDemoMode=='Toggle' and s.stickyNavigation==true or s.guideDemoMode=='Toggle','demonstration mode must be separate')
+    ui.Button=function(lbl) return lbl=='Next##guide_next' end
+    events.decker_draw();assert(s.guideStep==4)
+    ui.Button=function(lbl) return lbl=='Finish##guide_finish' end
+    events.decker_draw();assert(not s.guideOpen and #requested==before)
+    ui.Button=oldButton;ui.TextWrapped=oldWrapped;s.allowSwitch=false;s.visible=true
+end)
+test('interactive guide command and simulated slot clicks never launch a macro',function()
+    ready();s.visible=false;s.showTests=false;s.autoRefresh=false;s.statebarEnabled=false
+    events.decker_cmd({command={args=function() return {'/decker','guide'} end}})
+    assert(s.guideOpen and s.guideStep==1)
+    local before=#requested;local button=ui.Button
+    ui.Button=function(label) return label:find('Flash##guide_CTRL2',1,true)~=nil end
+    events.decker_draw();assert(s.guideOpen and s.guideDemoRow=='CTRL' and s.guideDemoSlot==2 and #requested==before)
+    ui.Button=function(label) return label:find('Provoke##guide_CTRL3',1,true)~=nil end
+    events.decker_draw();assert(s.guideDemoRow=='CTRL' and s.guideDemoSlot==3 and #requested==before)
+    ui.Button=function(label) return label:find('Cure III##guide_ALT2',1,true)~=nil end
+    events.decker_draw();assert(s.guideDemoRow=='ALT' and s.guideDemoSlot==2 and #requested==before)
+    ui.Button=function(label) return label=='Close guide##guide_close' end
+    events.decker_draw();assert(not s.guideOpen)
+    ui.Button=button;s.visible=true
+end)
+test('motion effects are draw-only, bounded, and opt-out',function()
+    ready();s.names[1]='Flash';s.navRow='CTRL';s.navSlot=1;s.scale=1;s.hudHeight=43;s.motionEnabled=true
+    s.flashRow='CTRL';s.flashSlot=1;s.flashUntil=os.clock()+.30;
+    api.glass.custom=true;local old=ui.GetWindowDrawList;local dl0=old();
+    local fx=0
+    ui.GetWindowDrawList=function()
+      local d={};for k,v in pairs(dl0) do d[k]=v end
+      d.AddRectFilledMultiColor=function() fx=fx+1 end
+      return d
+    end
+    s.motionEnabled=false;fx=0;api.drawrow('CTRL',0)
+    local baseline=fx;assert(baseline==10,'baseline glass gradient stays intact with reduced motion')
+    s.motionEnabled=true;fx=0;api.drawrow('CTRL',0)
+    assert(fx==baseline+1 and fontDepth==0 and styles==0 and vars==0,'one extra bounded flash strip per executing slot')
+    ui.GetWindowDrawList=old;s.motionEnabled=true;s.flashUntil=0
 end)
 
 os.execute('rm -r '..tmp)
