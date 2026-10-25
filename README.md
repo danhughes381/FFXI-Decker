@@ -1,6 +1,6 @@
 # Decker — by Mutant X
 
-**Stable: v1.50.13-dev · Development updater: v1.50.16-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
+**Stable: v1.50.13-dev · Development updater: v1.50.17-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
@@ -32,3 +32,5 @@ Decker uses existing FFXI macros and does not rewrite game macro data. Equipment
 Created by **Mutant X**. Licensed under [Apache 2.0](LICENSE); retain [NOTICE](NOTICE). If sharing a modified version, acknowledge the original project and identify your changes.
 
 Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev), the latest public release, titled **Decker v1.50.13-dev**, published as a regular release at the owner's request. The existing ZIP is unchanged; preserve character .cfg files when installing. Previous releases remain available.
+
+Development v1.50.17-dev adds explicit per-character HUD, StateBar and collapsed-button position saving/restoration. [PR #12](https://github.com/danhughes381/FFXI-Decker/pull/12): both GitHub validation runs passed Lua 5.4/LuaJIT regression and test ZIP checks (67 groups each). All served Development updater locations offer v1.50.17-dev; live character-switch/restart and different-resolution acceptance remain pending. Earlier Development notes above describe superseded candidates.
