@@ -1,9 +1,9 @@
--- Decker 1.50.16-dev: opt-in immediate (0s) post-action HUD hide for Toggle mode.
+-- Decker 1.50.17-dev: persistent per-character HUD and StateBar positions.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.16-dev';
+addon.version = '1.50.17-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -50,6 +50,7 @@ state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
 state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, per profile.
 state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after Toggle navigation ends.
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
+state.windowPositions={}; state.layoutDirtyAt=nil;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
@@ -109,6 +110,10 @@ local function save_display()
     f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
     if state.hudPos then f:write('posx=',math.floor(state.hudPos[1]),'\nposy=',math.floor(state.hudPos[2]),'\n'); end
     f:write('statebarenabled=',state.statebarEnabled and '1' or '0','\nstatebarvertical=',state.statebarVertical and '1' or '0','\nstatebarlocked=',state.statebarLocked and '1' or '0','\nstatebaralways=',state.statebarAlways and '1' or '0','\nstatebarscale=',state.statebarScale,'\nstatebaropacity=',state.statebarOpacity,'\nstatebartheme=',state.statebarTheme,'\nstatebarvisibility=',state.statebarVisibility,'\nstatebarselected=',state.statebarSelected or 0,'\n');
+    for _,id in ipairs({'hud','statebar','collapsed'}) do
+        local pos=state.windowPositions[id];
+        if pos then f:write(id,'posx=',pos[1],'\n',id,'posy=',pos[2],'\n'); end
+    end
     f:write('statebarcount=',#state.statebarSlots,'\n');
     f:write('statebarhotkeysenabled=',state.statebarHotkeysEnabled and '1' or '0','\n');
     for i,b in ipairs(state.statebarSlots) do f:write('statebar',i,'=',b.row,':',b.slot,'\n'); f:write('statebarhotkey',i,'=',state.statebarHotkeys[i] or 0,'\n'); f:write('statebartype',i,'=',b.kind or 'state','\n'); f:write('statebarcommand',i,'=',(b.command or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebarsource',i,'=',b.source or 'macro','\n'); f:write('statebarlabel',i,'=',(b.label or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
@@ -122,14 +127,20 @@ local function save_display()
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
-    f:close();
+    f:close(); state.layoutDirtyAt=nil;
 end
 local function load_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'r'); if not ok or not f then return; end
     for line in f:lines() do
-        local key,value=line:match('^(%w+)=([%w_.:]+)$');
+        local key,value=line:match('^(%w+)=([%w_.:%-]+)$');
         local n=tonumber(value);
+        for _,id in ipairs({'hud','statebar','collapsed'}) do
+            if (key==id..'posx' or key==id..'posy') and n and n>=-20000 and n<=20000 then
+                state.windowPositions[id]=state.windowPositions[id] or {20,20};
+                state.windowPositions[id][key==id..'posx' and 1 or 2]=n;
+            end
+        end
         if key=='statebarcount' and n and n>=0 and n<=12 and n==math.floor(n) then state.statebarSlots={}; end
         local ti=key and tonumber(key:match('^statebartype(%d+)$'));
         local xi=key and tonumber(key:match('^statebarcommand(%d+)$'));
@@ -209,6 +220,7 @@ local function load_display()
         elseif key=='set' and n and n==math.floor(n) and n>=1 and n<=10 then state.trackedSet=n; state.trackedSource='saved (unverified)'; end
     end
     f:close();
+    if not state.windowPositions.hud and state.hudPos then state.windowPositions.hud=copy_value(state.hudPos); end
     if state.mappingMode=='split' then
         local defaults=default_direct_keys();
         for i=1,20 do if state.directKeys[i]~=defaults[i] then state.mappingMode='custom'; break; end end
@@ -272,6 +284,7 @@ local function refresh_profile()
     if state.profileReady then save_display(); end
     state.profileId=id; state.profileReady=false;
     for _,keys in pairs(sectionKeys) do for _,key in ipairs(keys) do state[key]=copy_value(profileDefaults[key]); end end
+    state.windowPositions={}; state.layoutDirtyAt=nil;
     state.hudPos=nil; state.keyAssignmentPage=false; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
     state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
@@ -716,12 +729,12 @@ local windowGeometry={};
 local geometryProfile=nil;
 local function geometry(id)
     if geometryProfile~=state.profileId then windowGeometry={}; geometryProfile=state.profileId; end
-    windowGeometry[id]=windowGeometry[id] or {};
+    windowGeometry[id]=windowGeometry[id] or {pos=copy_value(state.windowPositions[id] or {20,20}),restore=true};
     return windowGeometry[id];
 end
 local function pin_window(id,locked)
     local g=geometry(id);
-    if locked and g.pos and type(imgui.SetNextWindowPos)=='function' then
+    if (locked or g.restore) and g.pos and type(imgui.SetNextWindowPos)=='function' then
         -- A saved locked position must remain usable after monitor/resolution changes.
         -- Never reposition during an unlocked drag; absent GetIO leaves the old behaviour.
         if type(imgui.GetIO)=='function' then
@@ -733,14 +746,25 @@ local function pin_window(id,locked)
                 g.pos={math.max(0,math.min(xmax,x)),math.max(0,math.min(ymax,y))};
             end
         end
-        imgui.SetNextWindowPos(g.pos,ImGuiCond_Always or 1);
+        imgui.SetNextWindowPos(g.pos,ImGuiCond_Always or 1); g.restore=false;
     end
 end
 local function remember_window(id,locked)
     local g=geometry(id);
-    if (not locked or not g.pos) and type(imgui.GetWindowPos)=='function' then
-        local ok,a,b=pcall(imgui.GetWindowPos);
-        if ok then local x,y=pair(a,b); if x and y then g.pos={x,y}; end end
+    if type(imgui.GetWindowPos)=='function' then
+        local ok,a,b;
+        if locked and g.pos then ok,a=true,g.pos; else ok,a,b=pcall(imgui.GetWindowPos); end
+        if ok then
+            local x,y=pair(a,b);
+            if x and y and x==x and y==y and math.abs(x)<=20000 and math.abs(y)<=20000 then
+                x,y=math.floor(x),math.floor(y);
+                g.pos={x,y};
+                local old=state.windowPositions[id];
+                if state.profileReady and (not old or old[1]~=x or old[2]~=y) then
+                    state.windowPositions[id]={x,y}; state.layoutDirtyAt=os.clock();
+                end
+            end
+        end
     end
 end
 local function size_window(id,w,h)
@@ -1463,12 +1487,14 @@ local function update_rollback()
     updater.installed=true; updater.status='Restored v'..detail..'; reloading Decker...'; update_reload();
 end
 ashita.events.register('unload','decker_updater_cleanup',function()
+    save_display();
     if updater.job and update_kernel then update_kernel.TerminateProcess(updater.job.handle,1); update_kernel.CloseHandle(updater.job.handle); updater.job=nil; end
 end);
 
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
+    if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
         -- set changes while a native request is unresolved; never advance
