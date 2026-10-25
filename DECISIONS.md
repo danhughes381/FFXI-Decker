@@ -64,3 +64,7 @@ Preserve Decker's single-file drop-in and existing 20 macro-button hit targets. 
 ## UI experience learning lab, 22 October 2026
 
 Decker is the low-risk proving ground for later Aegis and Nexus UX work. Introduce only bounded, draw-only, opt-out motion and a session-local interactive simulation, not a new shared rendering framework. The tutorial must be usable without a native macro connection and must never call real macro, page or StateBar actions; block those Decker pathways for the duration of the guide without changing saved preferences. Preserve the full macro and StateBar layouts. Keep motion preference per character to respect reduced-motion use. Measure the new effects and input interaction in actual VanaCore before promoting; mocked Lua 5.4/LuaJIT runs alone are insufficient. Do not copy GPL YunaUI source, fonts or effects.
+
+### 25 October 2026 — explicit character window placement
+
+Persist HUD/StateBar/collapsed coordinates in the existing character cfg rather than relying on host ImGui ini placement. Apply saved placement once even when unlocked, then allow dragging; only locked windows are pinned continuously. Debounce disk saves and flush on unload/profile transitions. Size continues to derive from character-specific sizing controls.

@@ -700,5 +700,38 @@ test('0s does not override Hold visibility or existing timed behaviour',function
     ui.Begin=begin;s.autoHide=false;s.autoHideDelay=10;s.hudImmediateHide=false;s.navModifierHeld=false
 end)
 
+test('character layouts restore unlocked positions and independently persist sizes',function()
+ local get,set=ui.GetWindowPos,ui.SetNextWindowPos
+ local requestedPos
+ ui.SetNextWindowPos=function(p) requestedPos={p[1],p[2]} end
+ character='LayoutLarge';api.refresh();s.hudWidth=132;s.scale=1.4
+ s.windowPositions={hud={1200,700},statebar={900,600},collapsed={1100,720}};api.save()
+ character='LayoutSmall';api.refresh();s.hudWidth=84;s.scale=.8
+ s.windowPositions={hud={100,200},statebar={40,80},collapsed={90,180}};api.save()
+ character='LayoutLarge';api.refresh()
+ assert(s.hudWidth==132 and s.scale==1.4)
+ for id,pos in pairs(s.windowPositions) do
+  requestedPos=nil;api.pin(id,false);assert(requestedPos[1]==pos[1] and requestedPos[2]==pos[2])
+  requestedPos=nil;api.pin(id,false);assert(requestedPos==nil,'unlocked dragging must stay free after restoration')
+ end
+ -- Explicit cfg round trip, independent of ImGui memory.
+ s.windowPositions={};s.hudWidth=92;s.scale=1;api.load()
+ assert(s.windowPositions.hud[1]==1200 and s.windowPositions.statebar[2]==600 and s.hudWidth==132 and s.scale==1.4)
+ character='LayoutSmall';api.refresh();assert(s.windowPositions.hud[1]==100 and s.hudWidth==84 and s.scale==.8)
+ character='LayoutFresh';api.refresh();requestedPos=nil;api.pin('hud',false)
+ assert(requestedPos[1]==20 and requestedPos[2]==20,'new character must not inherit ImGui placement')
+ ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
+end)
+test('drag positions save after settling and flush on unload',function()
+ local get,set=ui.GetWindowPos,ui.SetNextWindowPos
+ character='LayoutDrag';api.refresh();ready();s.visible=true;s.showTests=false;s.autoHide=false;s.statebarEnabled=false;s.positionLocked=false
+ ui.SetNextWindowPos=function() end;ui.GetWindowPos=function() return {x=321,y=234} end
+ events.decker_draw();assert(s.windowPositions.hud[1]==321 and s.layoutDirtyAt)
+ s.layoutDirtyAt=os.clock()-1;events.decker_draw();assert(s.layoutDirtyAt==nil)
+ ui.GetWindowPos=function() return {x=456,y=345} end;events.decker_draw()
+ events.decker_updater_cleanup();s.windowPositions={};api.load();assert(s.windowPositions.hud[1]==456)
+ ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
