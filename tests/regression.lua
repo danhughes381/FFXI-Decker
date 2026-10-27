@@ -733,5 +733,19 @@ test('drag positions save after settling and flush on unload',function()
  ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
 end)
 
+test('assigned keys preference survives disconnected saves, reload and character switches',function()
+ character='KeysEnabled';api.refresh()
+ s.savedKeybinds=true;s.savedAck=true;s.keybinds=false;s.acknowledgeKeys=false
+ -- Appearance edits and drag/unload saves before Connect must retain the choice.
+ s.theme=3;api.save();s.savedKeybinds=false;s.savedAck=false;api.load()
+ assert(s.savedKeybinds and s.savedAck,'disconnected save erased assigned-key preference')
+ character='KeysDisabled';api.refresh();s.savedKeybinds=false;s.savedAck=false;api.save()
+ character='KeysEnabled';api.refresh();assert(s.savedKeybinds and s.savedAck and not s.keybinds)
+ events.decker_updater_cleanup();s.savedKeybinds=false;s.savedAck=false;api.load()
+ assert(s.savedKeybinds and s.savedAck,'unload erased assigned-key preference')
+ character='KeysDisabled';api.refresh();assert(not s.savedKeybinds and not s.savedAck)
+ character='Salts';api.refresh()
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')

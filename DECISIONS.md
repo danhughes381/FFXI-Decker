@@ -68,3 +68,5 @@ Decker is the low-risk proving ground for later Aegis and Nexus UX work. Introdu
 ### 25 October 2026 — explicit character window placement
 
 Persist HUD/StateBar/collapsed coordinates in the existing character cfg rather than relying on host ImGui ini placement. Apply saved placement once even when unlocked, then allow dragging; only locked windows are pinned continuously. Debounce disk saves and flush on unload/profile transitions. Size continues to derive from character-specific sizing controls.
+
+- 27 October 2026: Persist assigned-key user preferences independently of temporary native connection/runtime gates, so ordinary settings saves cannot silently opt users out. Keep explicit Connect as the execution prerequisite.
