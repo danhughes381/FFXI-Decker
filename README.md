@@ -1,6 +1,6 @@
 # Decker — by Mutant X
 
-**Latest Stable and Development baseline: 1.50.13-dev** · Ashita v4 / Vanacor / CatsEyeXI
+**Stable: v1.50.13-dev · Development updater: v1.50.17-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
@@ -14,6 +14,8 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 4. Use **Macro set** and the adjacent **Book** controls to select sets 1–10 and books 1–20. Book names use your Decker label or imported saved game title.
 
 Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.13.md).
+
+Development v1.50.16-dev adds an optional **Immediately (0s)** post-action auto-hide setting for Toggle mode on top of the v1.50.14/15 font, keyboard, animated HUD and interactive guide experiments. **65/65 mocked regression groups pass under Lua 5.4 and LuaJIT**; live Windows/VanaCore testing is still required. [0s testing instructions](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md). Stable and the latest public GitHub Release remain v1.50.13-dev. No Stable merge or public release has been created.
 
 ## Baseline status
 
@@ -30,3 +32,7 @@ Decker uses existing FFXI macros and does not rewrite game macro data. Equipment
 Created by **Mutant X**. Licensed under [Apache 2.0](LICENSE); retain [NOTICE](NOTICE). If sharing a modified version, acknowledge the original project and identify your changes.
 
 Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev), the latest public release, titled **Decker v1.50.13-dev**, published as a regular release at the owner's request. The existing ZIP is unchanged; preserve character .cfg files when installing. Previous releases remain available.
+
+Development v1.50.17-dev adds explicit per-character HUD, StateBar and collapsed-button position saving/restoration. [PR #12](https://github.com/danhughes381/FFXI-Decker/pull/12): both GitHub validation runs passed Lua 5.4/LuaJIT regression and test ZIP checks (67 groups each). All served Development updater locations offer v1.50.17-dev; live character-switch/restart and different-resolution acceptance remain pending. Earlier Development notes above describe superseded candidates.
+
+Both in-game channels now offer 1.50.18-dev, including character-position and assigned-key preference fixes. The linked public release ZIP above remains historical 1.50.13-dev. After updating, Connect and enable Use my assigned keys once if its old preference was already overwritten. Offline validation passes; live client verification remains pending.
