@@ -1,9 +1,9 @@
--- Decker 1.50.17-dev: persistent per-character HUD and StateBar positions.
+-- Decker 1.50.18-dev: preserve assigned-key preferences across saves and reloads.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.17-dev';
+addon.version = '1.50.18-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
