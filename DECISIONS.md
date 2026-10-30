@@ -70,3 +70,8 @@ Decker is the low-risk proving ground for later Aegis and Nexus UX work. Introdu
 Persist HUD/StateBar/collapsed coordinates in the existing character cfg rather than relying on host ImGui ini placement. Apply saved placement once even when unlocked, then allow dragging; only locked windows are pinned continuously. Debounce disk saves and flush on unload/profile transitions. Size continues to derive from character-specific sizing controls.
 
 - 27 October 2026: Persist assigned-key user preferences independently of temporary native connection/runtime gates, so ordinary settings saves cannot silently opt users out. Keep explicit Connect as the execution prerequisite.
+
+
+## Opt-in all-job F5–F10 Aegis buttons, 30 October 2026
+
+A one-click prepared preset (with confirmation) is safer than silently stealing FFXI's F5–F10 target keys or overwriting saved character StateBars. Keys are assigned but keyboard interception defaults OFF. Treat every Aegis StateBar command as a utility press, not a selected persistent state: no acknowledgement currently proves Aegis accepted the command or LuAshitacast equipped a set. F10 now toggles the Kite movement-base intention for every job; enemy target reacquisition remains a separate unimplemented action needing a verified explicit target identity. Do not use a generic free-form command allowlist. Revisit once Aegis/LAC report a verified effective state and native targeting collision/focus tests pass.
