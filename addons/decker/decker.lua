@@ -638,7 +638,7 @@ local function valid_command(command)
     if type(command)~='string' or #command>240 or command:find('[%c;|]') then return false; end
     -- Only these exact Aegis intentions are allowed. Decker never claims gear was equipped.
     local gear=command:match('^/aegis gear ([a-z]+)$');
-    if gear and ({pdt=true,mdt=true,accuracy=true,idle=true,auto=true,reset=true,status=true})[gear] then return true; end
+    if gear and ({pdt=true,mdt=true,accuracy=true,idle=true,kite=true,auto=true,reset=true,status=true})[gear] then return true; end
     if command:match('^/equipset %d+$') then local n=tonumber(command:match('%d+')); return n>=1 and n<=100; end
     if command:match('^/lac set [%w_%-]+$') then return true; end
     if command:match('^/item "[^"<>]+" <me>$') or command:match('^/ma "[^"<>]+" <me>$') or command:match('^/ja "[^"<>]+" <me>$') or command:match('^/mount "[^"<>]+"$') then return true; end
@@ -1801,17 +1801,17 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped('State: a lasting mode, such as PDT or MDT; its button stays highlighted after activation. Utility: a one-off action, such as food or a mount; it leaves your State highlight unchanged. Both run the action you assign. A highlight records your request; it does not verify equipped gear.');
                 imgui.Separator();
                 imgui.TextWrapped('Each button has an action to run and a separate key to press. Enable StateBar hotkeys to reserve those keys; this switch is independent of the main macro keyboard switch. Disable before typing or editing macros.');
-                imgui.TextWrapped('Aegis optional baseline: F5 PDT, F6 MDT, F7 Accuracy, F8 Idle, F9 Auto, F10 reserved. Intent requests only, not equipped gear; F5-F10 normally have FFXI targeting uses.');
+                imgui.TextWrapped('Aegis optional baseline: F5 PDT, F6 MDT, F7 Accuracy, F8 Idle, F9 Auto, F10 Kite. Intent requests only, not equipped gear; F5-F10 normally have FFXI targeting uses.');
                 if imgui.Button('Prepare Aegis gear preset##aegisgearprep') then state.aegisGearPresetPending=true; end
                 if state.aegisGearPresetPending then
                     imgui.TextWrapped('Replace existing StateBar slots for this character? Custom slots will be overwritten. F5-F9 interception remains OFF until explicitly enabled.');
                     if imgui.Button('Confirm replace StateBar##aegisgearyes') then
-                        local actions={{'PDT','/aegis gear pdt'},{'MDT','/aegis gear mdt'},{'Accuracy','/aegis gear accuracy'},{'Idle','/aegis gear idle'},{'Auto','/aegis gear auto'},{'F10 free',''}};
+                        local actions={{'PDT','/aegis gear pdt'},{'MDT','/aegis gear mdt'},{'Accuracy','/aegis gear accuracy'},{'Idle','/aegis gear idle'},{'Auto','/aegis gear auto'},{'Kite','/aegis gear kite'}};
                         state.statebarSlots={};
                         for _,entry in ipairs(actions) do
                             state.statebarSlots[#state.statebarSlots+1]={row='CTRL',slot=1,kind='utility',source='command',label=entry[1],command=entry[2]};
                         end
-                        state.statebarHotkeys={63,64,65,66,67,0};
+                        state.statebarHotkeys={63,64,65,66,67,68};
                         state.statebarEnabled=true;state.statebarHotkeysEnabled=false;state.statebarSelected=0;
                         state.aegisGearPresetPending=false;save_display();
                     end
@@ -1836,7 +1836,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if b.source=='command' then
                         local text={b.command or ''};
                         if imgui.InputText('Command##sbcmd'..i,text,241) then b.command=text[1]; if valid_command(b.command) then save_display(); end end
-                        if not valid_command(b.command) then imgui.TextWrapped('Use /aegis gear pdt|mdt|accuracy|idle|auto|reset|status, /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
+                        if not valid_command(b.command) then imgui.TextWrapped('Use /aegis gear pdt|mdt|accuracy|idle|kite|auto|reset|status, /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
                     end
                     if b.source~='command' then
                     imgui.TextWrapped('FFXI macro source: choose the action from its upper (CTRL) or lower (ALT) row. These are the two native rows, regardless of your Decker key labels.');
