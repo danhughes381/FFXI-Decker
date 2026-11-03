@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {wsContext=ws_context,wsRefresh=ws_refresh,wsLabel=ws_label,wsRequest=ws_request,state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -845,6 +845,68 @@ test('status badge draws without changing header columns or font',function()
  ui.GetWindowDrawList=function()return {AddRectFilled=function(_,a,b)assert(b[1]>a[1]);fill=fill+1 end,AddRect=function()border=border+1 end}end
  events.decker_draw();assert(fill>0 and border>0)
  ui.GetCursorScreenPos=pos;ui.GetWindowDrawList=draw;ui.GetColorU32=col
+end)
+
+
+-- Weapon-aware WS integration: reads and normal queued commands only.
+local weapon=16555;local mainJob,subJob=7,1;local zoning=0;local packed=8*256+3
+player.GetMainJob=function()return mainJob end;player.GetSubJob=function()return subJob end
+player.GetIsZoning=function()return zoning end
+local oldMemory=AshitaCore.GetMemoryManager
+AshitaCore.GetMemoryManager=function()return {GetPlayer=function()return player end,GetInventory=function()return {
+ GetEquippedItem=function(_,slot)assert(slot==0);return {Index=packed}end,
+ GetContainerItem=function(_,bag,slot)assert(bag==8 and slot==3);return {Id=weapon}end}end}end
+local function wsready()
+ ready();s.profileId='1_'..character;s.wsEnabled=true;s.wsRules={
+ ['7x1x16555x1']='Atonement',['7x1x16555x2']='Circle Blade',['7x1x16555x3']='Spirits Within',
+ ['7x1x16448x1']='Viper Bite',['7x1x16448x2']='Aeolian Edge',['7x1x16448x3']='Energy Drain'}
+ s.names[1]='WS-ST';s.names[2]='WS-AOE';s.names[3]='WS-UTIL';weapon=16555;mainJob=7;subJob=1;zoning=0;api.wsRefresh(true)
+end
+test('WS markers resolve three configured roles without changing book set or native labels',function()
+ wsready();local book,set=s.manualBook,s.trackedSet
+ assert(api.wsLabel('WS-ST')=='Atonement' and api.wsLabel('WS-AOE')=='Circle Blade' and api.wsLabel('WS-UTIL')=='Spirits Within')
+ assert(api.execute('CTRL',3) and requested[#requested]=='/ws "Spirits Within" <t>')
+ assert(s.manualBook==book and s.trackedSet==set and s.names[3]=='WS-UTIL')
+end)
+test('weapon change blocks stale label then executes only the newly displayed choice',function()
+ wsready();weapon=16448;local n=#requested
+ assert(not api.execute('CTRL',2) and #requested==n and api.wsLabel('WS-AOE')=='Aeolian Edge')
+ assert(api.execute('CTRL',2) and #requested==n+1 and requested[#requested]=='/ws "Aeolian Edge" <t>')
+end)
+test('WS choices isolate job subjob and weapon; missing utility never substitutes',function()
+ wsready();local n=#requested
+ subJob=13;api.wsRefresh(true);assert(api.wsLabel('WS-ST')=='Unassigned' and not api.execute('CTRL',1))
+ subJob=1;weapon=17000;api.wsRefresh(true);assert(not api.execute('CTRL',2))
+ weapon=16555;s.wsRules['7x1x16555x3']=nil;api.wsRefresh(true);assert(not api.execute('CTRL',3) and #requested==n)
+end)
+test('WS context refuses zoning identity mismatch empty equipment and unavailable host',function()
+ wsready();local n=#requested
+ zoning=1;assert(not api.wsContext() and not api.execute('CTRL',1));zoning=0
+ s.profileId='other';assert(not api.wsContext());s.profileId='1_'..character
+ packed=0;assert(not api.wsContext());packed=2051
+ local core=AshitaCore;AshitaCore=nil;assert(not api.wsContext());AshitaCore=core
+ assert(#requested==n)
+end)
+test('WS selection persists names with spaces and isolates characters and section reset',function()
+ wsready();api.save();s.wsRules={};s.wsEnabled=false;api.load()
+ assert(s.wsEnabled and s.wsRules['7x1x16555x3']=='Spirits Within')
+ local oldCharacter=character;character='Wsother';api.refresh();assert(not s.wsEnabled and next(s.wsRules)==nil)
+ character=oldCharacter;api.refresh();assert(s.wsEnabled and s.wsRules['7x1x16555x1']=='Atonement')
+ api.reset('General');assert(not s.wsEnabled and next(s.wsRules)==nil)
+end)
+test('WS commands reject injection and respect guide and connect gates',function()
+ wsready();local n=#requested
+ for _,name in ipairs({'Atonement; /quit','Atonement\n/quit','Atonement" <t>','/quit'})do
+  s.wsRules['7x1x16555x1']=name;api.wsRefresh(true);assert(not api.execute('CTRL',1))
+ end
+ s.wsRules['7x1x16555x1']='Atonement';api.wsRefresh(true)
+ s.guideOpen=true;assert(not api.execute('CTRL',1));s.guideOpen=false
+ s.allowAllClicks=false;assert(not api.execute('CTRL',1));assert(#requested==n)
+end)
+test('WS settings render and disabled feature preserves ordinary macro execution',function()
+ wsready();s.showTests=true;s.settingsTab='Weapon skills';events.decker_draw();assert(styles==0 and vars==0)
+ s.wsEnabled=false;assert(api.wsLabel('WS-ST')=='WS-ST');assert(api.execute('CTRL',1))
+ s.wsRules={};AshitaCore.GetMemoryManager=oldMemory
 end)
 
 os.execute('rm -r '..tmp)

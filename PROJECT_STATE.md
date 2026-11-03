@@ -75,3 +75,11 @@ Changed code/tests, CHANGELOG, DECISIONS, LESSONS_LEARNED and this file; added d
 No updater manifest, channel, tag or public release changed. Readiness #3 remains open. Next: install this PR's manual candidate, connect, test Hold/Toggle tap/hold/release and Up/Down native set changes at real frame rates; swap End/Right Shift and reload; confirm current-character saved titles and status layout. Record live evidence before promotion.
 
 GitHub review: [draft PR #16](https://github.com/danhughes381/FFXI-Decker/pull/16). Exact tested source commit: [6dc079f](https://github.com/danhughes381/FFXI-Decker/commit/6dc079f2dccff11c7fdfb7a980061e1597cd6a7d). Remote tree equals local tested tree `07b6d9637f68442f1a790c2041a23521cff67ed5`. Manual ZIP is in this branch under dist/test-only; SHA-256 `9d81c189fb6aca569c732a6c7393f20902f8c777a51a104c55c758b6a2a86e24`.
+
+## Weapon-aware WS manual candidate — 3 November 2026
+
+1.50.20-dev stacks on PR #16 head `4a35dd719cfe8ad2adcf59cc63f44f1c376fea4a` in `feature/weapon-aware-ws`. Adds opt-in WS-ST/WS-AOE/WS-UTIL markers, live actual-name labels and one normal WS command, exact-weapon/main-sub/character saved choices, a Weapon skills settings page, and stale-label/context rejection. No Aegis code/transport or gear executor added. Primary is user-selected, not automatic highest-damage ranking. Native macro lines and books are not rewritten. See docs/WEAPON_SKILLS_1.50.20.md.
+
+82 Lua 5.4 mocked groups pass (75 existing plus seven WS groups); diff/ZIP integrity/source-equality checks pass. LuaJIT, Windows/Ashita/VanaCore, live WS execution, gear swaps, server unlocks and FPS are unverified. Changes: addon source, tests, guide, decisions, project state and manual test archive. Updater channels/releases/tags unchanged. Next action: install the manual candidate, configure the three marker slots and verify sword/dagger/staff labels and execution without book/set changes, then gear handling/reload/character isolation. Keep readiness #3 open.
+
+Review: [PR #17](https://github.com/danhughes381/FFXI-Decker/pull/17). Candidate source/package commit: `8df74b2a33e804defd69d06b43eec2145d311f8e`. Manual package and guide are committed in that PR; live acceptance remains pending.
