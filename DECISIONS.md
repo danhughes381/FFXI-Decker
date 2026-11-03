@@ -70,3 +70,9 @@ Decker is the low-risk proving ground for later Aegis and Nexus UX work. Introdu
 Persist HUD/StateBar/collapsed coordinates in the existing character cfg rather than relying on host ImGui ini placement. Apply saved placement once even when unlocked, then allow dragging; only locked windows are pinned continuously. Debounce disk saves and flush on unload/profile transitions. Size continues to derive from character-specific sizing controls.
 
 - 27 October 2026: Persist assigned-key user preferences independently of temporary native connection/runtime gates, so ordinary settings saves cannot silently opt users out. Keep explicit Connect as the execution prerequisite.
+
+### 3 November 2026 — held arrows
+
+Use physical key-state polling for delayed arrow repeats, with one repeat per due poll and no catch-up burst. Repeat selection/set navigation only; never repeat macro execution or row switches. Tag repeated requests so releases can cancel them before rendering or a delayed native set call, preserving the established single-tap path. Keep existing single-file deployment and cfg schema.
+
+Navigation key names/codes now share one table across configuration, UI, capture and conflict checks. Selecting the other navigation control's key swaps assignments to permit End/Right Shift exchange without temporary collisions. Book title discovery reads only exact current-character ID folders; ambiguous installs require an explicit folder rather than a guess. Aliases remain intentional overrides. Status emphasis is draw-only so existing header geometry stays fixed.

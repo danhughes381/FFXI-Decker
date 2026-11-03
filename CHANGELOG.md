@@ -1,3 +1,17 @@
+## 1.50.19-dev — navigation and saved-title test candidate
+
+- Hold arrows to repeat; release to stop. 350 ms initial delay, 80 ms cadence.
+- Expanded both navigation selectors to 28 keys and support End/Right Shift swapping and persistence.
+- Detect and periodically refresh saved current-character book titles where supported; manual folder and aliases remain available.
+- Highlight lock status without changing its font or adjacent header columns.
+- 75 offline mocked Lua 5.4 groups pass; live client acceptance pending. Manual candidate only, updater channels unchanged.
+
+## Unreleased — held-arrow navigation
+
+- Hold Left/Right to scroll macros and Up/Down to change sets after 350 ms, repeating every 80 ms subject to input/frame and existing set-request limits.
+- Releasing stops repeated requests; Enter, Space and row switching remain single-press actions.
+- 72 mocked Lua 5.4 regression groups pass. Live Ashita/VanaCore validation pending; updater channels unchanged.
+
 # Version history
 
 ## 1.50.13-dev — clear updater status
