@@ -1,9 +1,9 @@
--- Decker 1.50.19-dev: held arrows, configurable navigation keys and saved book titles.
+-- Decker 1.50.20-dev: weapon-aware WS slots; held arrows, configurable navigation keys and saved book titles.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.19-dev';
+addon.version = '1.50.20-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -55,12 +55,13 @@ state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, 
 state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after Toggle navigation ends.
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 state.windowPositions={}; state.layoutDirtyAt=nil;
+state.wsEnabled=false; state.wsRules={};
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
     Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
     StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
-    General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
+    General={'wsEnabled','wsRules','bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
 };
 -- First-install defaults also form the profile-isolation boundary.
 profileDefaults.autoHide=false; profileDefaults.autoHideMode='hide';
@@ -108,6 +109,10 @@ local function save_display()
     if not state.profileReady then return; end
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
+    f:write('wsenabled=',state.wsEnabled and '1' or '0','\n');
+    for key,value in pairs(state.wsRules) do
+        if key:match('^%d+x%d+x%d+x[123]$') then f:write('ws',key,'=',value:gsub('.',function(c)return ('%02X'):format(c:byte())end),'\n'); end
+    end
     f:write('showscrollbars=',state.showScrollbars and '1' or '0','\n');
     f:write('motionenabled=',state.motionEnabled and '1' or '0','\n');
     f:write('glassversion=1\nouteropacity=',state.outerOpacity,'\npanelopacity=',state.panelOpacity,'\nbuttonopacity=',state.buttonOpacity,'\nmacrofont=',state.macroFont:gsub(' ','_'),'\nmacrofontsize=',state.macroFontSize,'\n');
@@ -140,6 +145,12 @@ local function load_display()
     for line in f:lines() do
         local key,value=line:match('^(%w+)=([%w_.:%-]+)$');
         local n=tonumber(value);
+        if key=='wsenabled' then state.wsEnabled=value=='1'; end
+        local wk=key and key:match('^ws(%d+x%d+x%d+x[123])$');
+        if wk and #value<=128 and #value%2==0 and not value:find('[^%x]') then
+            local name=value:gsub('%x%x',function(h)return string.char(tonumber(h,16))end);
+            if name:match("^[%a%d][%w '%-:]*$") and #name<=64 then state.wsRules[wk]=name; end
+        end
         for _,id in ipairs({'hud','statebar','collapsed'}) do
             if (key==id..'posx' or key==id..'posy') and n and n>=-20000 and n<=20000 then
                 state.windowPositions[id]=state.windowPositions[id] or {20,20};
@@ -618,6 +629,74 @@ local function try_ctrl1()
     say(state.clickSummary);
 end
 
+-- Weapon-aware actions are explicit marker macros, never inferred from WS names.
+-- Equipment getters follow Aegis live_reader.lua (Ashita v4 packed bag/index).
+local WS_MARKERS={['WS-ST']=1,['WS-AOE']=2,['WS-UTIL']=3};
+local WS_ROLES={'Primary single-target','AoE','Utility'};
+local wsView={}; local wsNext=0;
+local function ws_context()
+    if not state.profileReady then return nil end
+    local ok,c=pcall(function()
+        local m=AshitaCore:GetMemoryManager(); local p=m:GetPlayer();
+        if p:GetIsZoning()~=0 then return nil end
+        if character_id()~=state.profileId then return nil end
+        local main,sub=tonumber(p:GetMainJob()),tonumber(p:GetSubJob());
+        if not main or not sub or main<1 or main>22 or sub<0 or sub>22 then return nil end
+        local inv=m:GetInventory(); local eq=inv:GetEquippedItem(0);
+        local packed=eq and tonumber(eq.Index);
+        if not packed or packed<1 or packed>65535 then return nil end
+        local item=inv:GetContainerItem(math.floor(packed/256),packed%256);
+        local id=item and tonumber(item.Id);
+        if not id or id<1 or id>65535 then return nil end
+        return {key=main..'x'..sub..'x'..id,weapon=id,main=main,sub=sub};
+    end);
+    return ok and c or nil;
+end
+local function ws_resolve(marker,c)
+    local role=WS_MARKERS[marker]; if not role then return nil end
+    local name=c and state.wsRules[c.key..'x'..role];
+    return {name=name or 'Unassigned',key=c and c.key or '',role=role,ready=name~=nil and c~=nil};
+end
+local function ws_refresh(force)
+    if not force and os.clock()<wsNext then return end
+    wsNext=os.clock()+.1; wsView={};
+    if not state.wsEnabled then return end
+    local c=ws_context();
+    for marker in pairs(WS_MARKERS) do wsView[marker]=ws_resolve(marker,c); end
+end
+local function ws_label(native)
+    if not state.wsEnabled or not WS_MARKERS[native] then return native end
+    local v=wsView[native]; return v and v.name or 'Unavailable';
+end
+local function ws_request(native)
+    local current=ws_resolve(native,ws_context()); local shown=wsView[native];
+    if not current or not current.ready or not current.name:match("^[%a%d][%w '%-:]*$") or #current.name>64 then state.clickSummary='WS blocked: configure this weapon in Weapon skills.'; return false end
+    if not shown or shown.key~=current.key or shown.name~=current.name then
+        ws_refresh(true); state.clickSummary='Weapon/WS changed: label refreshed; press again.'; return false;
+    end
+    -- Exactly one normal game command. The game validates unlocks, TP and target.
+    local ok,result=pcall(function()return AshitaCore:GetChatManager():QueueCommand(-1,'/ws "'..current.name..'" <t>')end);
+    state.clickSummary=ok and result~=false and ('Requested '..current.name) or 'WS command failed';
+    return ok and result~=false;
+end
+local function ws_settings()
+    imgui.TextWrapped('Three weapon-aware macro slots: WS-ST, WS-AOE and WS-UTIL. Names must match exactly. Native macro data stays unchanged.');
+    local enabled={state.wsEnabled};
+    if imgui.Checkbox('Enable weapon-aware WS slots',enabled) then state.wsEnabled=enabled[1]; save_display(); ws_refresh(true); end
+    local c=ws_context();
+    if not c then imgui.TextWrapped('Waiting for a logged-in character and equipped main weapon.'); return end
+    imgui.TextWrapped(('Current main/sub job IDs: %d/%d. Main weapon item ID: %d. Choices save for this exact weapon and job pair.'):format(c.main,c.sub,c.weapon));
+    for role,title in ipairs(WS_ROLES) do
+        local key=c.key..'x'..role; local value={state.wsRules[key] or ''};
+        if imgui.InputText(title..'##wschoice'..role,value,65) then
+            if value[1]=='' then state.wsRules[key]=nil; save_display(); ws_refresh(true);
+            elseif value[1]:match("^[%a%d][%w '%-:]*$") and #value[1]<=64 then state.wsRules[key]=value[1]; save_display(); ws_refresh(true); end
+        end
+    end
+    imgui.TextWrapped('Enter the exact English WS name you want for each role. Primary means your chosen WS, not automatic damage ranking. Unassigned slots do nothing. Equip each other weapon once to save its choices.');
+    imgui.TextWrapped('In your game macro editor, name three buttons WS-ST, WS-AOE and WS-UTIL and leave their command lines empty. Use Decker clicks or assigned keys. Native FFXI macro execution does not resolve these markers. Existing WS gear handling remains responsible for equipment.');
+end
+
 -- Native-inspired display: macro name on top, modifier label on its own line.
 -- The native name limit is eight bytes, so no UI truncation is required at the default width.
 -- Use a separate diagnostic window; no game HUD hooks or memory writes are performed.
@@ -626,7 +705,7 @@ local function flash_slot(row,slot)
 end
 local function record_execution(row,slot,source)
     state.navRow=row; state.navSlot=slot; state.navSource=source;
-    state.lastExecuted={row=row,slot=slot,name=state.names[(row=='CTRL' and 0 or 10)+slot] or '',set=state.trackedSet};
+    state.lastExecuted={row=row,slot=slot,name=ws_label(state.names[(row=='CTRL' and 0 or 10)+slot] or ''),set=state.trackedSet};
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
@@ -638,6 +717,10 @@ local function execute_slot(row,slot)
         return;
     end
     if state.phase < 4 or #state.names ~= 20 then state.clickSummary='BLOCKED: macro names not loaded'; return; end
+    local native=state.names[(row=='CTRL' and 0 or 10)+slot];
+    if state.wsEnabled and WS_MARKERS[native] then
+        local requested=ws_request(native); if requested then record_execution(row,slot,'weapon-aware WS'); end; return requested;
+    end
     if not validaddr(state.addresses.controller) or not validaddr(state.addresses.run) then
         state.clickSummary='BLOCKED: native execute signature unavailable'; return;
     end
@@ -872,7 +955,7 @@ local function draw_row(title,offset)
     local h=math.floor(state.hudHeight*state.scale);
     for i=1,10 do
         if i>1 then imgui.SameLine(); end
-        local name=state.names[offset+i] or '';
+        local name=ws_label(state.names[offset+i] or '');
         local shortcut=state.mappingMode=='numbers' and tostring(i==10 and 0 or i)
             or state.mappingMode=='functions' and ('F'..i)
             or DIRECT_NAMES[state.directKeys[offset+i]] or '?';
@@ -1549,6 +1632,7 @@ end);
 
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
+    ws_refresh(false);
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
@@ -1624,7 +1708,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 remember_window('statebar',state.statebarLocked);
                 for i,b in ipairs(state.statebarSlots) do
                     local idx=(b.row=='ALT' and 10 or 0)+b.slot;
-                    local name=b.label and b.label~='' and b.label or b.source=='command' and (b.command or 'Configure command') or (state.names[idx] or 'Unassigned');
+                    local name=b.label and b.label~='' and b.label or b.source=='command' and (b.command or 'Configure command') or ws_label(state.names[idx] or 'Unassigned');
                     local key=DIRECT_NAMES[state.statebarHotkeys[i] or 0];
                     local caption=name..(key and key~='None' and ('\n'..key) or '');
                     if i>1 and not state.statebarVertical then imgui.SameLine(); end
@@ -1792,7 +1876,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.Separator();
             -- Four user-facing sections; technical pages live under More.
             local currentTab=state.settingsTab;
-            local moreActive=(currentTab=='General' or currentTab=='Profiles' or currentTab=='Updates');
+            local moreActive=(currentTab=='General' or currentTab=='Profiles' or currentTab=='Updates' or currentTab=='Weapon skills');
             for i,tab in ipairs({{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}}) do
                 if i>1 then imgui.SameLine(); end
                 local active=(tab[2]=='General' and moreActive) or currentTab==tab[2];
@@ -1801,13 +1885,15 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.Separator();
             if moreActive then
                 imgui.Text('More options:');
-                for i,tab in ipairs({'General','Profiles','Updates'}) do
+                for i,tab in ipairs({'General','Profiles','Updates','Weapon skills'}) do
                     if i>1 then imgui.SameLine(); end
                     if imgui.Button((state.settingsTab==tab and '['..tab..']' or tab)..'##more'..tab) then state.settingsTab=tab; end
                 end
                 imgui.Separator();
             end
-            if state.settingsTab=='Profiles' then
+            if state.settingsTab=='Weapon skills' then
+                ws_settings();
+            elseif state.settingsTab=='Profiles' then
                 imgui.TextWrapped('Active character: '..(state.profileId or 'Waiting for character login'));
                 imgui.TextWrapped('Detection: '..state.profileDiagnostic);
                 imgui.TextWrapped('Profile file: '..(state.profileId and ('decker_profile_'..state.profileId..'.cfg') or '(none; saves disabled)'));
