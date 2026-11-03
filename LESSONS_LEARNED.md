@@ -14,3 +14,7 @@ Code inspection and mocked regressions show that per-character preference files 
 - 3 November 2026 (offline): current 1.50.18 input queues only physical press edges; an unchanged held arrow cannot advance again. Deterministic mocked polling reproduces the gap. All 72 groups pass after adding delayed repeats and cancellation at both queue-consumption and deferred-set execution boundaries. Live timing and native set transitions remain unverified.
 
 Offline regression reproduced End being rewritten to RSHIFT during cfg load; preserving the configured choice fixes persistence. Right Shift row switching also needs exclusion from unrelated-modifier gating. Current-character title detection and periodic refresh are offline tested only; real registered paths, client saves and private-server character-ID mapping still require in-game verification.
+
+### 3 November 2026 — action-bar offline findings
+
+An English quoted command can resolve to a client spell index or ability recast-timer ID; an ability timer ID is distinct from its active recast slot. Multiple actions sharing a timer must be deduplicated. Missing spell resources must not fall through to ability lookup. Timer history must be cleared when the action identity changes to avoid false "just ready" effects. These properties are covered in mocked tests, not live timer calibration. Native book/page offsets and UI rendering remain live-client validation items.

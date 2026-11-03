@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {wsContext=ws_context,wsRefresh=ws_refresh,wsLabel=ws_label,wsRequest=ws_request,state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {sampleActions=sample_actions,parseActions=parse_actions,nativePosition=native_position,actionStatus=action_status,facet=facet_draw,observations=function()return observations end,wsContext=ws_context,wsRefresh=ws_refresh,wsLabel=ws_label,wsRequest=ws_request,state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -907,6 +907,64 @@ test('WS settings render and disabled feature preserves ordinary macro execution
  wsready();s.showTests=true;s.settingsTab='Weapon skills';events.decker_draw();assert(styles==0 and vars==0)
  s.wsEnabled=false;assert(api.wsLabel('WS-ST')=='WS-ST');assert(api.execute('CTRL',1))
  s.wsRules={};AshitaCore.GetMemoryManager=oldMemory
+end)
+
+
+local resourceMock={GetSpellByName=function(_,name)if name=='Cure IV' then return {Index=4} elseif name=='Flash' then return {Index=112} end end,
+ GetAbilityByName=function(_,name)if name=='Sentinel' then return {RecastTimerId=75} elseif name=='Warcry' then return {RecastTimerId=2} end end}
+test('automatic recast parser resolves quoted commands and deduplicates shared timers',function()
+ local a=api.parseActions({'/ma "Cure IV" <stal>','/ja "Sentinel" <me>','/ja "Sentinel" <me>','/magic "Flash" <t>'},resourceMock)
+ assert(#a==3 and a[1].id==4 and a[2].kind=='ability' and a[2].id==75 and a[3].id==112)
+end)
+test('automatic recast parser does not guess scripts unquoted auto-translate or weapon skills',function()
+ local a=api.parseActions({'/ws "Atonement" <t>','/lac set PDT','/ma Cure IV <t>','/ma "'..string.char(253)..'" <t>','/ma "Unknown" <t>','/ma "Sentinel" <t>'},resourceMock)
+ assert(#a==0)
+end)
+test('native position requires recognised operands stable even page and supported book range',function()
+ local mem=ashita.memory;local u,i=mem.read_uint32,mem.read_int32;local book,page=2,8
+ s.addresses.set_page=131072
+ mem.read_uint32=function(a)if a==131072 then return 0x57F18B56 elseif a==131082 then return 0x1DC0 end return 0 end
+ mem.read_int32=function(a)return a==196608+0x1DC0 and book or page end
+ local b,p=api.nativePosition(196608);assert(b==3 and p==5)
+ page=9;assert(not api.nativePosition(196608));page=18;book=20;assert(not api.nativePosition(196608))
+ book=2;mem.read_uint32=function()return 0 end;assert(not api.nativePosition(196608))
+ mem.read_uint32=u;mem.read_int32=i
+end)
+test('macro-line sampler is bounded read-only and invalid context clears inferred actions',function()
+ ready();s.profileId='1_'..character;s.macroObject=65536;s.addresses.macro_object=131072;s.addresses.get_line=131080
+ s.autoRecasts=true;s.nativeTracking=false
+ local cast,str=ffi.cast,ffi.string;local resource=AshitaCore.GetResourceManager
+ local reads=0;ffi.string=function(v)return v end
+ ffi.cast=function(typ,v)if typ=='Decker_GetLine_f' then return function(_,idx,line)reads=reads+1;return idx==0 and line==0 and '/ma "Cure IV" <stal>' or '' end end return cast(typ,v)end
+ AshitaCore.GetResourceManager=function()return resourceMock end
+ local n=#requested;api.sampleActions(true);assert(reads==6 and api.observations().actions[1][1].id==4 and #requested==n)
+ api.sampleActions(false);assert(reads==6)
+ s.phase=0;api.sampleActions(true);assert(next(api.observations().actions)==nil and #requested==n)
+ ffi.cast=cast;ffi.string=str;AshitaCore.GetResourceManager=resource;s.autoRecasts=false
+end)
+test('recast feedback uses manual precedence and never reports a different action as just ready',function()
+ ready();s.cooldownEnabled=true;s.autoRecasts=true
+ local memory=AshitaCore.GetMemoryManager;local left=120
+ AshitaCore.GetMemoryManager=function()return {GetRecast=function()return {GetSpellTimer=function(_,id)return id==4 and left or 0 end}end}end
+ local obs=api.observations();obs.actions[1]={{kind='spell',id=4}};s.cooldownBindings={}
+ local busy,seconds=api.actionStatus(1);assert(busy and seconds==2)
+ left=0;local _,_,rdy=api.actionStatus(1);assert(rdy)
+ s.cooldownBindings[1]={kind='spell',id=112};local b,sec,r=api.actionStatus(1);assert(not b and sec==0 and not r)
+ s.cooldownEnabled=false;assert(not api.actionStatus(1));AshitaCore.GetMemoryManager=memory;s.cooldownBindings={};s.autoRecasts=false
+end)
+test('facet geometry stays inside button and unsupported renderer retains fallback',function()
+ local count=0;local colour=ui.GetColorU32;ui.GetColorU32=function()return 1 end
+ local dl={AddQuadFilled=function(_,a,b,c,d)count=count+1;for _,p in ipairs({a,b,c,d})do assert(p[1]>=10 and p[1]<=110 and p[2]>=20 and p[2]<=60)end end,AddLine=function()end}
+ assert(api.facet(dl,10,20,100,40,true,false,false,.8) and count==1)
+ assert(not api.facet({},10,20,100,40,false,false,false,.8));ui.GetColorU32=colour
+end)
+test('polish settings save reload isolate profiles and preserve key and WS choices',function()
+ ready();s.profileId='1_'..character;s.barLook='facet';s.rowEmphasis=false;s.autoRecasts=true;s.nativeTracking=true
+ s.wsRules={['7x1x16555x3']='Spirits Within'};local keys=s.directKeys[1];api.save()
+ s.barLook='classic';s.rowEmphasis=true;s.autoRecasts=false;s.nativeTracking=false;api.load()
+ assert(s.barLook=='facet' and not s.rowEmphasis and s.autoRecasts and s.nativeTracking and s.directKeys[1]==keys and s.wsRules['7x1x16555x3']=='Spirits Within')
+ local old=character;character='Polishother';api.refresh();assert(s.barLook=='classic' and s.rowEmphasis and not s.autoRecasts and not s.nativeTracking)
+ character=old;api.refresh();assert(s.barLook=='facet' and s.autoRecasts);api.reset('Appearance');api.reset('General')
 end)
 
 os.execute('rm -r '..tmp)

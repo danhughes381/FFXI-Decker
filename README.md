@@ -36,3 +36,11 @@ Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danh
 Development v1.50.17-dev adds explicit per-character HUD, StateBar and collapsed-button position saving/restoration. [PR #12](https://github.com/danhughes381/FFXI-Decker/pull/12): both GitHub validation runs passed Lua 5.4/LuaJIT regression and test ZIP checks (67 groups each). All served Development updater locations offer v1.50.17-dev; live character-switch/restart and different-resolution acceptance remain pending. Earlier Development notes above describe superseded candidates.
 
 Both in-game channels now offer 1.50.18-dev, including character-position and assigned-key preference fixes. The linked public release ZIP above remains historical 1.50.13-dev. After updating, Connect and enable Use my assigned keys once if its old preference was already overwritten. Offline validation passes; live client verification remains pending.
+
+## Manual action-bar test candidate — 1.50.21-dev
+
+Optional original Facet look, navigation-row emphasis, command-based recast detection and guarded experimental native book/set reads; includes the three weapon-aware WS roles from 1.50.20. Manual ZIP and setup: [action-bar guide](docs/ACTION_BAR_1.50.21.md). Not an updater-channel promotion. Offline validation and live limitations are recorded there.
+
+Based on YunaUI by Yunas - https://github.com/YunasXI/yunaui
+
+Feature and visual inspiration from YunaUI 1.1.23; this candidate uses independently written Decker code and no YunaUI code or assets. Existing Decker licence and notices remain.
