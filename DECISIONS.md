@@ -80,3 +80,7 @@ Navigation key names/codes now share one table across configuration, UI, capture
 ### 3 November 2026 — three weapon-aware WS roles
 
 Owner chose fixed Primary single-target, AoE and Utility positions with actual resolved WS labels. Utility is explicit (for example Spirits Within or relic/mythic WS), not HP-triggered automation. First candidate resolves exact main-hand item ID and main/subjob inside character settings; no invented best-damage ranking. Opt-in marker macros keep native book/set and other actions intact. Decker requests one normal WS command; existing gear handlers own gear changes. Preserve a single-file install/updater architecture. Persistent PDT/MDT modes remain assigned to owner-selected F6-upward controls, outside action rows.
+
+### 3 November 2026 — optional action-bar polish
+
+Owner approved the YunaUI inspection recommendations. Implement an original optional Facet theme and selected-row emphasis; retain Classic, all key assignments and the WS roles. Read commands for advisory recasts, never infer them from macro titles. Manual bindings override inferred recasts. Spread line reads across frames. Gate experimental native position reads on the existing connection plus matching pointer, character/zoning, signature operand and stable field checks; preserve the 20-book target. Do not introduce a replacement macro interpreter or editor in this change. YunaUI feature inspiration is credited without importing code/art or changing the project licence.

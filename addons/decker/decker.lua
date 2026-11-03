@@ -1,15 +1,15 @@
--- Decker 1.50.20-dev: weapon-aware WS slots; held arrows, configurable navigation keys and saved book titles.
+-- Decker 1.50.21-dev: optional Facet theme, automatic recasts and guarded native position reads.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.20-dev';
+addon.version = '1.50.21-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
 local imgui = require('imgui');
 local ffi = require('ffi');
-ffi.cdef[[typedef const char* (__thiscall* Decker_FsMacroContainer_getName_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setPage_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setBook_f)(uint32_t, uint32_t); typedef void (__thiscall* Decker_FsMacroContainer_runMacro_f)(uint32_t, uint8_t, uint8_t);]];
+ffi.cdef[[typedef const char* (__thiscall* Decker_GetLine_f)(uint32_t, uint32_t, uint32_t); typedef const char* (__thiscall* Decker_FsMacroContainer_getName_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setPage_f)(uint32_t, uint32_t); typedef int32_t (__thiscall* Decker_FsMacroContainer_setBook_f)(uint32_t, uint32_t); typedef void (__thiscall* Decker_FsMacroContainer_runMacro_f)(uint32_t, uint8_t, uint8_t);]];
 local state = { visible=true, signatures={}, addresses={}, summary='Not scanned', pointerSummary='Not checked', nameSummary='Not attempted', phase=0, confirm=false, confirmAll=false, scanning=false, names={}, setHint='Current in-game set (not independently detected)', nameCount=0, allowSwitch=false, selectedPage=nil, previousFingerprint=nil, changeSummary='Not checked', switchSummary='Not attempted', autoRefresh=false, refreshAt=0, refreshInterval=3, compact=true, details=false, showTests=false, clickConsent=false, clickSummary='Not attempted', scale=1.0, refreshErrorCount=0, hudWidth=92, hudHeight=43, allowAllClicks=false, nativeHudStudy=false, theme=1, compactKeys=true, keybinds=false, acknowledgeKeys=false, held={}, keySummary='Exclusive bindings OFF by default', preserveNativeArrows=true, pendingRefreshFrames=0, manualBook=1, trackedSet=1, trackedSource='default (unverified)', suppressed={}, nativeArrowRefreshes=0, showAdvanced=false, debugLog=false, flashRow=nil, flashSlot=nil, flashUntil=0, navSlot=nil, navRow=nil, navSource='unverified', navHeld={}, navModifier='RSHIFT', navKeysEnabled=false, navModifierHeld=false, navCaptured={}, navUpHeld=false, navDownHeld=false, stickyNavigation=true, navToggleActive=false, navPressed={}, navPhysicalDown=false, navHeldKeys={}, navPhysicalKeys={}, navQueue={}, navRow='CTRL', navSlot=1, navSource='default', savedNavEnabled=false, savedKeybinds=false, savedAck=false, rowSwitchKey='END', hudOpacity=1.0, echoLock=true, autoHide=false, autoHideDelay=10, autoHideMode='hide', hudLastActivity=os.clock(), hudWasActive=false, hudReadySince=nil, hudHasInteracted=false, hudForceReveal=false };
 -- Configurable direct bindings. Defaults retain the original 1-0 / F1-F10 scheme.
 -- All direct shortcuts are opt-in; never rewrite FFXI's native macro keys.
@@ -56,12 +56,13 @@ state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 state.windowPositions={}; state.layoutDirtyAt=nil;
 state.wsEnabled=false; state.wsRules={};
+state.barLook='classic'; state.rowEmphasis=true; state.autoRecasts=false; state.nativeTracking=false;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
-    Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
+    Appearance={'barLook','rowEmphasis','showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
     StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
-    General={'wsEnabled','wsRules','bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
+    General={'autoRecasts','nativeTracking','wsEnabled','wsRules','bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
 };
 -- First-install defaults also form the profile-isolation boundary.
 profileDefaults.autoHide=false; profileDefaults.autoHideMode='hide';
@@ -109,6 +110,7 @@ local function save_display()
     if not state.profileReady then return; end
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
+    f:write('barlook=',state.barLook,'\nrowemphasis=',state.rowEmphasis and '1' or '0','\nautorecasts=',state.autoRecasts and '1' or '0','\nnativetracking=',state.nativeTracking and '1' or '0','\n');
     f:write('wsenabled=',state.wsEnabled and '1' or '0','\n');
     for key,value in pairs(state.wsRules) do
         if key:match('^%d+x%d+x%d+x[123]$') then f:write('ws',key,'=',value:gsub('.',function(c)return ('%02X'):format(c:byte())end),'\n'); end
@@ -145,6 +147,10 @@ local function load_display()
     for line in f:lines() do
         local key,value=line:match('^(%w+)=([%w_.:%-]+)$');
         local n=tonumber(value);
+        if key=='barlook' and (value=='classic' or value=='facet') then state.barLook=value; end
+        if key=='rowemphasis' then state.rowEmphasis=value=='1'; end
+        if key=='autorecasts' then state.autoRecasts=value=='1'; end
+        if key=='nativetracking' then state.nativeTracking=value=='1'; end
         if key=='wsenabled' then state.wsEnabled=value=='1'; end
         local wk=key and key:match('^ws(%d+x%d+x%d+x[123])$');
         if wk and #value<=128 and #value%2==0 and not value:find('[^%x]') then
@@ -697,6 +703,137 @@ local function ws_settings()
     imgui.TextWrapped('In your game macro editor, name three buttons WS-ST, WS-AOE and WS-UTIL and leave their command lines empty. Use Decker clicks or assigned keys. Native FFXI macro execution does not resolve these markers. Existing WS gear handling remains responsible for equipment.');
 end
 
+-- YunaUI inspired this feature set; this implementation uses no YunaUI code/assets.
+local observations={profile=nil,next=0,nativeNext=0,cursor=0,context=nil,actions={},was={},ready={},signatures={},source='Not sampled'};
+local function observed_object()
+    if not state.profileReady or state.phase<4 or character_id()~=state.profileId then return nil end
+    local m=ashita and ashita.memory;
+    if not m or not validaddr(state.addresses.macro_object) then return nil end
+    local ok,obj=pcall(function()
+        if AshitaCore:GetMemoryManager():GetPlayer():GetIsZoning()~=0 then return nil end
+        local first=m.read_uint32(state.addresses.macro_object);
+        if not validaddr(first) or first%4~=0 then return nil end
+        local v=m.read_uint32(first);
+        if validaddr(v) and v%4==0 and v==state.macroObject then return v end
+    end);
+    return ok and obj or nil;
+end
+local function parse_actions(lines,resources)
+    local out,seen={},{};
+    for _,line in ipairs(lines) do
+        -- Auto-translate, aliases, scripts and conditional commands are not guessed.
+        if type(line)=='string' and not line:find(string.char(253),1,true) then
+            local verb,name=line:match('^%s*/(%a+)%s+"([^"%c]+)"');
+            verb=verb and verb:lower();
+            local kind=(verb=='ma' or verb=='magic' or verb=='ni' or verb=='ninjutsu' or verb=='song') and 'spell'
+                or (verb=='ja' or verb=='jobability' or verb=='pet') and 'ability';
+            if kind then
+                local ok,id=pcall(function()
+                    local r; if kind=='spell' then r=resources:GetSpellByName(name,0) else r=resources:GetAbilityByName(name,0) end
+                    return r and tonumber(kind=='spell' and r.Index or r.RecastTimerId);
+                end);
+                if ok and id and id>=0 and id%1==0 then
+                    local key=kind..id;
+                    if not seen[key] and #out<3 then seen[key]=true; out[#out+1]={kind=kind,id=id,name=name}; end
+                end
+            end
+        end
+    end
+    return out;
+end
+local function native_position(obj)
+    local m=ashita.memory; local fn=state.addresses.set_page;
+    if not validaddr(fn) then return nil end
+    -- Check prologue bytes and the book-field operand before using offsets.
+    local ok,b,p=pcall(function()
+        if m.read_uint32(fn)~=0x57F18B56 or m.read_uint32(fn+10)~=0x1DC0 then return nil end
+        local b1,p1=m.read_int32(obj+0x1DC0),m.read_int32(obj+0x1DB8);
+        if type(b1)~='number' or type(p1)~='number' or b1%1~=0 or p1%2~=0 or b1<0 or b1>=BOOK_COUNT or p1<0 or p1>18 then return nil end
+        if b1~=m.read_int32(obj+0x1DC0) or p1~=m.read_int32(obj+0x1DB8) then return nil end
+        return b1+1,p1/2+1;
+    end);
+    if ok then return b,p end
+end
+local function sample_actions(force)
+    if observations.profile~=state.profileId then
+        observations={profile=state.profileId,next=0,nativeNext=0,cursor=0,context=nil,actions={},was={},ready={},signatures={},source='Waiting for connection'};
+    end
+    if not force and os.clock()<observations.next then return end
+    observations.next=os.clock()+.03;
+    if not state.autoRecasts and not state.nativeTracking then observations.actions={}; observations.source='Read helpers disabled'; return end
+    local obj=observed_object();
+    if not obj then observations.actions={}; observations.source='Unavailable: reconnect to macros'; return end
+    if state.nativeTracking and os.clock()>=observations.nativeNext then
+        observations.nativeNext=os.clock()+.5;
+        local book,page=native_position(obj);
+        if book then
+            local changed=state.manualBook~=book or state.trackedSet~=page;
+            state.manualBook=book; state.trackedSet=page; state.trackedSource='native read';
+            observations.source='Native book/set read';
+            if changed then state.confirmAll=true; read_all_names(); if not observed_object() then observations.actions={}; return end end
+        else observations.source='Native book/set unavailable: manual tracking retained';
+            if state.trackedSource=='native read' then state.trackedSource='native unavailable (last known)'; end
+        end
+    end
+    local context=table.concat({obj,state.manualBook or 1,state.trackedSet or 1,table.concat(state.names,'|')},':');
+    if observations.context~=context then observations.actions={}; observations.cursor=0; observations.context=context; end
+    if not state.autoRecasts or not validaddr(state.addresses.get_line) then return end
+    local ok=pcall(function()
+        local resources=AshitaCore:GetResourceManager();
+        -- One button per sample: at most six native line reads, no full-page burst.
+        local index=observations.cursor;
+        do
+            local lines={};
+            for line=0,5 do
+                local ptr=ffi.cast('Decker_GetLine_f',state.addresses.get_line)(obj,index,line);
+                if ptr~=nil and ptr~=ffi.NULL then lines[#lines+1]=ffi.string(ptr); end
+            end
+            observations.actions[index+1]=parse_actions(lines,resources);
+            observations.cursor=(index+1)%20;
+        end
+    end);
+    if not ok then observations.actions={}; observations.source='Macro-line reader unavailable'; end
+end
+local function recast_value(binding)
+    local ok,value=pcall(function()
+        local rc=AshitaCore:GetMemoryManager():GetRecast();
+        if binding.kind=='spell' then return rc:GetSpellTimer(binding.id) end
+        for slot=0,31 do
+            if rc:GetAbilityTimerId(slot)==binding.id then return rc:GetAbilityTimer(slot) end
+        end
+        return 0;
+    end);
+    return ok and type(value)=='number' and value>=0 and value or nil;
+end
+local function action_status(index)
+    local list=state.cooldownBindings[index] and {state.cooldownBindings[index]} or state.autoRecasts and observations.actions[index] or {};
+    if not state.cooldownEnabled or not list or #list==0 then observations.was[index]=nil; observations.ready[index]=nil; return false,nil,false end
+    local parts={}; for _,binding in ipairs(list) do parts[#parts+1]=binding.kind..':'..binding.id; end
+    local identity=table.concat(parts,'|');
+    if observations.signatures[index]~=identity then observations.was[index]=nil; observations.ready[index]=nil; observations.signatures[index]=identity; end
+    local largest=0;
+    for _,binding in ipairs(list) do
+        local left=recast_value(binding); if left==nil then observations.was[index]=nil; observations.ready[index]=nil; return false,nil,false end
+        largest=math.max(largest,left);
+    end
+    if observations.was[index] and observations.was[index]>0 and largest==0 then observations.ready[index]=os.clock(); end
+    observations.was[index]=largest;
+    local ready=state.motionEnabled and observations.ready[index] and os.clock()-observations.ready[index]<.6 or false;
+    return largest>0,largest/60,ready;
+end
+local function facet_draw(dl,x,y,w,h,selected,cooling,ready,alpha)
+    if not dl or type(dl.AddQuadFilled)~='function' or type(imgui.GetColorU32)~='function' then return false end
+    local cut=math.min(9,w*.1); local colour=imgui.GetColorU32;
+    local tint=cooling and {.38,.22,.08,alpha} or ready and {.12,.42,.28,alpha} or selected and {.22,.28,.38,alpha} or {.06,.075,.10,alpha};
+    dl:AddQuadFilled({x+cut,y+1},{x+w-1,y+1},{x+w-cut,y+h-1},{x+1,y+h-1},colour(tint));
+    if type(dl.AddLine)=='function' then
+        local edge=cooling and {1,.65,.25,alpha} or ready and {.4,1,.65,alpha} or selected and {.75,.86,1,alpha} or {.32,.38,.48,alpha};
+        dl:AddLine({x+cut,y+1},{x+w-1,y+1},colour(edge),selected and 2 or 1);
+        dl:AddLine({x+1,y+h-1},{x+w-cut,y+h-1},colour(edge),1);
+    end
+    return true;
+end
+
 -- Native-inspired display: macro name on top, modifier label on its own line.
 -- The native name limit is eight bytes, so no UI truncation is required at the default width.
 -- Use a separate diagnostic window; no game HUD hooks or memory writes are performed.
@@ -917,7 +1054,7 @@ local function glass_available()
     end
     return glass.custom;
 end
-local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
+local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale,emphasis)
     local textScale=displayScale or state.scale;
     local initialSize=math.min(state.macroFontSize*textScale,math.max(10,h-18));
     local font=glass_font_for(initialSize);
@@ -938,13 +1075,14 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
             while #shown>0 and width(shown..'...',size)>w-10 do shown=shown:match('^(.*)[%z\1-\127\194-\244][\128-\191]*$') or ''; end
             shown=shown..'...';
         end
-        local col=imgui.GetColorU32(cooling and {1,.30,.30,1} or {.96,.96,.97,1});
+        local opacity=emphasis or 1;
+        local col=imgui.GetColorU32(cooling and {1,.65,.30,opacity} or {.96,.96,.97,opacity});
         local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-12-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
         local ks=math.min(10*textScale,math.max(7,h/4));
         if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
-        dl:AddText(font,ks,{x+w-width(shortcut,ks)-5,y+h-ks-3},imgui.GetColorU32({.68,.70,.74,1}),shortcut);
+        dl:AddText(font,ks,{x+w-width(shortcut,ks)-5,y+h-ks-3},imgui.GetColorU32({.68,.70,.74,emphasis or 1}),shortcut);
     end);
     imgui.PopFont();
     if not ok then error(err); end
@@ -964,8 +1102,10 @@ local function draw_row(title,offset)
         local e=state.lastExecuted;
         local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=state.navRow==title and state.navSlot==i;
-        local cooling=cooldown_recast(state.cooldownBindings[offset+i]);
-        local a=state.buttonOpacity;
+        local cooling,seconds,ready=action_status(offset+i);
+        local focus=not state.rowEmphasis or state.navRow==title;
+        local emphasis=focus and 1 or .58;
+        local a=state.buttonOpacity*emphasis;
         local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
         local base=flashing and {.45,.34,.13,a} or remembered and (accents[state.theme] or accents[1]) or {.025,.028,.035,a};
         local nc,nv=0,0;
@@ -973,7 +1113,7 @@ local function draw_row(title,offset)
         colour(ImGuiCol_Button,base);
         colour(ImGuiCol_ButtonHovered,{base[1]+.05,base[2]+.05,base[3]+.05,a});
         colour(ImGuiCol_ButtonActive,{.45,.34,.13,a});
-        colour(ImGuiCol_Text,cooling and {1,.3,.3,1} or {.96,.96,.97,1});
+        colour(ImGuiCol_Text,cooling and {1,.65,.3,emphasis} or {.96,.96,.97,emphasis});
         colour(ImGuiCol_Border,selected and {.85,.68,.30,1} or {0,0,0,0});
         if type(ImGuiStyleVar_FrameBorderSize)=='number' and imgui.PushStyleVar and imgui.PopStyleVar then
             imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize,selected and 1 or 0); nv=1;
@@ -1006,11 +1146,12 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling);
+                if state.barLook=='facet' then facet_draw(dl,x,y,w,h,selected or flashing,cooling,ready,a); end
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,nil,emphasis);
             end);
             if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
         end
-        if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name); end
+        if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name..(seconds and seconds>0 and ('\nRecast: '..math.ceil(seconds)..'s') or '')..(ready and '\nRecast finished' or '')); end
         if clicked then execute_slot(title,i); end
     end
 end
@@ -1633,6 +1774,7 @@ end);
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     ws_refresh(false);
+    sample_actions(false);
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
@@ -2026,6 +2168,12 @@ ashita.events.register('d3d_present','decker_draw',function()
             imgui.SameLine(); if imgui.Button('Keep small Decker button'..(state.autoHideMode=='collapse' and ' [selected]' or '')) then state.autoHideMode='collapse'; save_display(); end
             imgui.TextWrapped('First-time setup: select Hide completely only after Decker is working and you know how to reopen it with /decker settings or /decker show.');
             imgui.TextWrapped('/decker settings opens Settings. /decker show reveals macros. /decker hide hides macros. /decker help lists commands.');
+            if imgui.BeginCombo('Action button look',state.barLook) then
+                for _,look in ipairs({'classic','facet'}) do if imgui.Selectable(look,state.barLook==look) then state.barLook=look; save_display(); end end
+                imgui.EndCombo();
+            end
+            local rows={state.rowEmphasis}; if imgui.Checkbox('Emphasise active row',rows) then state.rowEmphasis=rows[1]; save_display(); end
+            imgui.TextWrapped('Facet is an original slanted-button theme inspired by YunaUI. Unsupported drawing APIs retain rectangular buttons.');
             local motion={state.motionEnabled};
             if imgui.Checkbox('Subtle animations (uncheck for reduced motion)',motion) then state.motionEnabled=motion[1]; save_display(); end
             imgui.TextWrapped('Animation is visual-only: selection glow and a brief confirmation line after a macro request. Disabling motion leaves the normal selected/pressed highlights.');
@@ -2134,7 +2282,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if not state.keyAssignmentPage and imgui.CollapsingHeader('Cooldown text colours') then
             imgui.Text('Cooldown text colours (experimental)');
             local cool={state.cooldownEnabled};
-            if imgui.Checkbox('Red macro text when ability/spell is recasting',cool) then state.cooldownEnabled=cool[1]; save_display(); end
+            if imgui.Checkbox('Colour macro text when ability/spell is recasting',cool) then state.cooldownEnabled=cool[1]; save_display(); end
             imgui.TextWrapped('Only explicitly mapped actions are checked. Unmapped buttons stay their normal colour. Red buttons remain clickable. Spell IDs and ability recast timer IDs are different; do not use ability IDs as timer IDs.');
             for i=1,20 do
                 local b=state.cooldownBindings[i];
@@ -2183,6 +2331,13 @@ ashita.events.register('d3d_present','decker_draw',function()
                 end -- key controls enabled
             end -- Controls tab
             if state.settingsTab=='General' and imgui.CollapsingHeader('Book and Set controls') then
+                local ar={state.autoRecasts};
+                if imgui.Checkbox('Detect recasts from macro commands',ar) then state.autoRecasts=ar[1]; observations.actions={}; save_display(); end
+                imgui.TextWrapped('Also enable recast colouring in Controls. Reads quoted spell/ability names; manual bindings take priority. Scripts, auto-translate and WS readiness are not inferred.');
+                local nt={state.nativeTracking};
+                if imgui.Checkbox('Read native book and set (experimental)',nt) then state.nativeTracking=nt[1]; if not nt[1] and state.trackedSource=='native read' then state.trackedSource='manual (native read disabled)'; end; save_display(); end
+                imgui.TextWrapped(observations.source);
+
                 imgui.TextWrapped('20 macro books, each containing 10 macro sets. Equipment sets are separate saved gear presets, not additional macro books.');
                 if state.allowSwitch and validaddr(state.addresses.set_book) then
                     if imgui.BeginCombo('In-game macro book',book_label(state.manualBook or 1)) then
