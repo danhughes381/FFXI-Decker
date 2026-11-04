@@ -15,6 +15,7 @@ local saved, focus, last_zone=nil,nil,nil;
 local tab_enabled=false;
 local context_enabled=false;
 local filter_text=nil;
+local filter_exact=false;
 local tab_captured=false;
 local context_captured=false;
 
@@ -48,7 +49,10 @@ local function alive_monster(entity,i)
     if not actor or actor==0 then return false; end
     if filter_text then
         local name=entity:GetName(i) or '';
-        if not string.find(string.lower(name),filter_text,1,true) then return false; end
+        local lowered=string.lower(name);
+        if filter_exact then
+            if lowered~=filter_text then return false; end
+        elseif not string.find(lowered,filter_text,1,true) then return false; end
     end
     return true;
 end
@@ -207,13 +211,15 @@ ashita.events.register('command','stormtarget_cmd',function(e)
         if cmd=='tab' then tab_enabled=enabled=='on'; tab_captured=false;
         else context_enabled=enabled=='on'; context_captured=false; end
         say(cmd..' interception '..enabled..' (session only)');
-    elseif cmd=='filter' then
+    elseif cmd=='filter' or cmd=='exact' then
         local value=(a[3] or ''):lower();
         filter_text=(value~='' and value~='off') and value or nil;
-        say(filter_text and ('Monster name filter: '..filter_text) or 'Name filter cleared');
+        filter_exact=cmd=='exact' and filter_text~=nil;
+        say(filter_text and ('Monster '..(filter_exact and 'exact-name' or 'substring')..' filter: '..filter_text)
+            or 'Name filter cleared');
     elseif cmd=='status' then
         say('Tab='..tostring(tab_enabled)..'; grave='..tostring(context_enabled)..
-            '; filter='..(filter_text or 'off')..'; no auto-attack/rescue');
+            '; filter='..(filter_text or 'off')..'; mode='..(filter_exact and 'exact' or 'substring')..'; no auto-attack/rescue');
     elseif cmd=='nearest' or cmd=='next' or cmd=='prev' or cmd=='claim'
         or cmd=='back' or cmd=='focus' or cmd=='focusback' then
         local ok,result,err=pcall(select_mode,cmd,false);
@@ -222,7 +228,7 @@ ashita.events.register('command','stormtarget_cmd',function(e)
     else
         say('/stormtarget tab on|off ; context on|off ; status');
         say('/stormtarget next|prev|nearest|claim|back|focus|focusback');
-        say('/stormtarget filter NAME|off (single word, case-insensitive)');
+        say('/stormtarget exact NAME|off or filter NAME|off (single word, case-insensitive)');
     end
 end);
 ashita.events.register('unload','stormtarget_unload',function()
