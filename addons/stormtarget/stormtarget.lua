@@ -1,19 +1,20 @@
--- StormTarget v0.2-dev: opt-in Tab interception, two hotkeys, manual actions only.
+-- StormTarget v0.4-dev: opt-in configurable selection/engage, focus recall and temporary return.
 -- Experimental Ashita v4 addon. No packet injection, automatic attacks or gear changes.
 addon.name='StormTarget';
 addon.author='Storm XI';
-addon.version='0.3.0-dev';
-addon.desc='Opt-in manual monster targeting and nearest-unclaimed selection.';
+addon.version='0.4.0-dev';
+addon.desc='Opt-in two-key monster targeting, native engage, focus and temporary return.';
 require('common');
 local chat=require('chat');
 local ffi=require('ffi');
 local bit=require('bit');
 local MAX_RANGE=30;
-local KEYS={TAB=15,GRAVE=41,F11=87,F12=88,HOME=199,ENDKEY=207,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,Q=16,E=18,R=19,T=20,G=34,V=47,B=48,N=49,M=50};
+local KEYS={TAB=15,GRAVE=41,ENTER=28,F11=87,F12=88,HOME=199,ENDKEY=207,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,Q=16,E=18,R=19,T=20,G=34,V=47,B=48,N=49,M=50};
 local hotkey={cycle=15,context=41};
 local key_name={cycle='TAB',context='GRAVE'};
-local context_mode='resume'; -- resume, claim or engage
+local context_mode='engage'; -- engage, resume, claim, focusback, return
 local last_selected,last_engage=nil,nil;
+local temporary_origin=nil; -- Captured at start of a selection excursion; not an action observer.
 local captured={};
 local saved, focus, last_zone=nil,nil,nil;
 local tab_enabled=false;
@@ -37,7 +38,7 @@ local function zone_guard(party)
     -- A job/zone transition invalidates stale index/server-ID pairs.
     local zone=party:GetMemberZone(0);
     if zone and last_zone and zone~=last_zone then
-        saved=nil; focus=nil; last_selected=nil; last_engage=nil;
+        saved=nil; focus=nil; last_selected=nil; last_engage=nil; temporary_origin=nil;
     end
     last_zone=zone;
 end
@@ -102,7 +103,12 @@ end
 local function set_selected(entity,target,choice,quiet)
     if not still_valid(entity,choice) then return false,'Candidate despawned'; end
     local old=current_identity(entity,target);
-    if old and old.index~=choice.index then saved=old; end
+    if old and old.index~=choice.index then
+        saved=old;
+        -- Anchor the original selection only once, so cycling among adds doesn't
+        -- continually replace the target to which a user can return.
+        if not temporary_origin then temporary_origin={index=old.index,id=old.id}; end
+    end
     target:SetTarget(choice.index,false);
     last_selected={index=choice.index,id=choice.id};
     if not quiet then
@@ -120,7 +126,22 @@ local function select_mode(mode,quiet)
         local old=current_identity(entity,target);
         target:SetTarget(choice.index,false);
         if mode=='back' then saved=old; end
+        if mode=='focusback' then temporary_origin=nil; end
+        last_selected={index=choice.index,id=choice.id};
         if not quiet then say('Selected saved target'); end
+        return true;
+    end
+    if mode=='return' then
+        local choice=temporary_origin;
+        if not still_valid(entity,choice) then
+            temporary_origin=nil;
+            return false,'No valid temporary-target origin';
+        end
+        -- Return is selection only: never attack, never infer successful spell.
+        target:SetTarget(choice.index,false);
+        last_selected={index=choice.index,id=choice.id};
+        temporary_origin=nil;
+        if not quiet then say('Returned to original selected target (no engage)'); end
         return true;
     end
     if mode=='focus' then
@@ -163,6 +184,7 @@ local function engage_identity(identity,quiet)
 end
 local function context_action(mode,quiet)
     if mode=='claim' then return select_mode('claim',quiet); end
+    if mode=='focusback' or mode=='return' then return select_mode(mode,quiet); end
     if mode=='engage' then return engage_identity(nil,quiet); end
     local entity,target,party=managers();
     zone_guard(party);
@@ -184,7 +206,7 @@ local function can_capture()
     return ok and ready;
 end
 local function safe_run(mode)
-    local fn=(mode=='resume' or mode=='engage') and context_action or select_mode;
+    local fn=(mode=='resume' or mode=='engage' or mode=='focusback' or mode=='return') and context_action or select_mode;
     local ok,success,err=pcall(fn,mode,true);
     if not ok then say('Target API error: '..tostring(success)); return false; end
     if not success then say(err or 'Selection unavailable'); return false; end
@@ -247,15 +269,15 @@ ashita.events.register('command','stormtarget_cmd',function(e)
         local name=(a[4] or ''):upper();
         local key=KEYS[name];
         if role~='cycle' and role~='context' then say('Use: /stormtarget bind cycle|context KEY'); return; end
-        if not key then say('Keys: TAB GRAVE F11 F12 HOME ENDKEY INSERT DELETE PAGEUP PAGEDOWN Q E R T G V B N M'); return; end
+        if not key then say('Keys: TAB GRAVE ENTER F11 F12 HOME ENDKEY INSERT DELETE PAGEUP PAGEDOWN Q E R T G V B N M'); return; end
         local other=role=='cycle' and 'context' or 'cycle';
         if hotkey[other]==key then say('Already assigned to '..other); return; end
         captured[hotkey[role]]=nil; hotkey[role]=key; key_name[role]=name;
         say('Assigned '..name..' to '..role..' (session only)');
     elseif cmd=='mode' then
         local mode=(a[3] or ''):lower();
-        if mode~='resume' and mode~='claim' and mode~='engage' then
-            say('Modes: resume | claim | engage'); return;
+        if mode~='resume' and mode~='claim' and mode~='engage' and mode~='focusback' and mode~='return' then
+            say('Modes: engage | resume | claim | focusback | return'); return;
         end
         context_mode=mode; say('Context action is '..mode);
     elseif cmd=='filter' or cmd=='exact' then
@@ -271,19 +293,19 @@ ashita.events.register('command','stormtarget_cmd',function(e)
             ..', remembered engage='..tostring(last_engage~=nil));
     elseif cmd=='nearest' or cmd=='next' or cmd=='prev' or cmd=='claim'
         or cmd=='back' or cmd=='focus' or cmd=='focusback'
-        or cmd=='engage' or cmd=='resume' then
-        local fn=(cmd=='engage' or cmd=='resume') and context_action or select_mode;
+        or cmd=='engage' or cmd=='resume' or cmd=='return' then
+        local fn=(cmd=='engage' or cmd=='resume' or cmd=='return') and context_action or select_mode;
         local ok,result,err=pcall(fn,cmd,false);
         if not ok then say('Target API error: '..tostring(result));
         elseif not result then say(err or 'No target found'); end
     else
         say('/stormtarget tab on|off ; context on|off ; status');
-        say('/stormtarget bind cycle|context KEY ; mode resume|claim|engage');
-        say('/stormtarget next|prev|nearest|claim|back|focus|focusback|engage|resume');
+        say('/stormtarget bind cycle|context KEY ; mode engage|resume|claim|focusback|return');
+        say('/stormtarget next|prev|nearest|claim|back|focus|focusback|return|engage|resume');
         say('/stormtarget exact NAME|off or filter NAME|off (single word, case-insensitive)');
     end
 end);
 ashita.events.register('unload','stormtarget_unload',function()
     tab_enabled=false; context_enabled=false;
-    saved=nil; focus=nil; last_selected=nil; last_engage=nil; captured={};
+    saved=nil; focus=nil; last_selected=nil; last_engage=nil; temporary_origin=nil; captured={};
 end);
