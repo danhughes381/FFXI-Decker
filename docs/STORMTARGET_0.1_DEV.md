@@ -7,7 +7,7 @@
 - **Grave/backtick** (opt-in, key left of 1 on many UK keyboards): select nearest apparently unclaimed monster, with optional name filter. Does **not** claim, attack or cast.
 - Supports manual `/stormtarget nearest|next|prev|claim|back`.
 - `/stormtarget focus` stores current target (no permanent hotkey); `/stormtarget focusback` restores it while entity ID is valid.
-- `/stormtarget filter Fafnir` selects only matching monster names; `/stormtarget filter off` clears it. Filtering currently supports one word; no fuzzy matching or priorities.
+- `/stormtarget filter Fafnir` selects only matching monster names; `/stormtarget filter off` clears it. Filtering currently supports one word; use `/stormtarget exact Fafnir` for an exact case-insensitive name instead of a substring; no fuzzy matching, multiword target names or named priority sets yet.
 - Server IDs and zone changes guard stale targets. Monstrous spawn flag 0x10 replaces unsafe NPC flag 0x02; see tirem/statuslib's monster classification.
 - **No threat estimation, automatic Rescue, auto-Flash, target-of-target, or party-assist implemented.** These require further investigation and live validation.
 
@@ -57,3 +57,6 @@ The targeting approach was informed by existing Ashita examples and monster flag
 
 ## Next steps
 Verify keyboard capture and native fallback first; then add high-confidence focus/assist, additional candidate prioritization and user-facing key preferences. Keep manual selection separate from actions until rescue target detection is reliable.
+
+## Upstream reuse audit
+See [STORMTARGET_REUSE_AUDIT.md](STORMTARGET_REUSE_AUDIT.md) for a source-level comparison with Targeter, ATA, HitPoints and Focus Target. No upstream code was copied. The experiment now includes an explicit exact-name filter; broader features are deferred until the native and addon selection paths pass live tests.
