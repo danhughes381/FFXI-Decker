@@ -170,12 +170,16 @@ ashita.events.register('key_data','stormtarget_hotkeys',function(e)
         return;
     end
     if e.blocked or not no_modifier(held) or not can_capture() then return; end
-    -- Only block the game's original action after the addon has accepted the key.
-    e.blocked=true;
+    -- Fail open: if no usable candidate exists, leave the native key untouched.
+    -- Do not steal normal Tab/confirm behavior when target selection is unavailable.
     if is_tab and not tab_captured then
-        tab_captured=true; safe_run('next');
+        local ok= safe_run('next');
+        if ok then e.blocked=true; tab_captured=true; end
     elseif is_context and not context_captured then
-        context_captured=true; safe_run('claim');
+        local ok= safe_run('claim');
+        if ok then e.blocked=true; context_captured=true; end
+    elseif (is_tab and tab_captured) or (is_context and context_captured) then
+        e.blocked=true;
     end
 end);
 ashita.events.register('key_state','stormtarget_held_suppression',function(e)
