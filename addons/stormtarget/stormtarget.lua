@@ -2,22 +2,25 @@
 -- Experimental Ashita v4 addon. No packet injection, automatic attacks or gear changes.
 addon.name='StormTarget';
 addon.author='Storm XI';
-addon.version='0.2.0-dev';
+addon.version='0.3.0-dev';
 addon.desc='Opt-in manual monster targeting and nearest-unclaimed selection.';
 require('common');
 local chat=require('chat');
 local ffi=require('ffi');
 local bit=require('bit');
 local MAX_RANGE=30;
-local DIK_TAB=15;
-local DIK_GRAVE=41;
+local KEYS={TAB=15,GRAVE=41,F11=87,F12=88,HOME=199,ENDKEY=207,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,Q=16,E=18,R=19,T=20,G=34,V=47,B=48,N=49,M=50};
+local hotkey={cycle=15,context=41};
+local key_name={cycle='TAB',context='GRAVE'};
+local context_mode='resume'; -- resume, claim or engage
+local last_selected,last_engage=nil,nil;
+local captured={};
 local saved, focus, last_zone=nil,nil,nil;
 local tab_enabled=false;
 local context_enabled=false;
 local filter_text=nil;
 local filter_exact=false;
-local tab_captured=false;
-local context_captured=false;
+
 
 local function say(msg) print(chat.header(addon.name)..msg); end
 local function managers()
@@ -34,7 +37,7 @@ local function zone_guard(party)
     -- A job/zone transition invalidates stale index/server-ID pairs.
     local zone=party:GetMemberZone(0);
     if zone and last_zone and zone~=last_zone then
-        saved=nil; focus=nil;
+        saved=nil; focus=nil; last_selected=nil; last_engage=nil;
     end
     last_zone=zone;
 end
@@ -94,13 +97,14 @@ local function current_identity(entity,target)
     return nil;
 end
 local function still_valid(entity,identity)
-    return identity and entity:GetServerId(identity.index)==identity.id;
+    return identity and identity.index and identity.index>0 and entity:GetServerId(identity.index)==identity.id;
 end
 local function set_selected(entity,target,choice,quiet)
     if not still_valid(entity,choice) then return false,'Candidate despawned'; end
     local old=current_identity(entity,target);
     if old and old.index~=choice.index then saved=old; end
     target:SetTarget(choice.index,false);
+    last_selected={index=choice.index,id=choice.id};
     if not quiet then
         say(('Selected %s (%.1f yalms)'):format(entity:GetName(choice.index) or '?',choice.distance or 0));
     end
@@ -136,6 +140,41 @@ local function select_mode(mode,quiet)
     elseif mode=='prev' then index=position and ((position-2)%#list+1) or #list; end
     return set_selected(entity,target,list[index],quiet);
 end
+-- Engagement must be explicitly requested by the user, never inferred from Sleep, Flash or selection.
+-- The command queue means request accepted, not that the server confirmed the switch.
+local function engage_identity(identity,quiet)
+    local entity,target,party=managers();
+    zone_guard(party);
+    if is_busy(target) then return false,'Chat/menu/subtarget active'; end
+    local selected=identity or current_identity(entity,target);
+    if not still_valid(entity,selected) or not alive_monster(entity,selected.index) then
+        return false,'No live monster to engage';
+    end
+    local current=current_identity(entity,target);
+    if not current or current.id~=selected.id then
+        local ok,err=set_selected(entity,target,selected,true);
+        if not ok then return false,err; end
+    end
+    local result=AshitaCore:GetChatManager():QueueCommand(-1,'/attack on');
+    if result==false then return false,'Game command queue rejected /attack on'; end
+    last_engage={index=selected.index,id=selected.id};
+    if not quiet then say('Requested engage; verify battle-target switch in game'); end
+    return true;
+end
+local function context_action(mode,quiet)
+    if mode=='claim' then return select_mode('claim',quiet); end
+    if mode=='engage' then return engage_identity(nil,quiet); end
+    local entity,target,party=managers();
+    zone_guard(party);
+    if is_busy(target) then return false,'Chat/menu/subtarget active'; end
+    if last_engage and still_valid(entity,last_engage) and alive_monster(entity,last_engage.index) then
+        return engage_identity(last_engage,quiet);
+    end
+    if last_selected and still_valid(entity,last_selected) and alive_monster(entity,last_selected.index) then
+        return set_selected(entity,target,last_selected,quiet);
+    end
+    return false,'No remembered live enemy';
+end
 local function can_capture()
     local ok,ready=pcall(function()
         local entity,target,party=managers();
@@ -145,7 +184,8 @@ local function can_capture()
     return ok and ready;
 end
 local function safe_run(mode)
-    local ok,success,err=pcall(select_mode,mode,true);
+    local fn=(mode=='resume' or mode=='engage') and context_action or select_mode;
+    local ok,success,err=pcall(fn,mode,true);
     if not ok then say('Target API error: '..tostring(success)); return false; end
     if not success then say(err or 'Selection unavailable'); return false; end
     return true;
@@ -158,44 +198,35 @@ local function no_modifier(held)
     return true;
 end
 local held={};
--- Initial key events and held-state handling are distinct in Ashita v4.
--- This is explicitly opt-in and is never active in chat, menus or subtargets.
+local function role_for_key(key)
+    if tab_enabled and key==hotkey.cycle then return 'cycle'; end
+    if context_enabled and key==hotkey.context then return 'context'; end
+    return nil;
+end
 ashita.events.register('key_data','stormtarget_hotkeys',function(e)
     if e.key==29 or e.key==157 or e.key==56 or e.key==184
         or e.key==42 or e.key==54 or e.key==219 or e.key==220 then
-        held[e.key]=e.down and true or nil;
-        return;
+        held[e.key]=e.down and true or nil; return;
     end
-    local is_tab=e.key==DIK_TAB and tab_enabled;
-    local is_context=e.key==DIK_GRAVE and context_enabled;
-    if not is_tab and not is_context then return; end
-    if not e.down then
-        if e.key==DIK_TAB then tab_captured=false; else context_captured=false; end
-        return;
-    end
+    if not e.down then captured[e.key]=nil; return; end
+    local role=role_for_key(e.key);
+    if not role then return; end
+    if captured[e.key] then e.blocked=true; return; end
     if e.blocked or not no_modifier(held) or not can_capture() then return; end
-    -- Fail open: if no usable candidate exists, leave the native key untouched.
-    -- Do not steal normal Tab/confirm behavior when target selection is unavailable.
-    if is_tab and not tab_captured then
-        local ok= safe_run('next');
-        if ok then e.blocked=true; tab_captured=true; end
-    elseif is_context and not context_captured then
-        local ok= safe_run('claim');
-        if ok then e.blocked=true; context_captured=true; end
-    elseif (is_tab and tab_captured) or (is_context and context_captured) then
-        e.blocked=true;
+    -- Fail open to native input if no eligible target or selection failed.
+    if safe_run(role=='cycle' and 'next' or context_mode) then
+        captured[e.key]=true; e.blocked=true;
     end
 end);
 ashita.events.register('key_state','stormtarget_held_suppression',function(e)
     if not e.data_raw or (type(e.size)=='number' and e.size<256) then return; end
     local keys=ffi.cast('uint8_t*',e.data_raw);
-    if tab_captured then
-        if keys[DIK_TAB]==0 then tab_captured=false;
-        elseif tab_enabled and can_capture() then keys[DIK_TAB]=0; end
-    end
-    if context_captured then
-        if keys[DIK_GRAVE]==0 then context_captured=false;
-        elseif context_enabled and can_capture() then keys[DIK_GRAVE]=0; end
+    for role,key in pairs(hotkey) do
+        if captured[key] then
+            if keys[key]==0 then captured[key]=nil;
+            elseif (role=='cycle' and tab_enabled or role=='context' and context_enabled)
+                and can_capture() then keys[key]=0; end
+        end
     end
 end);
 ashita.events.register('command','stormtarget_cmd',function(e)
@@ -208,9 +239,25 @@ ashita.events.register('command','stormtarget_cmd',function(e)
         if enabled~='on' and enabled~='off' then
             say('Usage: /stormtarget '..cmd..' on|off'); return;
         end
-        if cmd=='tab' then tab_enabled=enabled=='on'; tab_captured=false;
-        else context_enabled=enabled=='on'; context_captured=false; end
+        if cmd=='tab' then tab_enabled=enabled=='on'; captured[hotkey.cycle]=nil;
+        else context_enabled=enabled=='on'; captured[hotkey.context]=nil; end
         say(cmd..' interception '..enabled..' (session only)');
+    elseif cmd=='bind' then
+        local role=(a[3] or ''):lower();
+        local name=(a[4] or ''):upper();
+        local key=KEYS[name];
+        if role~='cycle' and role~='context' then say('Use: /stormtarget bind cycle|context KEY'); return; end
+        if not key then say('Keys: TAB GRAVE F11 F12 HOME ENDKEY INSERT DELETE PAGEUP PAGEDOWN Q E R T G V B N M'); return; end
+        local other=role=='cycle' and 'context' or 'cycle';
+        if hotkey[other]==key then say('Already assigned to '..other); return; end
+        captured[hotkey[role]]=nil; hotkey[role]=key; key_name[role]=name;
+        say('Assigned '..name..' to '..role..' (session only)');
+    elseif cmd=='mode' then
+        local mode=(a[3] or ''):lower();
+        if mode~='resume' and mode~='claim' and mode~='engage' then
+            say('Modes: resume | claim | engage'); return;
+        end
+        context_mode=mode; say('Context action is '..mode);
     elseif cmd=='filter' or cmd=='exact' then
         local value=(a[3] or ''):lower();
         filter_text=(value~='' and value~='off') and value or nil;
@@ -218,20 +265,25 @@ ashita.events.register('command','stormtarget_cmd',function(e)
         say(filter_text and ('Monster '..(filter_exact and 'exact-name' or 'substring')..' filter: '..filter_text)
             or 'Name filter cleared');
     elseif cmd=='status' then
-        say('Tab='..tostring(tab_enabled)..'; grave='..tostring(context_enabled)..
-            '; filter='..(filter_text or 'off')..'; mode='..(filter_exact and 'exact' or 'substring')..'; no auto-attack/rescue');
+        say('Cycle '..key_name.cycle..'='..tostring(tab_enabled)
+            ..', context '..key_name.context..'='..tostring(context_enabled)
+            ..' ('..context_mode..'), filter='..(filter_text or 'off')
+            ..', remembered engage='..tostring(last_engage~=nil));
     elseif cmd=='nearest' or cmd=='next' or cmd=='prev' or cmd=='claim'
-        or cmd=='back' or cmd=='focus' or cmd=='focusback' then
-        local ok,result,err=pcall(select_mode,cmd,false);
+        or cmd=='back' or cmd=='focus' or cmd=='focusback'
+        or cmd=='engage' or cmd=='resume' then
+        local fn=(cmd=='engage' or cmd=='resume') and context_action or select_mode;
+        local ok,result,err=pcall(fn,cmd,false);
         if not ok then say('Target API error: '..tostring(result));
         elseif not result then say(err or 'No target found'); end
     else
         say('/stormtarget tab on|off ; context on|off ; status');
-        say('/stormtarget next|prev|nearest|claim|back|focus|focusback');
+        say('/stormtarget bind cycle|context KEY ; mode resume|claim|engage');
+        say('/stormtarget next|prev|nearest|claim|back|focus|focusback|engage|resume');
         say('/stormtarget exact NAME|off or filter NAME|off (single word, case-insensitive)');
     end
 end);
 ashita.events.register('unload','stormtarget_unload',function()
     tab_enabled=false; context_enabled=false;
-    saved=nil; focus=nil;
+    saved=nil; focus=nil; last_selected=nil; last_engage=nil; captured={};
 end);
