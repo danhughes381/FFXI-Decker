@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.20-dev';
+addon.version = '1.50.21-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1776,6 +1776,26 @@ ashita.events.register('d3d_present','decker_draw',function()
         if colourStatus then imgui.PopStyleColor(); end
         imgui.SameLine(keysX,0);
         imgui.Text('Active row: '..(state.navRow=='ALT' and 'Lower' or 'Upper'));
+        -- Dedicated high-contrast book indicator: the active book stays prominent
+        -- regardless of the custom title length or the navigation lock state.
+        local bookX=keysX+header_width('Active row: Lower')+28*state.scale;
+        imgui.SameLine(bookX,0);
+        local bookIndicator=('BOOK %02d'):format(book);
+        local bookColor=imgui.PushStyleColor and imgui.PopStyleColor and type(ImGuiCol_Text)=='number';
+        if bookColor then imgui.PushStyleColor(ImGuiCol_Text,{1,.86,.38,1}); end
+        if imgui.GetCursorScreenPos and imgui.GetWindowDrawList and imgui.GetColorU32 then
+            pcall(function()
+                local x,y=pair(imgui.GetCursorScreenPos());
+                if not x then return; end
+                local h=type(imgui.GetTextLineHeight)=='function' and imgui.GetTextLineHeight() or 16;
+                local width=header_width('BOOK 20')+18*state.scale;
+                local dl=imgui.GetWindowDrawList();
+                dl:AddRectFilled({x-8,y-3},{x+width,y+h+3},imgui.GetColorU32({.24,.19,.07,.95}),4);
+                dl:AddRect({x-8,y-3},{x+width,y+h+3},imgui.GetColorU32({.85,.65,.22,1}),4);
+            end);
+        end
+        imgui.Text(bookIndicator);
+        if bookColor then imgui.PopStyleColor(); end
         if #state.names==20 then
             draw_macro_panel();
             draw_row('CTRL',0);
