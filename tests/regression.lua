@@ -484,7 +484,7 @@ test('title-file reader preserves blank slots and rejects malformed or unsupport
 end)
 test('read-only twenty-book title import persists isolated aliases',function()
  local function fixture(prefix) local b=string.rep('\0',24);for i=1,20 do local t=prefix..i;b=b..t..string.rep('\0',16-#t) end;return b end
- local one,two=fixture('Main'),fixture('Extra');local dir=tmp..'/titles';assert(os.execute('mkdir -p '..dir)==0)
+ local one,two=fixture('Main'),fixture('Extra');local dir=tmp..'/titles';local made=os.execute('mkdir -p '..dir);assert(made==0 or made==true)
  for name,bytes in pairs({['mcr.ttl']=one,['mcr_2.ttl']=two}) do local out=assert(io.open(dir..'/'..name,'wb'));out:write(bytes);out:close() end
  ready();s.bookPath=dir;assert(api.importBooks());assert(s.bookNames[1]=='Main1' and s.bookNames[20]=='Main20' and s.bookNames[21]==nil)
  local input=assert(io.open(dir..'/mcr.ttl','rb'));assert(input:read('*a')==one);input:close()
