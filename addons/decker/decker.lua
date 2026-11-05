@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.21-dev';
+addon.version = '1.50.22-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -55,12 +55,13 @@ state.motionEnabled=true; -- Pure draw-only effects; reduced-motion preference, 
 state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after Toggle navigation ends.
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 state.windowPositions={}; state.layoutDirtyAt=nil;
+state.autoConnect=false; state.autoConnectPending=false; state.autoConnectAt=0; state.autoConnectAttempted=false;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
     Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
     StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
-    General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings'},
+    General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','autoConnect'},
 };
 -- First-install defaults also form the profile-isolation boundary.
 profileDefaults.autoHide=false; profileDefaults.autoHideMode='hide';
@@ -113,6 +114,7 @@ local function save_display()
     f:write('glassversion=1\nouteropacity=',state.outerOpacity,'\npanelopacity=',state.panelOpacity,'\nbuttonopacity=',state.buttonOpacity,'\nmacrofont=',state.macroFont:gsub(' ','_'),'\nmacrofontsize=',state.macroFontSize,'\n');
     f:write('theme=',state.theme,'\nscale=',state.scale,'\nwidth=',state.hudWidth,'\nheight=',state.hudHeight,'\ncompact=',state.compactKeys and '1' or '0','\nbook=',state.manualBook or 1,'\nset=',state.trackedSet or 1,'\nopacity=',state.hudOpacity,'\nautohide=',state.autoHide and '1' or '0','\nautohidedelay=',state.autoHideDelay,'\nautohidemode=',state.autoHideMode,'\necholock=',state.echoLock and '1' or '0','\nrowswitchkey=',state.rowSwitchKey,'\nnavmodifier=',state.navModifier,'\nnavmode=',state.stickyNavigation and 'toggle' or 'hold','\nnavenabled=',state.navKeysEnabled and '1' or '0','\nkeybinds=',state.savedKeybinds and '1' or '0','\nackkeys=',state.savedAck and '1' or '0','\n');
     f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
+    f:write('autoconnect=',state.autoConnect and '1' or '0','\n');
     if state.hudPos then f:write('posx=',math.floor(state.hudPos[1]),'\nposy=',math.floor(state.hudPos[2]),'\n'); end
     f:write('statebarenabled=',state.statebarEnabled and '1' or '0','\nstatebarvertical=',state.statebarVertical and '1' or '0','\nstatebarlocked=',state.statebarLocked and '1' or '0','\nstatebaralways=',state.statebarAlways and '1' or '0','\nstatebarscale=',state.statebarScale,'\nstatebaropacity=',state.statebarOpacity,'\nstatebartheme=',state.statebarTheme,'\nstatebarvisibility=',state.statebarVisibility,'\nstatebarselected=',state.statebarSelected or 0,'\n');
     for _,id in ipairs({'hud','statebar','collapsed'}) do
@@ -188,6 +190,7 @@ local function load_display()
         if key=='showscrollbars' then state.showScrollbars=value=='1'; end
         if key=='motionenabled' and (value=='0' or value=='1') then state.motionEnabled=value=='1'; end
         if key=='mappingmode' and (value=='split' or value=='numbers' or value=='functions' or value=='custom') then state.mappingMode=value; end
+        if key=='autoconnect' then state.autoConnect=value=='1'; end
         if key=='positionlocked' then state.positionLocked=value=='1'; end
         if key=='navrow' and (value=='CTRL' or value=='ALT') then state.navRow=value; end
         if key=='posx' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[1]=n; end
@@ -322,6 +325,7 @@ local function refresh_profile()
     state.windowPositions={}; state.layoutDirtyAt=nil;
     state.hudPos=nil; state.keyAssignmentPage=false; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
     state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
+    state.autoConnectPending=false; state.autoConnectAttempted=false; state.autoConnectAt=0;
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
     state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navRepeatAt={}; state.navQueue={}; state.deferredNav={};
@@ -331,6 +335,8 @@ local function refresh_profile()
     state.hudReadySince=nil; state.hudLastActivity=os.clock(); state.hudImmediateHide=false;
     if id then
         load_display(); state.profileReady=true; refresh_book_titles();
+        state.autoConnectPending=state.autoConnect;
+        state.autoConnectAt=os.clock()+2;
         state.navKeysEnabled=state.savedNavEnabled;
         -- Connection gates execution; saved on/off choice applies only after Connect succeeds.
         state.keybinds=false; state.acknowledgeKeys=false;
@@ -715,6 +721,8 @@ local function connect_macros()
         state.keybinds=state.savedKeybinds and state.allowAllClicks;
         state.navKeysEnabled=state.savedNavEnabled;
         state.navToggleActive=false;
+        -- A successful manual connection authorizes future automatic reconnection for this character.
+        if not state.autoConnect then state.autoConnect=true; save_display(); end
     end
 end
 -- Display-only glass renderer. Native buttons retain hit testing, IDs and execution.
@@ -1589,6 +1597,10 @@ end);
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
+    if state.profileReady and state.autoConnectPending and not state.autoConnectAttempted and os.clock()>=state.autoConnectAt then
+        state.autoConnectAttempted=true; state.autoConnectPending=false;
+        if state.phase<4 then connect_macros(); end
+    end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
     if #state.navQueue>0 then
@@ -1776,11 +1788,10 @@ ashita.events.register('d3d_present','decker_draw',function()
         if colourStatus then imgui.PopStyleColor(); end
         imgui.SameLine(keysX,0);
         imgui.Text('Active row: '..(state.navRow=='ALT' and 'Lower' or 'Upper'));
-        -- Dedicated high-contrast book indicator: the active book stays prominent
-        -- regardless of the custom title length or the navigation lock state.
+        -- Dedicated high-contrast macro page indicator distinct from the book name.
         local bookX=keysX+header_width('Active row: Lower')+28*state.scale;
         imgui.SameLine(bookX,0);
-        local bookIndicator=('BOOK %02d'):format(book);
+        local bookIndicator=('PAGE %02d'):format(state.trackedSet or 1);
         local bookColor=imgui.PushStyleColor and imgui.PopStyleColor and type(ImGuiCol_Text)=='number';
         if bookColor then imgui.PushStyleColor(ImGuiCol_Text,{1,.86,.38,1}); end
         if imgui.GetCursorScreenPos and imgui.GetWindowDrawList and imgui.GetColorU32 then
@@ -1788,7 +1799,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 local x,y=pair(imgui.GetCursorScreenPos());
                 if not x then return; end
                 local h=type(imgui.GetTextLineHeight)=='function' and imgui.GetTextLineHeight() or 16;
-                local width=header_width('BOOK 20')+18*state.scale;
+                local width=header_width('PAGE 10')+18*state.scale;
                 local dl=imgui.GetWindowDrawList();
                 dl:AddRectFilled({x-8,y-3},{x+width,y+h+3},imgui.GetColorU32({.24,.19,.07,.95}),4);
                 dl:AddRect({x-8,y-3},{x+width,y+h+3},imgui.GetColorU32({.85,.65,.22,1}),4);
@@ -2048,6 +2059,10 @@ ashita.events.register('d3d_present','decker_draw',function()
             if state.settingsTab=='Controls' then
                 imgui.Text('KEYS AND MACRO CONTROLS');
                 if imgui.Button('Connect to in-game macros##quick') then connect_macros(); end
+            local automatic={state.autoConnect};
+            if imgui.Checkbox('Auto-connect macros after login',automatic) then
+                state.autoConnect=automatic[1]; state.autoConnectPending=false; save_display();
+            end
                 if state.allowAllClicks and state.phase>=4 and #state.names==20 then
                     local enabled={shortcuts_active()};
                     if imgui.Checkbox('Use my assigned keys',enabled) then
