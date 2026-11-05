@@ -509,15 +509,15 @@ test('HUD heading uses the selected book alias or imported game title',function(
  s.bookAliases[2]=nil;s.bookNames[2]='IngameBRD';events.decker_draw();assert(heading:find('Book 2 - IngameBRD',1,true))
  ui.Text=text
 end)
-test('prominent book number indicator follows selected book independently of title',function()
+test('prominent page indicator follows tracked macro set, not book title',function()
  ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0
  local previous=ui.Text;local labels={}
  ui.Text=function(value) labels[#labels+1]=value end
- s.bookAliases[1]='PLD';s.manualBook=1;events.decker_draw()
+ s.bookAliases[1]='PLD';s.manualBook=1;s.trackedSet=1;events.decker_draw()
  assert(labels[#labels]~='BOOK 01' or #labels>0)
- local found=false;for _,value in ipairs(labels) do if value=='BOOK 01' then found=true end end;assert(found,'book one label missing')
- labels={};s.manualBook=9;s.bookAliases[9]='PALADIN';events.decker_draw()
- found=false;for _,value in ipairs(labels) do if value=='BOOK 09' then found=true end end;assert(found,'book nine label missing')
+ local found=false;for _,value in ipairs(labels) do if value=='PAGE 01' then found=true end end;assert(found,'page one label missing')
+ labels={};s.manualBook=9;s.trackedSet=9;s.bookAliases[9]='PALADIN';events.decker_draw()
+ found=false;for _,value in ipairs(labels) do if value=='PAGE 09' then found=true end end;assert(found,'page nine label missing')
  ui.Text=previous
 end)
 test('HUD Macro set and book controls select native books 1-20 with wrapping arrows',function()
@@ -762,6 +762,14 @@ test('drag positions save after settling and flush on unload',function()
  ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
 end)
 
+test('auto-connect permission is per-character and defaults disabled',function()
+ character='AutoConnectFresh';api.refresh()
+ assert(s.autoConnect==false and not s.autoConnectPending)
+ s.autoConnect=true;api.save();s.autoConnect=false;api.load();assert(s.autoConnect)
+ character='AutoConnectOther';api.refresh();assert(not s.autoConnect)
+ character='AutoConnectFresh';api.refresh();assert(s.autoConnect and s.autoConnectPending)
+ character='Salts';api.refresh()
+end)
 test('manual layout save command persists the active character only',function()
  character='ManualLayoutA';api.refresh()
  s.windowPositions={hud={111,222},statebar={333,444},collapsed={555,666}}
