@@ -1309,6 +1309,14 @@ ashita.events.register('command','decker_cmd',function(e)
         else
             state.trackedSet=1; state.trackedSource='default (unverified)'; save_display(); say('Set label reset to 1 (default, not verified).');
         end
+    elseif cmd=='savelayout' then
+        -- Flush the already sampled HUD, StateBar and collapsed positions for this character.
+        if state.profileReady then
+            save_display();
+            say('Saved Decker positions for '..tostring(state.profileId)..'.',true);
+        else
+            say('Cannot save positions until a character is logged in.',true);
+        end
     elseif cmd=='resetbook' then reset_native_book()
     elseif cmd=='switchbook' then select_native_book(tonumber(a[3]))
     elseif cmd=='navon' then state.navKeysEnabled=true; state.savedNavEnabled=true; save_display(); say('Custom set navigation enabled.',true)
@@ -1888,6 +1896,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                         local auto={state.autoHide};
             imgui.Text('Character profile: '..(state.profileId or 'waiting for login'));
             if imgui.Button('Unlock HUD for dragging') then state.hudPos=nil; state.positionLocked=false; save_display(); end
+            imgui.SameLine();
+            if imgui.Button('Save this character layout now') then
+                save_display();
+                state.layoutSaveNotice=state.profileReady and ('Saved for '..tostring(state.profileId)) or 'Log in to save a character layout';
+            end
+            if state.layoutSaveNotice then imgui.TextWrapped(state.layoutSaveNotice); end
             imgui.TextWrapped('Hold mode shows macros while the mod key is down and hides them on release. These inactivity settings apply to Toggle mode.');
             if imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudImmediateHide=false; save_display(); end
             imgui.Text('Hide after activity / inactivity:');
