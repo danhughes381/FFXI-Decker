@@ -851,7 +851,7 @@ test('expanded navigation keys persist and swapped End Right Shift works in phys
  s.navKeysEnabled=false;s.navModifier='RSHIFT';s.rowSwitchKey='END';s.held={}
 end)
 test('current character saved titles auto-detect, refresh renames and avoid ambiguous installs',function()
- local core=AshitaCore.GetMemoryManager;local fs=ashita.fs;local dir=tmp..'/game';assert(os.execute('mkdir -p '..dir..'/USER/00001234')==0)
+ local core=AshitaCore.GetMemoryManager;local fs=ashita.fs;local dir=tmp..'/game';assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..dir..'/USER/00001234')))
  local function titles(name)
   local out=string.rep('\0',24)
   for i=1,20 do local t=i==3 and name or ('Book'..i);out=out..t..string.rep('\0',16-#t) end
@@ -861,7 +861,7 @@ test('current character saved titles auto-detect, refresh renames and avoid ambi
  ashita.fs={get_install_directory=function(_,game)assert(game==1);return dir end}
  ready();s.bookPath='';s.bookNames={};s.bookAliases={};titles('Paladin');assert(api.refreshBooks());assert(api.bookLabel(3)=='Book 3 - Paladin')
  titles('NewPLD');assert(api.refreshBooks() and s.bookNames[3]=='NewPLD');s.bookAliases[3]='Personal';assert(api.bookLabel(3)=='Book 3 - Personal')
- local other=tmp..'/othergame';assert(os.execute('mkdir -p '..other..'/USER/00001234')==0)
+ local other=tmp..'/othergame';assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..other..'/USER/00001234')))
  local f=assert(io.open(dir..'/USER/00001234/mcr.ttl','rb'));local bytes=f:read('*a');f:close();f=assert(io.open(other..'/USER/00001234/mcr.ttl','wb'));f:write(bytes);f:close()
  s.bookPath='';ashita.fs.get_install_directory=function(lang)return lang==3 and other or dir end;assert(not api.refreshBooks() and s.bookPath=='','ambiguous installs must require selection')
  s.bookPath='';ashita.fs.get_install_directory=function()return nil end;assert(not api.refreshBooks())
