@@ -751,6 +751,17 @@ test('drag positions save after settling and flush on unload',function()
  ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
 end)
 
+test('manual layout save command persists the active character only',function()
+ character='ManualLayoutA';api.refresh()
+ s.windowPositions={hud={111,222},statebar={333,444},collapsed={555,666}}
+ events.decker_cmd({command={args=function() return {'/decker','savelayout'} end},blocked=false})
+ s.windowPositions={};api.load()
+ assert(s.windowPositions.hud[1]==111 and s.windowPositions.statebar[2]==444 and s.windowPositions.collapsed[1]==555)
+ character='ManualLayoutB';api.refresh()
+ assert(not s.windowPositions.hud,'another character must not inherit the saved layout')
+ character='ManualLayoutA';api.refresh();assert(s.windowPositions.hud[1]==111)
+ character='Salts';api.refresh()
+end)
 test('assigned keys preference survives disconnected saves, reload and character switches',function()
  character='KeysEnabled';api.refresh()
  s.savedKeybinds=true;s.savedAck=true;s.keybinds=false;s.acknowledgeKeys=false
