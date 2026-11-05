@@ -1,9 +1,9 @@
--- Decker 1.50.18-dev: preserve assigned-key preferences across saves and reloads.
+-- Decker 1.50.20-dev: combined held arrows, book sync and per-character layouts.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.18-dev';
+addon.version = '1.50.20-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -27,6 +27,10 @@ local DIRECT_KEY_OPTIONS={
     {'Minus',12},{'Equals',13},{'Left bracket',26},{'Right bracket',27},
     {'Semicolon',39},{'Apostrophe',40},{'Backslash',43},{'Comma',51},{'Period',52},{'Slash',53}
 };
+-- Shared choices keep UI, saved settings, capture and conflict checks consistent.
+local NAV_KEY_OPTIONS={'RSHIFT','LSHIFT','RCTRL','LCTRL','RALT','LALT','END','HOME','INSERT','DELETE','PAGEUP','PAGEDOWN','CAPSLOCK','SCROLLLOCK','PAUSE','N','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'};
+local NAV_KEYS={RSHIFT=54,LSHIFT=42,RCTRL=157,LCTRL=29,RALT=184,LALT=56,END=207,HOME=199,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,CAPSLOCK=58,SCROLLLOCK=70,PAUSE=197,N=49,F1=59,F2=60,F3=61,F4=62,F5=63,F6=64,F7=65,F8=66,F9=67,F10=68,F11=87,F12=88};
+local ROW_KEYS=NAV_KEYS;
 local DIRECT_NAMES={}; local DIRECT_CODES={};
 for _,item in ipairs(DIRECT_KEY_OPTIONS) do DIRECT_NAMES[item[2]]=item[1]; DIRECT_CODES[item[1]]=item[2]; end
 local function default_direct_keys()
@@ -66,7 +70,7 @@ local function direct_conflict(code,index)
     if state.mappingMode=='split' or state.mappingMode=='custom' or index>0 then for i,k in ipairs(state.directKeys) do if i~=index and k==code then return true; end end end
     -- Avoid keys reserved for navigation while custom navigation is enabled.
     local reserved={ [203]=true,[205]=true,[200]=true,[208]=true,[28]=true,[1]=true,[57]=true };
-    if state.navKeysEnabled and (reserved[code] or code==({RSHIFT=54,LSHIFT=42,END=207,HOME=199})[state.navModifier] or code==({END=207,HOME=199,INSERT=210,DELETE=211,N=49,F9=67,F10=68,F11=87,F12=88})[state.rowSwitchKey]) then return true; end
+    if state.navKeysEnabled and (reserved[code] or code==NAV_KEYS[state.navModifier] or code==ROW_KEYS[state.rowSwitchKey]) then return true; end
     return false;
 end
 -- Display-only preferences saved next to this addon. No macro data or game files are written.
@@ -204,14 +208,14 @@ local function load_display()
         if key=='macrofont' then value=value:gsub('_',' '); end
         if key=='macrofont' and (value=='Arial Bold' or value=='Segoe UI Bold' or value=='Times New Roman Bold' or value=='Default') then state.macroFont=value; end
         if key=='opacity' and n and n>=0.2 and n<=1 then state.hudOpacity=n; end
-        if key=='rowswitchkey' and (value=='END' or value=='HOME' or value=='INSERT' or value=='DELETE' or value=='N' or value=='F9' or value=='F10' or value=='F11' or value=='F12') then state.rowSwitchKey=value; end
+        if key=='rowswitchkey' and ROW_KEYS[value] then state.rowSwitchKey=value; end
         if key=='stickynav' and (value=='0' or value=='1') then state.stickyNavigation=value=='1'; end
         if key=='navmode' and (value=='toggle' or value=='hold') then state.stickyNavigation=value=='toggle'; end
         if key=='navenabled' and (value=='0' or value=='1') then state.savedNavEnabled=value=='1'; end
         if key=='keybinds' and (value=='0' or value=='1') then state.savedKeybinds=value=='1'; end
         if key=='ackkeys' and (value=='0' or value=='1') then state.savedAck=value=='1'; end
         -- Legacy auto-exit preference intentionally ignored: navigation now has only Toggle and Hold modes.
-        if key=='navmodifier' and (value=='END' or value=='HOME' or value=='RSHIFT' or value=='LSHIFT') then state.navModifier=(value=='END' and 'RSHIFT' or value); end
+        if key=='navmodifier' and NAV_KEYS[value] then state.navModifier=value; end
         if key=='theme' and n and n>=1 and n<=4 and n==math.floor(n) then state.theme=n;
         elseif key=='scale' and n and n>=0.7 and n<=1.5 then state.scale=n;
         elseif key=='width' and n and n>=80 and n<=140 then state.hudWidth=n;
@@ -250,7 +254,37 @@ local function import_book_titles()
         local bytes=f:read(345); f:close(); return parse_book_titles(bytes);
     end
     local first,err=read('mcr.ttl',false); if not first then state.bookNameStatus=err; return false; end
-    state.bookNames=first; state.bookNameStatus='Imported saved in-game titles; refresh after saving a rename in game'; save_display(); return true;
+    local changed=false; for i=1,BOOK_COUNT do if state.bookNames[i]~=first[i] then changed=true; break; end end
+    state.bookNames=first; state.bookNameStatus='Imported saved in-game titles; refresh after saving a rename in game'; if changed then save_display(); end; return true;
+end
+local function refresh_book_titles()
+    if not state.profileReady then return false; end
+    if state.bookPath=='' then
+        local ok,id=pcall(function() return AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0); end);
+        if not ok or type(id)~='number' or id<=0 or id>4294967295 or id~=math.floor(id) then return false; end
+        local fs=ashita and ashita.fs;
+        if not fs or type(fs.get_install_directory)~='function' then return false; end
+        local candidates={}; local seen={};
+        for _,lang in ipairs({0,1,2,3}) do
+            local good,root=pcall(fs.get_install_directory,lang,1);
+            if good and type(root)=='string' and root~='' then
+                for _,folder in ipairs({string.format('%x',id),string.format('%08x',id)}) do
+                    local path=root:gsub('[\\/]+$','')..'/USER/'..folder;
+                    local key=path:lower();
+                    if not seen[key] then
+                        seen[key]=true; local f=io.open(path..'/mcr.ttl','rb');
+                        if f then local bytes=f:read(345); f:close(); if parse_book_titles(bytes) then candidates[#candidates+1]=path; end end
+                    end
+                end
+            end
+        end
+        if #candidates~=1 then
+            state.bookNameStatus=#candidates>1 and 'Multiple game folders found; choose this character macro folder below' or 'Saved titles not found automatically; choose this character macro folder below';
+            return false;
+        end
+        state.bookPath=candidates[1];
+    end
+    return import_book_titles();
 end
 local function book_label(book)
     local name=state.bookAliases[book] or state.bookNames[book];
@@ -290,13 +324,13 @@ local function refresh_profile()
     state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
     state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
-    state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navQueue={}; state.deferredNav={};
+    state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navRepeatAt={}; state.navQueue={}; state.deferredNav={};
     state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
     state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
     state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold';
     state.hudReadySince=nil; state.hudLastActivity=os.clock(); state.hudImmediateHide=false;
     if id then
-        load_display(); state.profileReady=true;
+        load_display(); state.profileReady=true; refresh_book_titles();
         state.navKeysEnabled=state.savedNavEnabled;
         -- Connection gates execution; saved on/off choice applies only after Connect succeeds.
         state.keybinds=false; state.acknowledgeKeys=false;
@@ -1017,11 +1051,10 @@ end
 -- When navigation is enabled the chosen modifier is reserved exclusively for
 -- Decker (including its held state) so FFXI cannot also switch its own bar.
 -- Navigation remains opt-in, because reserving Shift affects normal Shift use.
-local NAV_KEYS={RSHIFT=54,LSHIFT=42,END=207,HOME=199};
 local function nav_scan() return NAV_KEYS[state.navModifier] or 54; end
 local function other_modifier_down()
     for _,key in ipairs({29,157,56,184,42,54}) do
-        if key~=nav_scan() and state.held[key] then return true; end
+        if key~=nav_scan() and key~=(ROW_KEYS[state.rowSwitchKey] or 207) and state.held[key] then return true; end
     end
     return false;
 end
@@ -1035,9 +1068,12 @@ end
 -- Navigation is Decker-owned; the game never receives a synthetic held Shift.
 -- In sticky mode tap the modifier once to arm arrows/space/enter, again to exit.
 -- In hold mode arrows/space/enter apply only while the modifier is held.
-local ROW_KEYS={END=207,HOME=199,INSERT=210,DELETE=211,N=49,F9=67,F10=68,F11=87,F12=88};
-local function row_key() return ROW_KEYS[state.rowSwitchKey] or 207; end
+local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
+local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
+local NAV_REPEAT_DELAY=.35;
+local NAV_REPEAT_INTERVAL=.08;
+state.navRepeatAt={};
 local function nav_is_active()
     return state.navKeysEnabled
        and (state.stickyNavigation and state.navToggleActive or
@@ -1049,17 +1085,18 @@ local function nav_clear()
     state.navModifierHeld=false;
     state.navCaptured={};
     state.navPressed={};
+    state.navRepeatAt={};
     state.navPhysicalDown=false;
     state.navPhysicalKeys={}; state.navQueue={}; state.deferredNav={}; state.navSetVerifyFrames=0; state.navSetExpectedFingerprint=nil;
 end
 -- Navigation is queued and run from the UI frame. Set changes are deferred
 -- a few frames so native input state can settle before calling set_page.
-local function nav_command(key)
+local function nav_command(key, repeating)
     if state.guideOpen then return; end -- No real set/page actions during a tutorial.
     state.hudLastActivity=os.clock();
     if key==200 or key==208 then
         state.deferredNav=state.deferredNav or {};
-        state.deferredNav[#state.deferredNav+1]={key=key,frames=4};
+        state.deferredNav[#state.deferredNav+1]={key=key,frames=4,repeating=repeating};
     elseif key==57 or key==row_key() then
         state.navRow=(state.navRow=='CTRL') and 'ALT' or 'CTRL';
         state.navSource='Decker navigation';
@@ -1087,11 +1124,13 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         -- here so navigation works before clicking any macro or focusing HUD.
         if e.down and not state.navCaptured[e.key] then
             state.navCaptured[e.key]=true;
+            if NAV_ARROWS[e.key] then state.navRepeatAt[e.key]=os.clock()+NAV_REPEAT_DELAY; end
             state.navQueue[#state.navQueue+1]=e.key;
             state.hudLastActivity=os.clock();
         elseif not e.down then
             state.navCaptured[e.key]=nil;
             state.navPhysicalKeys[e.key]=false;
+            state.navRepeatAt[e.key]=nil;
         end
     end
 end);
@@ -1127,7 +1166,23 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
         -- Captured keys remain blocked until physically released.
         if active and nowDown and not wasDown and not state.navCaptured[key] then
             state.navCaptured[key]=true;
+            if NAV_ARROWS[key] then state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY; end
             state.navQueue[#state.navQueue+1]=key; state.hudLastActivity=os.clock();
+        end
+        -- Only arrows repeat. Physical polling owns cadence; OS key-repeat
+        -- notifications cannot double-step, and missed frames never burst.
+        if NAV_ARROWS[key] then
+            if active and nowDown and state.navCaptured[key] and not state.guideOpen then
+                local due=state.navRepeatAt[key];
+                if due and os.clock()>=due then
+                    state.navQueue[#state.navQueue+1]={key=key,repeating=true};
+                    state.navRepeatAt[key]=os.clock()+NAV_REPEAT_INTERVAL;
+                elseif not due then
+                    state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY;
+                end
+            else
+                state.navRepeatAt[key]=nil;
+            end
         end
         state.navPhysicalKeys[key]=nowDown;
         if not nowDown then state.navCaptured[key]=nil; state.navPressed[key]=nil; end
@@ -1253,8 +1308,40 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     end
 end);
 ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
+-- Observe book/set commands when Ashita exposes them; do not block native execution.
+local function observe_native_macro_command(args)
+    if type(args)~='table' or type(args[1])~='string' or args[1]:lower()~='/macro' then return false; end
+    local kind=type(args[2])=='string' and args[2]:lower() or '';
+    local value=args[3];
+    if type(value)~='string' or not value:match('^%d+$') then return false; end
+    local n=tonumber(value);
+    if kind=='book' and n>=1 and n<=BOOK_COUNT then
+        if state.manualBook~=n then
+            state.manualBook=n;
+            state.trackedSource='macro book command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    if kind=='set' and n>=1 and n<=10 then
+        if state.trackedSet~=n then
+            state.trackedSet=n;
+            state.trackedSource='macro set command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    return false;
+end
 ashita.events.register('command','decker_cmd',function(e)
-    local a=e.command:args(); if not a[1] or a[1]:lower()~='/decker' then return; end
+    local a=e.command:args();
+    if not a[1] then return; end
+    if a[1]:lower()~='/decker' then
+        if not e.blocked then observe_native_macro_command(a); end
+        return;
+    end
     e.blocked=true;
     local cmd=(a[2] or 'show'):lower();
     if cmd=='debug' then
@@ -1275,6 +1362,13 @@ ashita.events.register('command','decker_cmd',function(e)
             state.trackedSet=n; state.trackedSource='manual'; save_display(); say(('Set display manually anchored to %d.'):format(n));
         else
             state.trackedSet=1; state.trackedSource='default (unverified)'; save_display(); say('Set label reset to 1 (default, not verified).');
+        end
+    elseif cmd=='savelayout' then
+        if state.profileReady then
+            save_display();
+            say('Saved Decker positions for '..tostring(state.profileId)..'.',true);
+        else
+            say('Cannot save positions until a character is logged in.',true);
         end
     elseif cmd=='resetbook' then reset_native_book()
     elseif cmd=='switchbook' then select_native_book(tonumber(a[3]))
@@ -1495,21 +1589,27 @@ end);
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
+    if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
         -- set changes while a native request is unresolved; never advance
         -- trackedSet repeatedly against an unverified game state.
         local queue=state.navQueue; state.navQueue={};
-        for _,key in ipairs(queue) do
-            if key==200 or key==208 then
-                if not state.deferredNav or #state.deferredNav==0 then
-                    nav_command(key);
-                elseif state.debugLog then
-                    say('TRACE navigation: extra set request ignored while prior request is pending');
+        for _,entry in ipairs(queue) do
+            local key=type(entry)=='table' and entry.key or entry;
+            local repeating=type(entry)=='table' and entry.repeating;
+            -- A release, disabled navigation or tutorial cancels pending repeats.
+            if not repeating or (nav_is_active() and state.navPhysicalKeys[key] and not state.guideOpen) then
+                if key==200 or key==208 then
+                    if not state.deferredNav or #state.deferredNav==0 then
+                        nav_command(key,repeating);
+                    elseif state.debugLog then
+                        say('TRACE navigation: extra set request ignored while prior request is pending');
+                    end
+                else
+                    nav_command(key,repeating);
                 end
-            else
-                nav_command(key);
             end
         end
     end
@@ -1518,7 +1618,7 @@ ashita.events.register('d3d_present','decker_draw',function()
         local item=state.deferredNav[1]; item.frames=item.frames-1;
         if item.frames<=0 then
             table.remove(state.deferredNav,1);
-            if not state.navKeysEnabled or state.phase<4 then
+            if not state.navKeysEnabled or state.phase<4 or (item.repeating and (not nav_is_active() or not state.navPhysicalKeys[item.key] or state.guideOpen)) then
                 if state.debugLog then say('TRACE navigation: queued set request cancelled; navigation unavailable'); end
             else
                 navigate_once(item.key);
@@ -1662,6 +1762,16 @@ ashita.events.register('d3d_present','decker_draw',function()
         imgui.SameLine(statusX,0);
         local colourStatus=imgui.PushStyleColor and imgui.PopStyleColor and type(ImGuiCol_Text)=='number';
         if colourStatus then imgui.PushStyleColor(ImGuiCol_Text,active and {1,.25,.25,1} or {1,1,1,1}); end
+        if imgui.GetCursorScreenPos and imgui.GetWindowDrawList and imgui.GetColorU32 then
+            pcall(function()
+                local x,y=pair(imgui.GetCursorScreenPos());
+                if not x then return; end
+                local h=type(imgui.GetTextLineHeight)=='function' and imgui.GetTextLineHeight() or 16;
+                local dl=imgui.GetWindowDrawList();
+                dl:AddRectFilled({x-5,y-2},{x+header_width('UNLOCKED')+5,y+h+2},imgui.GetColorU32(active and {.55,.04,.04,.85} or {.08,.22,.12,.85}),3);
+                dl:AddRect({x-5,y-2},{x+header_width('UNLOCKED')+5,y+h+2},imgui.GetColorU32(active and {1,.35,.35,1} or {.4,.8,.5,1}),3);
+            end);
+        end
         imgui.Text(status);
         if colourStatus then imgui.PopStyleColor(); end
         imgui.SameLine(keysX,0);
@@ -1855,6 +1965,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                         local auto={state.autoHide};
             imgui.Text('Character profile: '..(state.profileId or 'waiting for login'));
             if imgui.Button('Unlock HUD for dragging') then state.hudPos=nil; state.positionLocked=false; save_display(); end
+            imgui.SameLine();
+            if imgui.Button('Save this character layout now') then
+                save_display();
+                state.layoutSaveNotice=state.profileReady and ('Saved for '..tostring(state.profileId)) or 'Log in to save a character layout';
+            end
+            if state.layoutSaveNotice then imgui.TextWrapped(state.layoutSaveNotice); end
             imgui.TextWrapped('Hold mode shows macros while the mod key is down and hides them on release. These inactivity settings apply to Toggle mode.');
             if imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudImmediateHide=false; save_display(); end
             imgui.Text('Hide after activity / inactivity:');
@@ -1942,20 +2058,21 @@ ashita.events.register('d3d_present','decker_draw',function()
                         if imgui.CollapsingHeader('Advanced keys') then
                             imgui.Text('Navigator');
                             if imgui.BeginCombo('Macro visibility mod key',state.navModifier) then
-                                for _,choice in ipairs({'RSHIFT','LSHIFT','END','HOME'}) do
+                                for _,choice in ipairs(NAV_KEY_OPTIONS) do
                                     if imgui.Selectable(choice,state.navModifier==choice) then
+                                        if choice==state.rowSwitchKey then state.rowSwitchKey=state.navModifier; end
                                         state.navModifier=choice; state.navKeysEnabled=false; state.savedNavEnabled=false; nav_clear(); save_display();
                                     end
                                 end
                                 imgui.EndCombo();
                             end
-                            imgui.TextWrapped('Shows the macros and activates arrow navigation. Default: Right Shift.');
+                            imgui.TextWrapped('Shows the macros and activates arrow navigation. Choose different mod and row keys. Default: Right Shift.');
                             if (state.navModifier=='RSHIFT' or state.navModifier=='LSHIFT') and imgui.CollapsingHeader('Windows Shift shortcut help') then
                                 imgui.TextWrapped('Five Shift presses can open Windows Sticky Keys. In Windows Settings, search Sticky keys and turn off its keyboard shortcut. You can also choose HOME as your Decker mod key.');
                             end
                             if imgui.BeginCombo('Switch row key',state.rowSwitchKey) then
-                                for _,choice in ipairs({'END','HOME','INSERT','DELETE','N','F9','F10','F11','F12'}) do
-                                    if imgui.Selectable(choice,state.rowSwitchKey==choice) then state.rowSwitchKey=choice; nav_clear(); save_display(); end
+                                for _,choice in ipairs(NAV_KEY_OPTIONS) do
+                                    if imgui.Selectable(choice,state.rowSwitchKey==choice) then if choice==state.navModifier then state.navModifier=state.rowSwitchKey; end; state.rowSwitchKey=choice; nav_clear(); save_display(); end
                                 end
                                 imgui.EndCombo();
                             end
@@ -1968,7 +2085,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                             imgui.TextWrapped(state.stickyNavigation and 'Tap the mod key to activate; tap again to finish.' or 'Hold the mod key to activate; release to finish.');
                             local nav={state.navKeysEnabled};
                             if imgui.Checkbox('Enable hotkeys##navigation',nav) then state.navKeysEnabled=nav[1]; state.savedNavEnabled=nav[1]; nav_clear(); save_display(); end
-                            imgui.TextWrapped('Enables the mod key, row switching and arrows. Left/Right selects; Up/Down changes set; Enter runs the selection.');
+                            imgui.TextWrapped('Enables the mod key, row switching and arrows. Left/Right selects; Up/Down changes set; hold an arrow to scroll; release to stop. Enter runs the selection.');
                             local echo={state.echoLock};
                             if imgui.Checkbox('Echo macro visibility on/off to chat',echo) then state.echoLock=echo[1]; save_display(); end
                         end
@@ -2039,8 +2156,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.CollapsingHeader('Import saved in-game book names') then
                     local folder={state.bookPath};
                     if imgui.InputText('This character macro folder',folder,1025) then state.bookPath=folder[1]; save_display(); end
-                    imgui.TextWrapped('Paste the exact FFXI USER character folder containing mcr.ttl. Reads titles only; no game files are changed.');
-                    if imgui.Button('Read or refresh book names') then import_book_titles(); end
+                    imgui.TextWrapped('Saved titles are detected from the current character ID when supported. If needed, paste this character FFXI USER folder containing mcr.ttl. Refreshes every 5 seconds; save in-game renames first.');
+                    if imgui.Button('Read or refresh book names') then refresh_book_titles(); end
                     imgui.TextWrapped(state.bookNameStatus);
                 end
                 imgui.TextWrapped('Book selection changes the in-game book. Titles come from saved files, not a live getter. Select a set below after switching books.');
