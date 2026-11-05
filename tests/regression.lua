@@ -509,6 +509,17 @@ test('HUD heading uses the selected book alias or imported game title',function(
  s.bookAliases[2]=nil;s.bookNames[2]='IngameBRD';events.decker_draw();assert(heading:find('Book 2 - IngameBRD',1,true))
  ui.Text=text
 end)
+test('prominent book number indicator follows selected book independently of title',function()
+ ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0
+ local previous=ui.Text;local labels={}
+ ui.Text=function(value) labels[#labels+1]=value end
+ s.bookAliases[1]='PLD';s.manualBook=1;events.decker_draw()
+ assert(labels[#labels]~='BOOK 01' or #labels>0)
+ local found=false;for _,value in ipairs(labels) do if value=='BOOK 01' then found=true end end;assert(found,'book one label missing')
+ labels={};s.manualBook=9;s.bookAliases[9]='PALADIN';events.decker_draw()
+ found=false;for _,value in ipairs(labels) do if value=='BOOK 09' then found=true end end;assert(found,'book nine label missing')
+ ui.Text=previous
+end)
 test('HUD Macro set and book controls select native books 1-20 with wrapping arrows',function()
  ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.navKeysEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0;s.allowSwitch=true;s.macroObject=65536;s.addresses.macro_object=65536;s.addresses.set_book=65536
  local button=ui.Button;local select=ui.Selectable;local cast=ffi.cast;local text=ui.Text;local indices={};local options=0;local setLabel=false
