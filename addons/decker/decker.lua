@@ -1253,8 +1253,41 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     end
 end);
 ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
+-- Track native macro book/set commands exposed to the addon event.
+-- Never block game commands; this is a display-only observation.
+local function observe_native_macro_command(args)
+    if type(args)~='table' or type(args[1])~='string' or args[1]:lower()~='/macro' then return false; end
+    local kind=type(args[2])=='string' and args[2]:lower() or '';
+    local value=args[3];
+    if type(value)~='string' or not value:match('^%d+$') then return false; end
+    local n=tonumber(value);
+    if kind=='book' and n>=1 and n<=BOOK_COUNT then
+        if state.manualBook~=n then
+            state.manualBook=n;
+            state.trackedSource='macro book command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    if kind=='set' and n>=1 and n<=10 then
+        if state.trackedSet~=n then
+            state.trackedSet=n;
+            state.trackedSource='macro set command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    return false;
+end
 ashita.events.register('command','decker_cmd',function(e)
-    local a=e.command:args(); if not a[1] or a[1]:lower()~='/decker' then return; end
+    local a=e.command:args();
+    if not a[1] then return; end
+    if a[1]:lower()~='/decker' then
+        if not e.blocked then observe_native_macro_command(a); end
+        return;
+    end
     e.blocked=true;
     local cmd=(a[2] or 'show'):lower();
     if cmd=='debug' then
