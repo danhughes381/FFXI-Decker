@@ -1,9 +1,9 @@
--- Decker 1.50.19-dev: held arrows, configurable navigation keys and saved book titles.
+-- Decker 1.50.20-dev: combined held arrows, book sync and per-character layouts.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.19-dev';
+addon.version = '1.50.20-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1308,8 +1308,40 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     end
 end);
 ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
+-- Observe book/set commands when Ashita exposes them; do not block native execution.
+local function observe_native_macro_command(args)
+    if type(args)~='table' or type(args[1])~='string' or args[1]:lower()~='/macro' then return false; end
+    local kind=type(args[2])=='string' and args[2]:lower() or '';
+    local value=args[3];
+    if type(value)~='string' or not value:match('^%d+$') then return false; end
+    local n=tonumber(value);
+    if kind=='book' and n>=1 and n<=BOOK_COUNT then
+        if state.manualBook~=n then
+            state.manualBook=n;
+            state.trackedSource='macro book command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    if kind=='set' and n>=1 and n<=10 then
+        if state.trackedSet~=n then
+            state.trackedSet=n;
+            state.trackedSource='macro set command (unverified)';
+            state.pendingRefreshFrames=3;
+            save_display();
+        end
+        return true;
+    end
+    return false;
+end
 ashita.events.register('command','decker_cmd',function(e)
-    local a=e.command:args(); if not a[1] or a[1]:lower()~='/decker' then return; end
+    local a=e.command:args();
+    if not a[1] then return; end
+    if a[1]:lower()~='/decker' then
+        if not e.blocked then observe_native_macro_command(a); end
+        return;
+    end
     e.blocked=true;
     local cmd=(a[2] or 'show'):lower();
     if cmd=='debug' then
@@ -1330,6 +1362,13 @@ ashita.events.register('command','decker_cmd',function(e)
             state.trackedSet=n; state.trackedSource='manual'; save_display(); say(('Set display manually anchored to %d.'):format(n));
         else
             state.trackedSet=1; state.trackedSource='default (unverified)'; save_display(); say('Set label reset to 1 (default, not verified).');
+        end
+    elseif cmd=='savelayout' then
+        if state.profileReady then
+            save_display();
+            say('Saved Decker positions for '..tostring(state.profileId)..'.',true);
+        else
+            say('Cannot save positions until a character is logged in.',true);
         end
     elseif cmd=='resetbook' then reset_native_book()
     elseif cmd=='switchbook' then select_native_book(tonumber(a[3]))
@@ -1926,6 +1965,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                         local auto={state.autoHide};
             imgui.Text('Character profile: '..(state.profileId or 'waiting for login'));
             if imgui.Button('Unlock HUD for dragging') then state.hudPos=nil; state.positionLocked=false; save_display(); end
+            imgui.SameLine();
+            if imgui.Button('Save this character layout now') then
+                save_display();
+                state.layoutSaveNotice=state.profileReady and ('Saved for '..tostring(state.profileId)) or 'Log in to save a character layout';
+            end
+            if state.layoutSaveNotice then imgui.TextWrapped(state.layoutSaveNotice); end
             imgui.TextWrapped('Hold mode shows macros while the mod key is down and hides them on release. These inactivity settings apply to Toggle mode.');
             if imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then state.autoHide=auto[1]; state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudImmediateHide=false; save_display(); end
             imgui.Text('Hide after activity / inactivity:');
