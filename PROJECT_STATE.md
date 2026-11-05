@@ -75,3 +75,13 @@ Changed code/tests, CHANGELOG, DECISIONS, LESSONS_LEARNED and this file; added d
 No updater manifest, channel, tag or public release changed. Readiness #3 remains open. Next: install this PR's manual candidate, connect, test Hold/Toggle tap/hold/release and Up/Down native set changes at real frame rates; swap End/Right Shift and reload; confirm current-character saved titles and status layout. Record live evidence before promotion.
 
 GitHub review: [draft PR #16](https://github.com/danhughes381/FFXI-Decker/pull/16). Exact tested source commit: [6dc079f](https://github.com/danhughes381/FFXI-Decker/commit/6dc079f2dccff11c7fdfb7a980061e1597cd6a7d). Remote tree equals local tested tree `07b6d9637f68442f1a790c2041a23521cff67ed5`. Manual ZIP is in this branch under dist/test-only; SHA-256 `9d81c189fb6aca569c732a6c7393f20902f8c777a51a104c55c758b6a2a86e24`.
+
+## Published combined Decker v1.50.20-dev — 5 November 2026
+
+Owner directed consolidation and in-game updater publication. [PR #22](https://github.com/danhughes381/FFXI-Decker/pull/22) merged into main as `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0`; addon `addons/decker/decker.lua` now declares `1.50.20-dev`. Includes v1.50.19 held-arrow repeat (350ms initial, 80ms repeat), expanded keys and automatic book title discovery, plus observed `/macro book` / `/macro set` display synchronisation and manual per-character layout saving (`/decker savelayout` / Settings button). Existing automatic layout save and profile isolation preserved. Book commands executed inside the native game may not be exposed through Ashita command events; this remains unverified live.
+
+[Validation run 42017923455](https://github.com/danhughes381/FFXI-Decker/actions/runs/42017923455) passed Lua 5.4, LuaJIT, 77 mocked regression groups and source ZIP checks. SHA-256 of tested addon: `129be84f87d03c8910da483bb155ab8d19281688b4a886394ac94deccb14f53c`.
+
+Stable and Development manifests on main, the `development` branch and the actual legacy Development updater path `dev/decker-v1.49.5-integration/updates/development.txt` all point to immutable merge commit `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0` and the matching SHA-256 above. Published in-game update; no separate GitHub Release/tag/ZIP was created. Live install/reload, actual native macro book display and per-character position restoration require owner acceptance in Ashita. Prior character CFG files must be preserved.
+
+Next: in-game update via Decker Settings > Updates, then test held arrow release and book/set changes, assign different HUD/StateBar coordinates on Peppa and Salts, run `/decker savelayout`, reload/restart and verify both restore correctly. Readiness issue #3 is not closed.
