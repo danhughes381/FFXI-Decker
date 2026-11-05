@@ -30,6 +30,24 @@ local passed=0
 local function test(name,fn) fn();passed=passed+1;print('PASS '..name) end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
 api.refresh()
+test('native macro command updates Decker book and set display only',function()
+    local function send(command,blocked)
+        local pieces={};for word in command:gmatch('%S+') do pieces[#pieces+1]=word end
+        local e={command={args=function() return pieces end},blocked=blocked or false}
+        events.decker_cmd(e)
+        return e
+    end
+    s.manualBook=1;s.trackedSet=1;s.pendingRefreshFrames=0
+    local e=send('/macro book 9')
+    assert(not e.blocked and s.manualBook==9 and s.pendingRefreshFrames==3)
+    assert(s.trackedSource=='macro book command (unverified)')
+    e=send('/macro set 4')
+    assert(not e.blocked and s.trackedSet==4 and s.pendingRefreshFrames==3)
+    send('/macro book 21');assert(s.manualBook==9)
+    send('/macro book no');assert(s.manualBook==9)
+    send('/macro book 2',true);assert(s.manualBook==9)
+    send('/MACRO BOOK 1');assert(s.manualBook==1)
+end)
 test('first install: safe defaults and Quick Setup',function() assert(s.profileId=='1_Salts' and not s.keybinds and not s.autoHide and s.settingsTab=='Controls' and s.mappingMode=='numbers') end)
 test('profile switching isolates all settings',function()
  s.theme=4;s.scale=1.4;s.statebarSelected=3;s.statebarHotkeys={87};s.statebarHotkeysEnabled=true;s.savedNavEnabled=true;s.navQueue={200};s.names={'stale'};api.save();character='Pepper';api.refresh()
