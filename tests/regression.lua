@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -935,6 +935,90 @@ test('status badge draws without changing header columns or font',function()
  ui.GetWindowDrawList=function()return {AddRectFilled=function(_,a,b)assert(b[1]>a[1]);fill=fill+1 end,AddRect=function()border=border+1 end}end
  events.decker_draw();assert(fill>0 and border>0)
  ui.GetCursorScreenPos=pos;ui.GetWindowDrawList=draw;ui.GetColorU32=col
+end)
+
+test('active native target selection owns arrows and Enter, including held key transitions',function()
+ local original=AshitaCore.GetMemoryManager
+ local sub,action=0,0
+ AshitaCore.GetMemoryManager=function()
+  local mm=original()
+  mm.GetTarget=function() return {GetIsSubTargetActive=function() return sub end,
+   GetActionTargetActive=function() return action end} end
+  return mm
+ end
+ for _,hold in ipairs({false,true}) do
+  repeat_setup();s.visible=true;s.stickyNavigation=not hold
+  local e={key=28,down=true}
+  if hold then physical_keys({54}) end
+  events.decker_custom_set_navigation(e);assert(e.blocked)
+  if hold then action=1 else sub=1 end
+  events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
+  assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
+  physical_keys({54})
+  for _,key in ipairs({200,208,28,156,1}) do
+   local e={key=key,down=true}
+   events.decker_custom_set_navigation(e);assert(not e.blocked,'target key swallowed')
+   assert(physical_keys({54,key})[key]==128,'target key cleared in held-state path')
+   assert(#s.navQueue==0 and #s.deferredNav==0)
+   if key~=28 then physical_keys({54}) else break end
+  end
+  sub,action=0,0
+  assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
+  physical_keys({54})
+  assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
+  physical_keys({})
+ end
+ AshitaCore.GetMemoryManager=original
+ s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false
+end)
+
+test('Classic 75 layout follows main job, preserves custom slots and gates unsupported keys',function()
+ ready();s.classic75=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.held={};s.suppressed={}
+ local original=AshitaCore.GetMemoryManager
+ local job,level=7,75
+ player.GetMainJob=function() return job end;player.GetMainJobLevel=function() return level end
+ player.GetSubJob=function() return 13 end;player.GetSubJobLevel=function() return 37 end
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetParty=function() return {GetMemberServerId=function() return 1 end} end
+  return mm
+ end
+ local custom=s.statebarSlots
+ assert(api.hotkey(64)==1 and api.hotkey(66)==nil and api.hotkey(88)==nil)
+ assert(api.request(5) and requested[#requested]=='/lac fwd pld defence none')
+ job=5;assert(api.hotkey(88)==6 and api.request(6) and requested[#requested]=='/lac set Convert 8')
+ assert(api.request(3) and requested[#requested]=='/lac fwd rdm casting accuracy')
+ job=4;assert(api.request(6) and requested[#requested]=='/lac fwd blm casting burst')
+ job=3;assert(api.request(2) and requested[#requested]=='/lac fwd whm mdt')
+ job=13;assert(api.request(4) and requested[#requested]=='/lac fwd nin defence fire')
+ job=10;assert(#api.classic.slots()==6 and api.hotkey(64)==nil and not api.request(1))
+ job,level=7,74;assert(api.hotkey(64)==nil and not api.request(1))
+ job=0;assert(#api.classic.slots()==0)
+ api.save();s.classic75=false;api.load();assert(s.classic75)
+ s.classic75=false;assert(#s.statebarSlots==#custom)
+ AshitaCore.GetMemoryManager=original
+end)
+
+test('Classic 75 saved readback uses character, job and PLD subjob scope',function()
+ ready()
+ local original,install=AshitaCore.GetMemoryManager,AshitaCore.GetInstallPath
+ local job,sub,id=7,13,1
+ player.GetMainJob=function() return job end;player.GetMainJobLevel=function() return 75 end
+ player.GetSubJob=function() return sub end;player.GetSubJobLevel=function() return 37 end
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetParty=function() return {GetMemberServerId=function() return id end} end
+  return mm
+ end
+ AshitaCore.GetInstallPath=function() return tmp end
+ os.execute('mkdir -p '..tmp..'/addons/aegis/aegis '..tmp..'/config/addons/aegis/1/profiles/PLD '..tmp..'/config/addons/aegis/1/profiles/BLM')
+ local function write(path,data) local f=assert(io.open(tmp..path,'wb'));f:write(data);f:close() end
+ write('/addons/aegis/aegis/swap_modes.lua','return { decode=function(raw,scope) if raw==scope then return {enabled=true} end end }')
+ write('/config/addons/aegis/1/profiles/PLD/swap_1_7_75_13_37.aegis','1_7_75_13_37')
+ write('/config/addons/aegis/1/profiles/BLM/swap_1_4_75_shared_subjobs.aegis','1_4_75_shared_subjobs')
+ assert(api.classic.saved_modes().enabled)
+ sub=1;assert(api.classic.saved_modes()==nil)
+ job=4;assert(api.classic.saved_modes().enabled)
+ id=2;assert(api.classic.saved_modes()==nil)
+ AshitaCore.GetMemoryManager=original;AshitaCore.GetInstallPath=install
 end)
 
 os.execute('rm -r '..tmp)

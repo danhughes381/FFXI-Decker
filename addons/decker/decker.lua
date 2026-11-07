@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.23-dev';
+addon.version = '1.50.24-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -40,6 +40,7 @@ state.directKeys=default_direct_keys();
 state.settingsTab='Controls'; state.statebarEnabled=false; state.statebarVertical=false; state.statebarLocked=false; state.statebarAlways=true; state.statebarScale=1.0; state.statebarOpacity=1; state.statebarTheme=1; state.statebarVisibility='always'; state.statebarSlots={{row='CTRL',slot=1},{row='CTRL',slot=2},{row='CTRL',slot=3},{row='ALT',slot=1}};
 state.statebarOpacity=1.0; state.statebarTheme=1; state.statebarVisibility='always'; state.profileDiagnostic='Not checked'; state.statebarSelected=0;
 state.statebarHotkeys={}; state.statebarHotkeysEnabled=false; state.statebarActionMode='current';
+state.classic75=false;
 state.mappingMode='numbers'; state.positionLocked=false; state.hudPos=nil; state.profileId=nil; state.profileReady=false; state.lastProfileCheck=0;
 local function copy_value(v)
     if type(v)~='table' then return v; end
@@ -60,7 +61,7 @@ local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
     Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
-    StateBar={'statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
+    StateBar={'classic75','statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
     General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','autoConnect'},
 };
 -- First-install defaults also form the profile-isolation boundary.
@@ -143,6 +144,7 @@ local function save_display()
         local pos=state.windowPositions[id];
         if pos then f:write(id,'posx=',pos[1],'\n',id,'posy=',pos[2],'\n'); end
     end
+    f:write('classic75=',state.classic75 and '1' or '0','\n');
     f:write('statebarcount=',#state.statebarSlots,'\n');
     f:write('statebarhotkeysenabled=',state.statebarHotkeysEnabled and '1' or '0','\n');
     for i,b in ipairs(state.statebarSlots) do f:write('statebar',i,'=',b.row,':',b.slot,'\n'); f:write('statebarhotkey',i,'=',state.statebarHotkeys[i] or 0,'\n'); f:write('statebartype',i,'=',b.kind or 'state','\n'); f:write('statebarcommand',i,'=',(b.command or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebarsource',i,'=',b.source or 'macro','\n'); f:write('statebarlabel',i,'=',(b.label or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
@@ -175,6 +177,7 @@ local function load_display()
                 state.windowPositions[id][key==id..'posx' and 1 or 2]=n;
             end
         end
+        if key=='classic75' then state.classic75=value=='1'; end
         if key=='statebarcount' and n and n>=0 and n<=12 and n==math.floor(n) then state.statebarSlots={}; end
         local ti=key and tonumber(key:match('^statebartype(%d+)$'));
         local xi=key and tonumber(key:match('^statebarcommand(%d+)$'));
@@ -374,7 +377,7 @@ local function refresh_profile()
         -- Connection gates execution; saved on/off choice applies only after Connect succeeds.
         state.keybinds=false; state.acknowledgeKeys=false;
     end
-    state.held={}; state.suppressed={};
+    state.held={}; state.suppressed={}; state.nativeNavHeld={};
 end
 -- Restore user-approved navigation at startup; native macro execution still requires explicit Connect.
 state.navKeysEnabled=state.savedNavEnabled;
@@ -706,6 +709,83 @@ local function execute_slot(row,slot)
     return called;
 end
 
+-- Optional Classic 75 presets leave the existing character bar intact.
+local classic = { keys={64,65,67,68,87,88}, layouts={}, empty={} };
+classic.jobs={'WAR','MNK','WHM','BLM','RDM','THF','PLD','DRK','BST','BRD','RNG','SAM','NIN','DRG','SMN','BLU','COR','PUP','DNC','SCH'};
+classic.special={
+    PLD={{'Accuracy','accuracy','base','accuracy'},{'Kite','kite','kite',true},{'Enmity'}},
+    BLM={{'Landing','casting accuracy','casting','accuracy'},{'Damage','casting damage','casting','damage'},{'Burst','casting burst','casting','burst'}},
+    WHM={{'Landing'},{'Cure Efficiency'},{'Low Enmity'}},
+    NIN={{'Accuracy','accuracy','base','accuracy'},{'Fire','defence fire','defence','fire'},{'Evasion','defence evasion','defence','evasion'}},
+    RDM={{'Landing','casting accuracy','casting','accuracy'},{'Fire','defence fire','defence','fire'},{'Convert Prep','/lac set Convert 8'}},
+};
+classic.planned={
+    WAR={'Accuracy','Attack TP','Enmity'}, MNK={'Accuracy','Counter Tank','Evasion'},
+    THF={'Accuracy','TH Tag','Evasion'}, DRK={'Accuracy','Attack TP','Stun Recast'},
+    BST={'Charm','Pet Tank','Master Melee'}, BRD={'Song Landing','Buff Support','Pull Defence'},
+    RNG={'Ranged Acc','Ranged Attack','Low Enmity'}, SAM={'Accuracy','Store TP','WS Accuracy'},
+    DRG={'Accuracy','Jump TP','Healing Breath'}, SMN={'Pact Landing','Perpetuation','Pact Gear'},
+    BLU={'Spell Landing','Physical Blue','Magical Blue'}, COR={'Ranged Acc','Roll Support','Quick Draw'},
+    PUP={'Master Acc','Frame Gear','Overload'}, DNC={'Step Accuracy','Waltz Potency','Evasion'},
+    SCH={'Spell Landing','Helix Potency','Light Support'},
+};
+for _,job in ipairs(classic.jobs) do
+    local jobModes=classic.special[job];
+    local planned=classic.planned[job];
+    local options=jobModes or {{planned[1]},{planned[2]},{planned[3]}};
+    local entries={{'PDT','pdt','defence','pdt'},{'MDT','mdt','defence','mdt'},
+        options[1],options[2],{'Clear Defence','defence none','defence','none'},options[3]};
+    local layout={};
+    for i,entry in ipairs(entries) do
+        local verb=jobModes and entry[2];
+        local command=verb and (verb:sub(1,1)=='/' and verb or '/lac fwd '..job:lower()..' '..verb);
+        layout[i]={row='CTRL',slot=1,label=entry[1],source='command',command=command or nil,
+            axis=entry[3],value=entry[4],job=job,kind='utility'};
+    end
+    classic.layouts[job]=layout;
+end
+function classic.identity()
+    if not state.profileReady then return; end
+    local ok,id,job,level,sub,sublvl=pcall(function()
+        local mm=AshitaCore:GetMemoryManager();
+        local player,party=mm:GetPlayer(),mm:GetParty();
+        return party:GetMemberServerId(0),player:GetMainJob(),player:GetMainJobLevel(),player:GetSubJob(),player:GetSubJobLevel();
+    end);
+    if ok and type(id)=='number' and id>0 and classic.jobs[job] and type(level)=='number' and level>0
+        and type(sub)=='number' and type(sublvl)=='number' then
+        return classic.jobs[job],level,id,job,sub,sublvl;
+    end
+end
+function classic.slots()
+    if not state.classic75 then return state.statebarSlots,state.statebarHotkeys; end
+    local job,level=classic.identity();
+    return classic.layouts[job] or classic.empty,classic.keys,job,level;
+end
+function classic.available(button,job,level)
+    return button and button.command and button.job==job and level==75;
+end
+function classic.saved_modes()
+    local job,level,id,jobId,sub,sublvl=classic.identity();
+    if level~=75 or not classic.special[job] then return nil; end
+    local scope=job=='PLD' and table.concat({id,jobId,level,sub,sublvl},'_')
+        or table.concat({id,jobId,level,'shared_subjobs'},'_');
+    local t=os.clock();
+    if classic.scope==scope and t<(classic.readAt or 0) then return classic.saved; end
+    classic.scope=scope; classic.readAt=t+.5; classic.saved=nil;
+    local ok,result=pcall(function()
+        local root=AshitaCore:GetInstallPath():gsub('\\','/'):gsub('/+$','');
+        if classic.root~=root or not classic.modes then
+            classic.modes=dofile(root..'/addons/aegis/aegis/swap_modes.lua'); classic.root=root;
+        end
+        local f=io.open(root..'/config/addons/aegis/'..id..'/profiles/'..job..'/swap_'..scope..'.aegis','rb');
+        if not f then return; end
+        local raw=f:read(1025); f:close();
+        return classic.modes.decode(raw,scope);
+    end);
+    if ok then classic.saved=result; end
+    return classic.saved;
+end
+
 -- Single validated command only: no Lua, script runners, command chaining or chat.
 local function valid_command(command)
     if type(command)~='string' or #command>240 or command:find('[%c;|]') then return false; end
@@ -714,6 +794,12 @@ local function valid_command(command)
     local duration=tonumber(command:lower():match('^/lac set convert (%d+)$'));
     if duration then return duration>=1 and duration<=15; end
     local profile,operation=command:match('^/lac fwd ([a-z]+) (.+)$');
+    if profile=='pld' or profile=='tank' or profile=='nin' or profile=='rdm' or profile=='blm' or profile=='whm' then
+        if operation=='pdt' or operation=='mdt' or operation=='defence none' then return true; end
+    end
+    if profile=='tank' or profile=='rdm' then
+        if operation=='casting accuracy' then return true; end
+    end
     if profile=='tank' or profile=='nin' or profile=='rdm' or profile=='pld' then
         if operation=='pdt' or operation=='mdt' or operation=='accuracy' or operation=='auto'
             or operation=='kite' or operation=='ws normal' or operation=='ws accuracy' then return true; end
@@ -730,13 +816,19 @@ local function valid_command(command)
 end
 local function request_statebar(i)
     if state.guideOpen then return false; end -- Guide cannot fire StateBar commands or macros.
-    local b=state.statebarSlots[i]; if not b or not state.profileReady then return false; end
+    local slots,_,job,level=classic.slots();
+    local b=slots[i]; if not b or not state.profileReady then return false; end
+    if state.classic75 and not classic.available(b,job,level) then return false; end
     local requested=false;
     if b.source=='command' then
         if not state.allowAllClicks or not valid_command(b.command) then state.clickSummary='StateBar command blocked: connect and use a supported single command.'; return false; end
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
     else requested=execute_slot(b.row,b.slot); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
+    if requested and state.classic75 then
+        classic.readAt=0;
+        state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
+    end
     if requested and b.kind~='utility' then state.statebarSelected=i; save_display(); end
     return requested;
 end
@@ -1128,6 +1220,20 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
+local selector={methods={'GetIsSubTargetActive','GetActionTargetActive'}};
+function selector.active()
+    local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
+    if not ok or not target then return false; end
+    for _,method in ipairs(selector.methods) do
+        local read,flag=pcall(function() return target[method](target); end);
+        if read and (flag==true or (type(flag)=='number' and flag>0)) then return true; end
+    end
+    return false;
+end
+function selector.yield_navigation()
+    state.navQueue={}; state.deferredNav={};
+    state.navRepeatAt={}; state.navPhysicalKeys={};
+end
 local NAV_REPEAT_DELAY=.35;
 local NAV_REPEAT_INTERVAL=.08;
 state.navRepeatAt={};
@@ -1174,6 +1280,17 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         return;
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
+    state.nativeNavHeld=state.nativeNavHeld or {};
+    if selector.active() or state.nativeNavHeld[e.key] then
+        selector.yield_navigation();
+        if state.navCaptured[e.key] then
+            e.blocked=true;
+            if not e.down then state.navCaptured[e.key]=nil; end
+        else
+            state.nativeNavHeld[e.key]=e.down and true or nil;
+        end
+        return;
+    end
     if nav_is_active() or state.navCaptured[e.key] then
         e.blocked=true;
         -- Some clients deliver the first arrow press through key_data before
@@ -1196,7 +1313,8 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
-    if state.navKeysEnabled and state.stickyNavigation
+    local targeting=state.navKeysEnabled and selector.active();
+    if state.navKeysEnabled and not targeting and state.stickyNavigation
             and physicalDown and not state.navPhysicalDown and not other_modifier_down() then
         state.navToggleActive=not state.navToggleActive; state.hudLastActivity=os.clock(); state.hudForceReveal=true;
         if state.echoLock then
@@ -1216,34 +1334,44 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
              (not state.stickyNavigation and physicalDown))
         and not other_modifier_down();
     if state.navKeysEnabled then ptr[modifier]=0; end
+    if targeting then selector.yield_navigation(); end
+    state.nativeNavHeld=state.nativeNavHeld or {};
     local activeKeys={}; for key,_ in pairs(NAV_ACTIONS) do activeKeys[key]=true; end; activeKeys[row_key()]=true;
     for key,_ in pairs(activeKeys) do
         local wasDown=state.navPhysicalKeys[key] or false;
         local nowDown=ptr[key]~=0;
-        -- Captured keys remain blocked until physically released.
-        if active and nowDown and not wasDown and not state.navCaptured[key] then
-            state.navCaptured[key]=true;
-            if NAV_ARROWS[key] then state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY; end
-            state.navQueue[#state.navQueue+1]=key; state.hudLastActivity=os.clock();
-        end
-        -- Only arrows repeat. Physical polling owns cadence; OS key-repeat
-        -- notifications cannot double-step, and missed frames never burst.
-        if NAV_ARROWS[key] then
-            if active and nowDown and state.navCaptured[key] and not state.guideOpen then
-                local due=state.navRepeatAt[key];
-                if due and os.clock()>=due then
-                    state.navQueue[#state.navQueue+1]={key=key,repeating=true};
-                    state.navRepeatAt[key]=os.clock()+NAV_REPEAT_INTERVAL;
-                elseif not due then
-                    state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY;
-                end
+        if targeting or state.nativeNavHeld[key] then
+            if state.navCaptured[key] then
+                if nowDown then ptr[key]=0; else state.navCaptured[key]=nil; end
             else
-                state.navRepeatAt[key]=nil;
+                state.nativeNavHeld[key]=nowDown and true or nil;
             end
+        else
+            -- Captured keys remain blocked until physically released.
+            if active and nowDown and not wasDown and not state.navCaptured[key] then
+                state.navCaptured[key]=true;
+                if NAV_ARROWS[key] then state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY; end
+                state.navQueue[#state.navQueue+1]=key; state.hudLastActivity=os.clock();
+            end
+            -- Only arrows repeat. Physical polling owns cadence; OS key-repeat
+            -- notifications cannot double-step, and missed frames never burst.
+            if NAV_ARROWS[key] then
+                if active and nowDown and state.navCaptured[key] and not state.guideOpen then
+                    local due=state.navRepeatAt[key];
+                    if due and os.clock()>=due then
+                        state.navQueue[#state.navQueue+1]={key=key,repeating=true};
+                        state.navRepeatAt[key]=os.clock()+NAV_REPEAT_INTERVAL;
+                    elseif not due then
+                        state.navRepeatAt[key]=os.clock()+NAV_REPEAT_DELAY;
+                    end
+                else
+                    state.navRepeatAt[key]=nil;
+                end
+            end
+            state.navPhysicalKeys[key]=nowDown;
+            if not nowDown then state.navCaptured[key]=nil; state.navPressed[key]=nil; end
+            if (active or state.navCaptured[key]) and nowDown then ptr[key]=0; end
         end
-        state.navPhysicalKeys[key]=nowDown;
-        if not nowDown then state.navCaptured[key]=nil; state.navPressed[key]=nil; end
-        if (active or state.navCaptured[key]) and nowDown then ptr[key]=0; end
     end
 end);
 -- Use native ALT/CTRL + up/down for set selection, refresh the on-screen names
@@ -1253,7 +1381,7 @@ ashita.events.register('key_data','decker_native_arrow_watch',function(e)
         state.held[e.key]=e.down and true or nil;
     end
     if not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
-        and state.phase>=4 and #state.names==20 then
+        and state.phase>=4 and #state.names==20 and not selector.active() then
         state.pendingRefreshFrames=3;
         state.awaitingPageFingerprint=state.previousFingerprint;
         state.nativeArrowRefreshes=state.nativeArrowRefreshes+1;
@@ -1272,7 +1400,7 @@ end);
 -- Do not claim an authoritative selection cursor without a verified game getter.
 ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
     if e.key~=203 and e.key~=205 then return; end
-    if e.down and modifier_down() and state.phase>=4
+    if e.down and modifier_down() and state.phase>=4 and not selector.active()
         and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive)) then
         state.navSlot=nil;
         state.navRow=nil;
@@ -1281,12 +1409,18 @@ ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
 end);
 -- StateBar has its own explicit keyboard switch; native connection is still required.
 -- Only active main shortcuts and enabled navigation reserve keys against it.
-local function statebar_hotkey_slot(code)
+local function statebar_hotkey_slot(code,slots,keys,job,level)
     if not statebar_input_ready() or modifier_down() then return nil; end
     if shortcuts_active() and mapped_key(code) then return nil; end
     if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
+    if not keys then slots,keys,job,level=classic.slots(); end
     local found=nil;
-    for i=1,#state.statebarSlots do if state.statebarHotkeys[i]==code and code~=0 then if found then return nil; end; found=i; end end
+    for i,b in ipairs(slots) do
+        if keys[i]==code and code~=0 and (not state.classic75 or classic.available(b,job,level)) then
+            if found then return nil; end
+            found=i;
+        end
+    end
     return found;
 end
 ashita.events.register('key_data','decker_statebar_key_press',function(e)
@@ -1301,8 +1435,7 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
         e.blocked=true;
         if not state.held[e.key] then
             state.held[e.key]=true; state.suppressed[e.key]=true;
-            local b=state.statebarSlots[i];
-            if b then request_statebar(i); end
+            request_statebar(i);
         end
     end
 end);
@@ -1343,8 +1476,9 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     else
         for i=1,10 do keys[state.mappingMode=='numbers' and (i==10 and 11 or i+1) or 58+i]=true; end
     end
+    local slots,hotkeys,job,level=classic.slots();
     if state.statebarEnabled and state.statebarHotkeysEnabled then
-        for _,code in pairs(state.statebarHotkeys) do if code>0 then keys[code]=true; end end
+        for _,code in pairs(hotkeys) do if code>0 then keys[code]=true; end end
     end
     for code,_ in pairs(state.suppressed) do keys[code]=true; end
     for code,_ in pairs(keys) do
@@ -1353,16 +1487,17 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
         if code<size and state.suppressed[code] and ptr[code]==0 then
             state.suppressed[code]=nil; state.held[code]=nil;
         end
-        if code<size and statebar_hotkey_slot(code) then
+        local hotkey=code<size and statebar_hotkey_slot(code,slots,hotkeys,job,level);
+        if hotkey then
             local down=ptr[code]~=0;
             if down and not state.held[code] then
                 state.held[code]=true; state.suppressed[code]=true;
-                request_statebar(statebar_hotkey_slot(code));
+                request_statebar(hotkey);
             elseif not down then
                 state.held[code]=nil; state.suppressed[code]=nil;
             end
         end
-        if code<size and (state.suppressed[code] or statebar_hotkey_slot(code)~=nil or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
+        if code<size and (state.suppressed[code] or hotkey or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
     end
 end);
 ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
@@ -1660,6 +1795,9 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
+    if (#state.navQueue>0 or (state.deferredNav and #state.deferredNav>0)) and selector.active() then
+        selector.yield_navigation();
+    end
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
         -- set changes while a native request is unresolved; never advance
@@ -1717,7 +1855,9 @@ ashita.events.register('d3d_present','decker_draw',function()
     maybe_auto_refresh();
     if state.statebarEnabled and (state.statebarVisibility=='always' or (state.statebarVisibility=='navigation' and (state.navToggleActive or state.navModifierHeld)) or (state.statebarVisibility=='manual' and state.statebarAlways) or state.showTests) then
         local flags=state.statebarLocked and (ImGuiWindowFlags_NoMove or 4) or 0;
-        local count=#state.statebarSlots;
+        local slots,hotkeys,job,level=classic.slots();
+        local saved=state.classic75 and classic.saved_modes();
+        local count=#slots;
         if count>0 then
             local sw=math.floor(100*state.statebarScale);
             local width=state.statebarVertical and (sw+32) or (count*sw+math.max(0,count-1)*8+32);
@@ -1730,16 +1870,19 @@ ashita.events.register('d3d_present','decker_draw',function()
             local barColours,barVars=push_glass_background(state.statebarOpacity);
             if imgui.Begin('###DeckerStateBar',{true},flags+(ImGuiWindowFlags_NoTitleBar or 1)+scrollbar_flags()) then
                 remember_window('statebar',state.statebarLocked);
-                for i,b in ipairs(state.statebarSlots) do
+                for i,b in ipairs(slots) do
                     local idx=(b.row=='ALT' and 10 or 0)+b.slot;
                     local name=b.label and b.label~='' and b.label or b.source=='command' and (b.command or 'Configure command') or (state.names[idx] or 'Unassigned');
-                    local key=DIRECT_NAMES[state.statebarHotkeys[i] or 0];
+                    local key=DIRECT_NAMES[hotkeys[i] or 0];
                     local caption=name..(key and key~='None' and ('\n'..key) or '');
                     if i>1 and not state.statebarVertical then imgui.SameLine(); end
                     -- StateBar selection is independent from the main macro HUD's press highlight.
                     -- Keep the actual macro name legible; never prefix it with SELECTED.
-                    local sbSelected=(b.kind~='utility' and state.statebarSelected==i);
+                    local unavailable=state.classic75 and not classic.available(b,job,level);
+                    local sbSelected=(not state.classic75 and b.kind~='utility' and state.statebarSelected==i)
+                        or (not unavailable and saved and saved.enabled and not saved.locked and b.axis and saved[b.axis]==b.value);
                     local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
+                    if unavailable and imgui.BeginDisabled and imgui.EndDisabled then imgui.BeginDisabled(); end
                     if sbColours then
                         local colours={{0.12,0.57,0.28,1},{0.12,0.40,0.70,1},{0.50,0.25,0.65,1},{0.40,0.40,0.40,1}};
                         imgui.PushStyleColor(ImGuiCol_Button,sbSelected and (colours[state.statebarTheme] or colours[1]) or {.025,.028,.035,state.buttonOpacity});
@@ -1756,10 +1899,16 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() then
                         local action=b.source=='command' and (b.command or '') or ('Current book/set: '..b.row..' '..tostring(b.slot==10 and 0 or b.slot));
                         local behaviour=b.kind=='utility' and 'Utility: one-off action; keeps current State highlight.' or 'State: stays highlighted after activation; gear is not verified.';
+                        if state.classic75 then
+                            action=unavailable and 'Unavailable for this job or level' or action;
+                            behaviour=saved and ('Saved Aegis mode. '..(saved.locked and 'Locked.' or saved.enabled and 'Enabled.' or 'Disabled.'))
+                                or 'Saved Aegis mode unknown.';
+                        end
                         imgui.SetTooltip(name..'\n'..action..'\nKey: '..(key or 'None')..'\n'..behaviour);
                     end
                     if sbColours then imgui.PopStyleColor(3); end
-                    if sbPressed then
+                    if unavailable and imgui.BeginDisabled and imgui.EndDisabled then imgui.EndDisabled(); end
+                    if sbPressed and not unavailable then
                         request_statebar(i);
                     end
                 end
@@ -1966,6 +2115,9 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped(updater.status);
                 imgui.TextWrapped('Windows PowerShell is required. Downloads run in the background over HTTPS, are SHA-256 checked and compiled before installation. A backup enables rollback. Reload affects Decker only; reconnect macros afterward.');
             elseif state.settingsTab=='StateBar' then
+                local preset={state.classic75};
+                if imgui.Checkbox('Classic 75 job presets',preset) then state.classic75=preset[1]; save_display(); end
+                if state.classic75 then imgui.TextWrapped('Presets follow the current job. Highlight shows saved Aegis mode; check LuAshitacast and equipment in game. Custom slots are preserved below.'); end
                 local enabled={state.statebarEnabled};
                 if imgui.Checkbox('Enable StateBar',enabled) then state.statebarEnabled=enabled[1]; save_display(); end
                 local vert={state.statebarVertical};
