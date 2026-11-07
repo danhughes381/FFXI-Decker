@@ -60,3 +60,50 @@ Next: select Development, Check for updates, install v1.50.17-dev; give the two 
 Owner explicitly requested publication of the assigned-key persistence fix to both channels. Source pin `30e91f63e42d71683f520d408c7cf5403adabe7b`; SHA-256 `b8ae058040e25475b393da5e240dac3c4676d8700c1f5b09292c4e80eb2c5dc9`. Carries current Development features through 1.50.17, including per-character position persistence, plus PR #13. Persist savedKeybinds/savedAck instead of temporary disconnected runtime flags. Existing overwritten preferences require ticking Use my assigned keys once after installation.
 
 PR #13 validation run 40515934316 passed Lua 5.4/LuaJIT regression, syntax and ZIP integrity. After version-only change, all 68 Lua 5.4 mocked groups and diff checks pass locally. Real Windows/VanaCore updater reload and live persistence remain unverified. Stable and Development manifests and both named channel branches are aligned; legacy Development URL remains served. No new public GitHub Release or tag. Next: update in game, Connect, enable assigned keys, reload, make an appearance edit before Connect, reconnect and verify the checkbox; test both characters. Readiness issue #3 remains open.
+
+## Navigation and book-title candidate — 3 November 2026
+
+Based on current main/development `38cb3b8715d3787d42288ffb7d83035a39604456`, updater 1.50.18-dev. Branch `feature/held-arrow-navigation`, candidate **1.50.19-dev**. Recovered uncommitted arrow work and completed it with the owner's additional requests.
+
+- All arrows: 350 ms delay then 80 ms repeats, no OS-repeat duplication or catch-up bursts. Physical release cancels queued/deferred repeat requests. Enter/Space/row switch stay single press.
+- Both navigation key selectors offer 28 choices, including Shift/Ctrl/Alt sides, navigation keys, locks, N and F1–F12. Selecting the other control's key swaps their assignments. Saved End is preserved instead of silently converted to Right Shift. Row-switch modifiers no longer block navigation as an unrelated modifier.
+- Saved-title detection uses the current party member 0 server ID and exact hex USER folders under registered FFXI installs. Requires one unique valid candidate; multiple installs or missing APIs/files retain explicit folder fallback. Reads 20 book names from mcr.ttl on profile load and every five seconds; saves cfg only for changed titles. Existing aliases take precedence. No live native book-title getter or job-name inference is claimed.
+- Status gets a draw-only coloured background/border. Existing text/font/header columns are preserved, with the prior rendering fallback.
+
+Changed code/tests, CHANGELOG, DECISIONS, LESSONS_LEARNED and this file; added docs/NAVIGATION_1.50.19.md and a manual test-only ZIP/checksum. Offline: **75 Lua 5.4 mocked regression groups pass**, including four-direction cadence, releases, deferred cancellation, profiles, all key-choice persistence, End/Right Shift physical row control, title discovery/rename/ambiguity/aliases and status draw. Diff/ZIP/source equality checks pass. LuaJIT and Windows/Ashita/VanaCore are unavailable locally. Existing PR CI runs the same suite on LuaJIT; results must be checked separately.
+
+No updater manifest, channel, tag or public release changed. Readiness #3 remains open. Next: install this PR's manual candidate, connect, test Hold/Toggle tap/hold/release and Up/Down native set changes at real frame rates; swap End/Right Shift and reload; confirm current-character saved titles and status layout. Record live evidence before promotion.
+
+GitHub review: [draft PR #16](https://github.com/danhughes381/FFXI-Decker/pull/16). Exact tested source commit: [6dc079f](https://github.com/danhughes381/FFXI-Decker/commit/6dc079f2dccff11c7fdfb7a980061e1597cd6a7d). Remote tree equals local tested tree `07b6d9637f68442f1a790c2041a23521cff67ed5`. Manual ZIP is in this branch under dist/test-only; SHA-256 `9d81c189fb6aca569c732a6c7393f20902f8c777a51a104c55c758b6a2a86e24`.
+
+## Published combined Decker v1.50.20-dev — 5 November 2026
+
+Owner directed consolidation and in-game updater publication. [PR #22](https://github.com/danhughes381/FFXI-Decker/pull/22) merged into main as `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0`; addon `addons/decker/decker.lua` now declares `1.50.20-dev`. Includes v1.50.19 held-arrow repeat (350ms initial, 80ms repeat), expanded keys and automatic book title discovery, plus observed `/macro book` / `/macro set` display synchronisation and manual per-character layout saving (`/decker savelayout` / Settings button). Existing automatic layout save and profile isolation preserved. Book commands executed inside the native game may not be exposed through Ashita command events; this remains unverified live.
+
+[Validation run 42017923455](https://github.com/danhughes381/FFXI-Decker/actions/runs/42017923455) passed Lua 5.4, LuaJIT, 77 mocked regression groups and source ZIP checks. SHA-256 of tested addon: `129be84f87d03c8910da483bb155ab8d19281688b4a886394ac94deccb14f53c`.
+
+Stable and Development manifests on main, the `development` branch and the actual legacy Development updater path `dev/decker-v1.49.5-integration/updates/development.txt` all point to immutable merge commit `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0` and the matching SHA-256 above. Published in-game update; no separate GitHub Release/tag/ZIP was created. Live install/reload, actual native macro book display and per-character position restoration require owner acceptance in Ashita. Prior character CFG files must be preserved.
+
+Next: in-game update via Decker Settings > Updates, then test held arrow release and book/set changes, assign different HUD/StateBar coordinates on Peppa and Salts, run `/decker savelayout`, reload/restart and verify both restore correctly. Readiness issue #3 is not closed.
+
+## v1.50.23-dev StateBar and cooldown candidate
+
+Based on main `57c5558`. The StateBar accepts a narrow set of Aegis gear mode commands and timed Convert prep from 1 to 15 seconds. It still submits a single command and reports a request, without verifying the active gear mode. Convert itself remains a separate manual action.
+
+Cooldown mappings now use the character profile, tracked book and set, row/slot and a matching native macro-name snapshot. Observed page transitions suppress colours while waiting for refresh. Old unscoped mappings are retained in configuration and must be reassigned on the intended page. Book and set are tracked display values. Duplicate macro names and unobserved native changes are limitations of the existing tracking.
+
+`python3 tests/run_lua54.py` passed 81 mocked groups. Live acceptance: test StateBar PDT/Fire and Convert prep, then assign different cooldowns to the same slot on two visibly distinct pages. Switch between them, reconnect and verify again on each character. Review branch `fix/statebar-page-cooldowns` targets main. In-game release requires live validation.
+
+## Classic 75 integration candidate v1.50.24-dev
+
+Optional per-character Classic 75 preset follows the active main job. It preserves custom slots and hotkeys, the native macro books, and saved navigation choices. Fixed preset controls are F6/F7/F9/F10/F11/F12; F8 remains available for targeting. PLD, BLM, WHM, NIN and RDM have supported commands. Other Classic 75 jobs show unavailable slots. Preset highlights come from decoded Aegis saved modes scoped to the active character and job. They are not equipment or live profile confirmation.
+
+Native subtarget/action-target selection takes precedence over Decker navigation on both key streams. Pending navigation is discarded and each already-held key retains its owner until release. Tested in 84 mocked Lua 5.4 regression groups. The separate manual integration ZIP includes the five Aegis profiles and runtime v0.7.3. Native Ashita/VanaCore execution remains untested. Verify Hold and Toggle with a real alliance Cure from a Decker macro, both Enter and Escape, then confirm navigation resumes, F8 targets, F11 preserves casting/accuracy, and a new job selects the right bar. No updater promotion.
+
+## Stable and Development v1.50.26-dev — 7 November 2026
+
+[PR #25](https://github.com/danhughes381/FFXI-Decker/pull/25) carries Classic 75 StateBar presets, native ally-selection priority, page-scoped cooldowns, slot reordering, saved Aegis mode highlights and independent action and hotkey label sizes. Source `addons/decker/decker.lua` matches the tested manual ZIP byte for byte.
+
+Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
+
+Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.
