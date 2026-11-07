@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -52,7 +52,7 @@ test('first install: safe defaults and Quick Setup',function() assert(s.profileI
 test('profile switching isolates all settings',function()
  s.theme=4;s.scale=1.4;s.statebarSelected=3;s.statebarHotkeys={87};s.statebarHotkeysEnabled=true;s.savedNavEnabled=true;s.navQueue={200};s.names={'stale'};api.save();character='Pepper';api.refresh()
  assert(s.theme==1 and s.scale==1 and s.statebarSelected==0 and not s.statebarHotkeysEnabled and not s.savedNavEnabled and #s.navQueue==0 and #s.names==0 and not s.allowAllClicks)
- s.theme=2;api.save();character='Salts';api.refresh();assert(s.theme==4 and s.scale==1.4 and s.statebarSelected==3 and s.statebarHotkeys[1]==87)
+ s.theme=2;api.save();character='Salts';api.refresh();assert(s.theme==4 and s.scale==1.4 and s.statebarSelected==0 and s.statebarHotkeys[1]==87)
 end)
 test('profile reload and zero slots persist',function() s.statebarSlots={};api.save();s.statebarSlots={{row='CTRL',slot=1}};api.load();assert(#s.statebarSlots==0) end)
 test('State and Utility requests',function()
@@ -188,9 +188,9 @@ local previewPaints
  s.names={'Provoke','Flash','Sentinel','Rampart','Cure IV','Cover','Bash','Invincible','Chivalry','Shield','PDT','MDT','Idle','Auto','Food','Protect','Shell','Reprisal','Cure III','Cancel'}
  s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true;s.motionEnabled=false -- Legacy pixel/draw-order assertion checks baseline appearance.
  cursorX=20;cursorY=50;api.drawrow('CTRL',0);cursorX=20;cursorY=98;api.drawrow('ALT',10)
- assert(texts==60 and outlines==1 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
+ assert(texts==60 and outlines==20 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
  assert(api.glass.custom,api.glass.diagnostic)
- local key=paints[4];assert(key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
+ local key;for _,paint in ipairs(paints) do if paint[1]=='text' and paint[6]=='F1' then key=paint;break end end;assert(key and key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
  previewPaints=paints;s.motionEnabled=true
 end)
 test('mouse and direct keyboard dispatch update execution only once',function()
@@ -279,7 +279,7 @@ test('thin Settings scrollbar balances style scope',function()
  ui.Begin=begin;ui.PushStyleVar=push;ImGuiStyleVar_ScrollbarSize=nil
 end)
 test('StateBar physical hotkey edges execute once and suppress native input',function()
- ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.mappingMode='split';s.held={};s.suppressed={}
+ ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.mappingMode='split';s.held={};s.suppressed={};s.statebarSelected=0
  s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/equipset 1'}};s.statebarHotkeys={79}
  local n=#requested;local raw={};for i=0,255 do raw[i]=0 end;raw[79]=128
  events.decker_exclusive_key_state({data_raw=raw,size=256});assert(#requested==n+1 and raw[79]==0 and s.statebarSelected==1)
@@ -1019,6 +1019,46 @@ test('Classic 75 saved readback uses character, job and PLD subjob scope',functi
  job=4;assert(api.classic.saved_modes().enabled)
  id=2;assert(api.classic.saved_modes()==nil)
  AshitaCore.GetMemoryManager=original;AshitaCore.GetInstallPath=install
+end)
+
+test('StateBar reorder preserves sparse hotkeys and persists separate layouts',function()
+ ready();s.classic75=false;s.statebarSelected=2
+ local mdt={row='CTRL',slot=1,label='MDT',source='command',command='/lac fwd pld mdt'}
+ local pdt={row='ALT',slot=2,label='PDT',trackDefence='pdt'}
+ s.statebarSlots={mdt,pdt,{row='ALT',slot=3,label='Utility'}}
+ s.statebarHotkeys={[1]=66,[3]=88}
+ api.classic.reorder(1,3)
+ assert(s.statebarSlots[3]==mdt and s.statebarHotkeys[3]==66)
+ assert(s.statebarSlots[1]==pdt and not s.statebarHotkeys[1] and s.statebarSelected==1)
+ s.classic75=true;api.classic.reorder(2,1)
+ s.classicOrder={1,2,3,4,5,6};api.load()
+ assert(s.classicOrder[1]==2 and s.classicOrder[2]==1)
+ assert(s.statebarSlots[3].label=='MDT' and s.statebarHotkeys[3]==66 and s.statebarSlots[1].trackDefence=='pdt')
+ s.classic75=false
+end)
+
+test('StateBar MDT highlight follows the saved mode instead of the last press',function()
+ ready();s.classic75=false;s.statebarSelected=1
+ local slot={source='command',command='/lac fwd pld mdt'}
+ local saved={enabled=true,locked=false,defence='mdt'}
+ assert(api.classic.highlight(slot,1,saved,'PLD',false))
+ assert(not api.classic.highlight(slot,1,saved,'NIN',false))
+ saved.defence='none';assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ saved.defence='mdt';saved.enabled=false;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ saved.enabled=true;saved.locked=true;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ assert(not api.classic.highlight(slot,1,nil,'PLD',false))
+end)
+
+test('StateBar font overrides fit independently and survive reload',function()
+ s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
+ api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
+ assert(s.statebarLabelSize==14 and s.statebarKeySize==16)
+ local text={}
+ local canvas={AddText=function(_,font,size,pos,col,label) text[label]={size=size,y=pos[2]} end}
+ api.drawGlassText(canvas,'MDT',0,0,100,40,'F8',false,true)
+ assert(text.MDT.size==14 and text.F8.size==16 and text.MDT.y+text.MDT.size<text.F8.y)
+ api.drawGlassText(canvas,'Macro',0,0,100,40,'1',false)
+ assert(text.Macro.size==18 and text['1'].size==10)
 end)
 
 os.execute('rm -r '..tmp)

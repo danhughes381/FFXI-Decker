@@ -1,9 +1,9 @@
--- Decker 1.50.20-dev: combined held arrows, book sync and per-character layouts.
+-- Decker 1.50.26-dev: independent StateBar action and key label sizes.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.24-dev';
+addon.version = '1.50.26-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -40,7 +40,8 @@ state.directKeys=default_direct_keys();
 state.settingsTab='Controls'; state.statebarEnabled=false; state.statebarVertical=false; state.statebarLocked=false; state.statebarAlways=true; state.statebarScale=1.0; state.statebarOpacity=1; state.statebarTheme=1; state.statebarVisibility='always'; state.statebarSlots={{row='CTRL',slot=1},{row='CTRL',slot=2},{row='CTRL',slot=3},{row='ALT',slot=1}};
 state.statebarOpacity=1.0; state.statebarTheme=1; state.statebarVisibility='always'; state.profileDiagnostic='Not checked'; state.statebarSelected=0;
 state.statebarHotkeys={}; state.statebarHotkeysEnabled=false; state.statebarActionMode='current';
-state.classic75=false;
+state.classic75=false; state.classicOrder={1,2,3,4,5,6};
+state.statebarLabelSize=0; state.statebarKeySize=10;
 state.mappingMode='numbers'; state.positionLocked=false; state.hudPos=nil; state.profileId=nil; state.profileReady=false; state.lastProfileCheck=0;
 local function copy_value(v)
     if type(v)~='table' then return v; end
@@ -61,7 +62,7 @@ local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
     Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
-    StateBar={'classic75','statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
+    StateBar={'classic75','classicOrder','statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarLabelSize','statebarKeySize','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
     General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','autoConnect'},
 };
 -- First-install defaults also form the profile-isolation boundary.
@@ -139,15 +140,16 @@ local function save_display()
     f:write('mappingmode=',state.mappingMode,'\npositionlocked=',state.positionLocked and '1' or '0','\nnavrow=',state.navRow or 'CTRL','\n');
     f:write('autoconnect=',state.autoConnect and '1' or '0','\n');
     if state.hudPos then f:write('posx=',math.floor(state.hudPos[1]),'\nposy=',math.floor(state.hudPos[2]),'\n'); end
-    f:write('statebarenabled=',state.statebarEnabled and '1' or '0','\nstatebarvertical=',state.statebarVertical and '1' or '0','\nstatebarlocked=',state.statebarLocked and '1' or '0','\nstatebaralways=',state.statebarAlways and '1' or '0','\nstatebarscale=',state.statebarScale,'\nstatebaropacity=',state.statebarOpacity,'\nstatebartheme=',state.statebarTheme,'\nstatebarvisibility=',state.statebarVisibility,'\nstatebarselected=',state.statebarSelected or 0,'\n');
+    f:write('statebarenabled=',state.statebarEnabled and '1' or '0','\nstatebarvertical=',state.statebarVertical and '1' or '0','\nstatebarlocked=',state.statebarLocked and '1' or '0','\nstatebaralways=',state.statebarAlways and '1' or '0','\nstatebarscale=',state.statebarScale,'\nstatebaropacity=',state.statebarOpacity,'\nstatebartheme=',state.statebarTheme,'\nstatebarvisibility=',state.statebarVisibility,'\nstatebarselected=',0,'\n');
+    f:write('statebarlabelsize=',state.statebarLabelSize,'\nstatebarkeysize=',state.statebarKeySize,'\n');
     for _,id in ipairs({'hud','statebar','collapsed'}) do
         local pos=state.windowPositions[id];
         if pos then f:write(id,'posx=',pos[1],'\n',id,'posy=',pos[2],'\n'); end
     end
-    f:write('classic75=',state.classic75 and '1' or '0','\n');
+    f:write('classic75=',state.classic75 and '1' or '0','\nclassicorder=',table.concat(state.classicOrder),'\n');
     f:write('statebarcount=',#state.statebarSlots,'\n');
     f:write('statebarhotkeysenabled=',state.statebarHotkeysEnabled and '1' or '0','\n');
-    for i,b in ipairs(state.statebarSlots) do f:write('statebar',i,'=',b.row,':',b.slot,'\n'); f:write('statebarhotkey',i,'=',state.statebarHotkeys[i] or 0,'\n'); f:write('statebartype',i,'=',b.kind or 'state','\n'); f:write('statebarcommand',i,'=',(b.command or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebarsource',i,'=',b.source or 'macro','\n'); f:write('statebarlabel',i,'=',(b.label or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
+    for i,b in ipairs(state.statebarSlots) do f:write('statebar',i,'=',b.row,':',b.slot,'\n'); f:write('statebarhotkey',i,'=',state.statebarHotkeys[i] or 0,'\n'); f:write('statebartype',i,'=',b.kind or 'state','\n'); f:write('statebarcommand',i,'=',(b.command or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebarsource',i,'=',b.source or 'macro','\n'); f:write('statebarlabel',i,'=',(b.label or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); f:write('statebartrack',i,'=',b.trackDefence or 'auto','\n'); end
     f:write('bookpath=',(state.bookPath or ''):gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n');
     for i=1,40 do
         for _,field in ipairs({'bookNames','bookAliases'}) do
@@ -178,23 +180,34 @@ local function load_display()
             end
         end
         if key=='classic75' then state.classic75=value=='1'; end
+        if key=='classicorder' and value:match('^[1-6][1-6][1-6][1-6][1-6][1-6]$') then
+            local order,seen={}, {};
+            for digit in value:gmatch('%d') do
+                local index=tonumber(digit);
+                seen[index]=true; order[#order+1]=index;
+            end
+            if seen[1] and seen[2] and seen[3] and seen[4] and seen[5] and seen[6] then state.classicOrder=order; end
+        end
         if key=='statebarcount' and n and n>=0 and n<=12 and n==math.floor(n) then state.statebarSlots={}; end
         local ti=key and tonumber(key:match('^statebartype(%d+)$'));
         local xi=key and tonumber(key:match('^statebarcommand(%d+)$'));
         local mi=key and tonumber(key:match('^statebarsource(%d+)$'));
         local li=key and tonumber(key:match('^statebarlabel(%d+)$'));
-        local bi=ti or xi or mi or li;
+        local di=key and tonumber(key:match('^statebartrack(%d+)$'));
+        local bi=ti or xi or mi or li or di;
         if bi and bi>=1 and bi<=12 and state.statebarSlots[bi] then
             local b=state.statebarSlots[bi];
             if ti and (value=='state' or value=='utility') then b.kind=value; end
+            if di and (value=='pdt' or value=='mdt') then b.trackDefence=value; end
             if mi and (value=='macro' or value=='command') then b.source=value; end
             if li and #value<=48 and #value%2==0 and not value:find('[^%x]') then b.label=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end):gsub('[%c#]',''); end
             if xi and #value<=480 and #value%2==0 and not value:find('[^%x]') then b.command=value:gsub('%x%x',function(h) return string.char(tonumber(h,16)); end); end
         end
+        if key=='statebarlabelsize' and n and (n==0 or (n>=10 and n<=28)) then state.statebarLabelSize=n; end
+        if key=='statebarkeysize' and n and n>=8 and n<=18 then state.statebarKeySize=n; end
         if key=='statebaropacity' and n and n>=0 and n<=1 then state.statebarOpacity=n; end
         if key=='statebartheme' and n and n>=1 and n<=4 then state.statebarTheme=n; end
         if key=='statebarvisibility' and (value=='always' or value=='navigation' or value=='manual') then state.statebarVisibility=value; end
-        if key=='statebarselected' and n and n>=0 and n<=12 then state.statebarSelected=n; end
         if key=='statebarhotkeysenabled' then state.statebarHotkeysEnabled=value=='1'; end
         local hi=key and tonumber(key:match('^statebarhotkey(%d+)$'));
         if hi and hi>=1 and hi<=12 and n and DIRECT_NAMES[n] then state.statebarHotkeys[hi]=n; end
@@ -356,7 +369,7 @@ local function refresh_profile()
     local id=character_id();
     if id==state.profileId then return; end
     if state.profileReady then save_display(); end
-    state.profileId=id; state.profileReady=false;
+    state.profileId=id; state.profileReady=false; state.statebarDrag=nil;
     for _,keys in pairs(sectionKeys) do for _,key in ipairs(keys) do state[key]=copy_value(profileDefaults[key]); end end
     state.windowPositions={}; state.layoutDirtyAt=nil;
     state.hudPos=nil; state.keyAssignmentPage=false; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
@@ -759,7 +772,16 @@ end
 function classic.slots()
     if not state.classic75 then return state.statebarSlots,state.statebarHotkeys; end
     local job,level=classic.identity();
-    return classic.layouts[job] or classic.empty,classic.keys,job,level;
+    local layout=classic.layouts[job];
+    if not layout then return classic.empty,classic.empty,job,level; end
+    if classic.order~=state.classicOrder or classic.orderedJob~=job then
+        classic.order=state.classicOrder; classic.orderedJob=job;
+        classic.ordered,classic.orderedKeys={}, {};
+        for i,index in ipairs(state.classicOrder) do
+            classic.ordered[i]=layout[index]; classic.orderedKeys[i]=classic.keys[index];
+        end
+    end
+    return classic.ordered,classic.orderedKeys,job,level;
 end
 function classic.available(button,job,level)
     return button and button.command and button.job==job and level==75;
@@ -786,6 +808,42 @@ function classic.saved_modes()
     return classic.saved;
 end
 
+-- Direct mode buttons use the same saved state as the Classic 75 presets.
+-- Native macro bodies are opaque to Decker, so those slots can opt into PDT/MDT tracking.
+classic.modeCommands={
+    pdt={'defence','pdt'}, mdt={'defence','mdt'},
+    ['defence fire']={'defence','fire'}, ['defence evasion']={'defence','evasion'},
+    ['defence earth']={'defence','earth'}, ['defence ice']={'defence','ice'},
+    accuracy={'base','accuracy'}, kite={'kite',true},
+    ['casting accuracy']={'casting','accuracy'}, ['casting damage']={'casting','damage'},
+    ['casting burst']={'casting','burst'}, ['casting enmity']={'casting','enmity'},
+    ['ws accuracy']={'ws','accuracy'},
+    ['defence none']={}, auto={}, disable={}, ['casting normal']={}, ['ws normal']={}, ['casting cycle']={},
+};
+function classic.tracked_mode(button)
+    if button.source~='command' then
+        if button.trackDefence then return true,'defence',button.trackDefence; end
+        return false;
+    end
+    local profile,operation=(button.command or ''):match('^/lac fwd ([a-z]+) (.+)$');
+    local job=profile and profile:upper();
+    local mode=classic.modeCommands[operation];
+    if mode and (classic.special[job] or job=='TANK') then return true,mode[1],mode[2],job; end
+    return false;
+end
+function classic.highlight(button,index,saved,job,unavailable)
+    if unavailable then return false; end
+    local axis,value=button.axis,button.value;
+    if not state.classic75 then
+        if button.kind=='utility' then return false; end
+        local tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
+        if not tracked then return state.statebarSelected==index; end
+        if owner and owner~=job and not (owner=='TANK' and (job=='NIN' or job=='RDM')) then return false; end
+        axis,value=modeAxis,modeValue;
+    end
+    return axis~=nil and saved~=nil and saved.enabled and not saved.locked and saved[axis]==value;
+end
+
 -- Single validated command only: no Lua, script runners, command chaining or chat.
 local function valid_command(command)
     if type(command)~='string' or #command>240 or command:find('[%c;|]') then return false; end
@@ -795,7 +853,7 @@ local function valid_command(command)
     if duration then return duration>=1 and duration<=15; end
     local profile,operation=command:match('^/lac fwd ([a-z]+) (.+)$');
     if profile=='pld' or profile=='tank' or profile=='nin' or profile=='rdm' or profile=='blm' or profile=='whm' then
-        if operation=='pdt' or operation=='mdt' or operation=='defence none' then return true; end
+        if operation=='pdt' or operation=='mdt' or operation=='defence none' or operation=='disable' then return true; end
     end
     if profile=='tank' or profile=='rdm' then
         if operation=='casting accuracy' then return true; end
@@ -825,16 +883,44 @@ local function request_statebar(i)
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
     else requested=execute_slot(b.row,b.slot); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
-    if requested and state.classic75 then
+    if requested then
+        local tracked,axis=classic.tracked_mode(b);
         classic.readAt=0;
-        state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
+        if state.classic75 then
+            state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
+        elseif tracked and not axis then
+            state.statebarSelected=0;
+        elseif b.kind~='utility' then
+            if tracked or state.statebarSelected==i then state.statebarSelected=0;
+            else state.statebarSelected=i; end
+        end
     end
-    if requested and b.kind~='utility' then state.statebarSelected=i; save_display(); end
     return requested;
+end
+function classic.reorder(from,to)
+    if from==to then return; end
+    if state.classic75 then
+        local order=copy_value(state.classicOrder);
+        table.insert(order,to,table.remove(order,from));
+        state.classicOrder=order;
+    else
+        local slots,keys=state.statebarSlots,state.statebarHotkeys;
+        local key=keys[from];
+        table.insert(slots,to,table.remove(slots,from));
+        local step=from<to and 1 or -1;
+        for i=from,to-step,step do keys[i]=keys[i+step]; end
+        keys[to]=key;
+        local selected=state.statebarSelected;
+        if selected==from then state.statebarSelected=to;
+        elseif from<to and selected>from and selected<=to then state.statebarSelected=selected-1;
+        elseif from>to and selected<from and selected>=to then state.statebarSelected=selected+1; end
+    end
+    save_display();
 end
 local function restore_section(section)
     for _,key in ipairs(sectionKeys[section] or {}) do state[key]=copy_value(profileDefaults[key]); end
     if section=='Appearance' then state.hudPos=nil; end
+    if section=='StateBar' then state.statebarDrag=nil; end
     state.held={}; state.navQueue={}; state.deferredNav={}; state.navToggleActive=false;
     save_display();
 end
@@ -982,9 +1068,16 @@ local function glass_available()
     end
     return glass.custom;
 end
-local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
-    local textScale=displayScale or state.scale;
-    local initialSize=math.min(state.macroFontSize*textScale,math.max(10,h-18));
+local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar)
+    local textScale=isStateBar and state.statebarScale or state.scale;
+    local preferredLabel=isStateBar and state.statebarLabelSize>0 and state.statebarLabelSize or state.macroFontSize;
+    local keySize=isStateBar and math.min(state.statebarKeySize*textScale,h*.45)
+        or math.min(10*textScale,math.max(7,h/4));
+    local keyInset=isStateBar and 6 or 3;
+    local footer=isStateBar and (shortcut~='' and keySize+keyInset+1 or 0) or 12;
+    local minTitleSize=isStateBar and 7 or 10;
+    local titleHeight=h-footer-(isStateBar and 2 or 6);
+    local initialSize=math.min(preferredLabel*textScale,math.max(minTitleSize,titleHeight));
     local font=glass_font_for(initialSize);
     imgui.PushFont(font);
     local ok,err=pcall(function()
@@ -994,7 +1087,9 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
         end
         local size=initialSize;
         local shown=text;
-        if width(shown,size)>w-10 then size=math.max(10,math.min(size,(w-10)/math.max(1,width(shown,1)))); end
+        if width(shown,size)>w-10 then
+            size=math.max(minTitleSize,math.min(size,(w-10)/math.max(1,width(shown,1))));
+        end
         while #shown>0 and width(shown,size)>w-10 do
             -- Native macro names are byte strings. Do not split UTF-8 continuation bytes.
             shown=shown:match('^(.*)[%z\1-\127\194-\244][\128-\191]*$') or '';
@@ -1004,15 +1099,31 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
             shown=shown..'...';
         end
         local col=imgui.GetColorU32(cooling and {1,.30,.30,1} or {.96,.96,.97,1});
-        local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-12-size)/2);
+        local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-footer-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
-        local ks=math.min(10*textScale,math.max(7,h/4));
-        if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
-        dl:AddText(font,ks,{x+w-width(shortcut,ks)-5,y+h-ks-3},imgui.GetColorU32({.68,.70,.74,1}),shortcut);
+        if shortcut~='' then
+            local ks=keySize;
+            if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
+            dl:AddText(font,ks,{x+w-width(shortcut,ks)-5,y+h-ks-keyInset},imgui.GetColorU32({.68,.70,.74,1}),shortcut);
+        end
     end);
     imgui.PopFont();
     if not ok then error(err); end
+end
+local function draw_glass_face(dl,x,y,w,h,opacity,accent)
+    if dl.AddRectFilledMultiColor then
+        local light=imgui.GetColorU32({.78,.87,1,.15*opacity});
+        local dark=imgui.GetColorU32({0,0,0,.20*opacity});
+        dl:AddRectFilledMultiColor({x+2,y+2},{x+w-2,y+h-2},light,light,dark,dark);
+    end
+    if dl.AddRect then
+        dl:AddRect({x+1,y+1},{x+w-1,y+h-1},
+            imgui.GetColorU32(accent or {.67,.75,.88,.23*opacity}),3,0,1);
+    end
+    if accent and dl.AddRectFilled then
+        dl:AddRectFilled({x+5,y+h-4},{x+w-5,y+h-2},imgui.GetColorU32(accent),1);
+    end
 end
 local function draw_row(title,offset)
     local now=os.clock(); -- One animation clock sample for the entire row.
@@ -1054,11 +1165,7 @@ local function draw_row(title,offset)
         if custom then
             local ok,err=pcall(function()
                 local dl=imgui.GetWindowDrawList();
-                if dl.AddRectFilledMultiColor then
-                    local top=imgui.GetColorU32({1,1,1,.035*a}); local bottom=imgui.GetColorU32({0,0,0,.05*a});
-                    dl:AddRectFilledMultiColor({x+2,y+2},{x+w-2,y+h-2},top,top,bottom,bottom);
-                end
-                if selected then dl:AddRect({x+1,y+1},{x+w-1,y+h-1},imgui.GetColorU32({.85,.68,.30,1}),2,0,1); end
+                draw_glass_face(dl,x,y,w,h,a,selected and {.85,.68,.30,1} or nil);
                 -- Bounded draw-only micro-motion: no textures, input changes or extra windows.
                 if state.motionEnabled then
                     if selected and type(dl.AddRect)=='function' then
@@ -1081,11 +1188,93 @@ local function draw_row(title,offset)
     end
 end
 -- Draw the panel behind the two rows without introducing a child window or changing layout.
+function classic.draw_font_controls()
+    for _,option in ipairs({
+        {'Action label size','statebarLabelSize',10,28},
+        {'Hotkey label size','statebarKeySize',8,18},
+    }) do
+        local label,key,min,max=option[1],option[2],option[3],option[4];
+        local size=state[key]>0 and state[key] or state.macroFontSize;
+        imgui.Text(('%s (%d)'):format(label,math.floor(size)));
+        imgui.SameLine();
+        if imgui.Button('-##'..key) and size>min then state[key]=math.max(min,size-1); save_display(); end
+        imgui.SameLine();
+        if imgui.Button('+##'..key) and size<max then state[key]=math.min(max,size+1); save_display(); end
+    end
+    if state.statebarLabelSize>0 then
+        imgui.SameLine();
+        if imgui.Button('Match macro label size##sbfont') then state.statebarLabelSize=0; save_display(); end
+    end
+    if not glass_available() then imgui.TextWrapped('This client is using the default button font.'); end
+end
+function classic.draw_order_editor()
+    local slots,keys,job=classic.slots();
+    if not state.profileReady or #slots==0 then state.statebarDrag=nil; return; end
+    local canDrag=true;
+    for _,name in ipairs({'IsItemActive','IsMouseDragging','IsMouseDown','IsMouseReleased',
+        'GetItemRectMin','GetItemRectMax','IsMouseHoveringRect'}) do
+        if type(imgui[name])~='function' then canDrag=false; break; end
+    end
+    imgui.TextWrapped(canDrag and 'Slot order. Drag a slot up or down, or use its arrows. The hotkey moves with the slot.'
+        or 'Slot order. Use the Up and Down buttons. The hotkey moves with the slot.');
+    local drag=state.statebarDrag;
+    if not canDrag or (drag and (drag.preset~=state.classic75 or drag.job~=job)) then drag=nil; end
+    local from,to,target;
+    for i,b in ipairs(slots) do
+        local key=DIRECT_NAMES[keys[i] or 0] or 'None';
+        local name=b.label and b.label~='' and b.label
+            or (b.source~='command' and state.names[(b.row=='ALT' and 10 or 0)+b.slot])
+            or ('Slot '..i);
+        if name=='' then name='Slot '..i; end
+        imgui.Button(('%s  [%s]##statebarorder%d'):format(name,key,i),{215,0});
+        if canDrag then
+            if imgui.IsItemActive() and imgui.IsMouseDragging(0) then
+                drag={from=i,preset=state.classic75,job=job};
+            end
+            local x1,y1=pair(imgui.GetItemRectMin());
+            local x2,y2=pair(imgui.GetItemRectMax());
+            if x1 and x2 and imgui.IsMouseHoveringRect({x1,y1},{x2,y2},true) then
+                target=i;
+                if drag and i~=drag.from and glass_available() then
+                    local y=i<drag.from and y1 or y2-2;
+                    local dl=imgui.GetWindowDrawList();
+                    if dl.AddRectFilled then
+                        dl:AddRectFilled({x1,y},{x2,y+2},imgui.GetColorU32({.42,.74,1,1}));
+                    end
+                end
+            end
+        end
+        if i>1 then
+            imgui.SameLine();
+            if imgui.Button('Up##statebarorder'..i) then from,to=i,i-1; end
+        end
+        if i<#slots then
+            imgui.SameLine();
+            if imgui.Button('Down##statebarorder'..i) then from,to=i,i+1; end
+        end
+    end
+    if drag and imgui.IsMouseReleased(0) then
+        if target then from,to=drag.from,target; end
+        drag=nil;
+    elseif drag and not imgui.IsMouseDown(0) then
+        drag=nil;
+    end
+    if from then classic.reorder(from,to); drag=nil; end
+    state.statebarDrag=drag;
+end
+
 local function draw_macro_panel()
     if not glass_available() then return; end
     pcall(function()
-        local x,y=pair(imgui.GetCursorScreenPos()); local aw=pair(imgui.GetContentRegionAvail());
-        if x and aw then imgui.GetWindowDrawList():AddRectFilled({x-2,y-2},{x+aw,y+state.hudHeight*state.scale*2+6},imgui.GetColorU32({0,0,0,state.panelOpacity}),2); end
+        local x,y=pair(imgui.GetCursorScreenPos());
+        local aw=pair(imgui.GetContentRegionAvail());
+        if not x or not aw then return; end
+        local dl=imgui.GetWindowDrawList();
+        local bottom=y+state.hudHeight*state.scale*2+6;
+        dl:AddRectFilled({x-2,y-2},{x+aw,bottom},imgui.GetColorU32({.025,.035,.06,state.panelOpacity}),5);
+        if dl.AddRect then
+            dl:AddRect({x-2,y-2},{x+aw,bottom},imgui.GetColorU32({.67,.75,.88,state.panelOpacity*.65}),5,0,1);
+        end
     end);
 end
 
@@ -1095,7 +1284,7 @@ local GUIDE_STEPS={
     {'Meet your two rows','Your original FFXI CTRL and ALT macro rows remain together in Decker. Tap the example labels below to explore them; these are fictional examples, NOT your actual macros.'},
     {'Selecting versus executing','A selection highlight is not an execution. Decker executes only on your actual approved mouse/keyboard input outside this guide. Tap Flash or Cure to move the example highlight safely.'},
     {'Hold and Toggle','Hold shows the macro HUD while the modifier is pressed. Toggle locks its visibility until switched off or auto-hide. Try the two demonstration modes; your real preference does not change.'},
-    {'Books, sets and StateBar','The Macro set selector moves across sets 1-10, and Book across books 1-20 when connected. StateBar provides separate state/utility slots; its highlights only record a request, not verified equipment.'},
+    {'Books, sets and StateBar','The Macro set selector moves across sets 1-10, and Book across books 1-20 when connected. StateBar provides separate state/utility slots; Aegis modes use saved profile state and manual highlights toggle on press.'},
 };
 local function open_guide()
     state.guideOpen=true; state.guideStep=1;
@@ -1856,7 +2045,10 @@ ashita.events.register('d3d_present','decker_draw',function()
     if state.statebarEnabled and (state.statebarVisibility=='always' or (state.statebarVisibility=='navigation' and (state.navToggleActive or state.navModifierHeld)) or (state.statebarVisibility=='manual' and state.statebarAlways) or state.showTests) then
         local flags=state.statebarLocked and (ImGuiWindowFlags_NoMove or 4) or 0;
         local slots,hotkeys,job,level=classic.slots();
-        local saved=state.classic75 and classic.saved_modes();
+        local saved=classic.saved_modes();
+        if not state.classic75 then job=classic.identity(); end
+        local colours={{.34,.84,.49,1},{.29,.63,1,1},{.76,.49,.95,1},{.76,.79,.83,1}};
+        local accent=colours[state.statebarTheme] or colours[1];
         local count=#slots;
         if count>0 then
             local sw=math.floor(100*state.statebarScale);
@@ -1879,29 +2071,33 @@ ashita.events.register('d3d_present','decker_draw',function()
                     -- StateBar selection is independent from the main macro HUD's press highlight.
                     -- Keep the actual macro name legible; never prefix it with SELECTED.
                     local unavailable=state.classic75 and not classic.available(b,job,level);
-                    local sbSelected=(not state.classic75 and b.kind~='utility' and state.statebarSelected==i)
-                        or (not unavailable and saved and saved.enabled and not saved.locked and b.axis and saved[b.axis]==b.value);
+                    local sbSelected=classic.highlight(b,i,saved,job,unavailable);
+                    local opacity=state.buttonOpacity;
+                    local base=sbSelected and {accent[1]*.30,accent[2]*.36,accent[3]*.43,opacity} or {.012,.015,.021,opacity};
                     local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
                     if unavailable and imgui.BeginDisabled and imgui.EndDisabled then imgui.BeginDisabled(); end
                     if sbColours then
-                        local colours={{0.12,0.57,0.28,1},{0.12,0.40,0.70,1},{0.50,0.25,0.65,1},{0.40,0.40,0.40,1}};
-                        imgui.PushStyleColor(ImGuiCol_Button,sbSelected and (colours[state.statebarTheme] or colours[1]) or {.025,.028,.035,state.buttonOpacity});
-                        imgui.PushStyleColor(ImGuiCol_ButtonHovered,{0.17,0.68,0.34,1.0});
-                        imgui.PushStyleColor(ImGuiCol_ButtonActive,{0.09,0.46,0.22,1.0});
+                        imgui.PushStyleColor(ImGuiCol_Button,base);
+                        imgui.PushStyleColor(ImGuiCol_ButtonHovered,{base[1]+.035,base[2]+.035,base[3]+.035,opacity});
+                        imgui.PushStyleColor(ImGuiCol_ButtonActive,{base[1]+.07,base[2]+.07,base[3]+.07,opacity});
                     end
                     local custom=glass_available(); local x,y;
                     if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
                     local sbPressed=imgui.Button((custom and '' or caption)..'##statebar'..i,{sw,sh});
                     if custom then
-                        local ok,err=pcall(function() draw_glass_text(imgui.GetWindowDrawList(),name,x,y,sw,sh,key~='None' and key or '',false,state.statebarScale); end);
+                        local ok,err=pcall(function()
+                            local dl=imgui.GetWindowDrawList();
+                            draw_glass_face(dl,x,y,sw,sh,opacity,sbSelected and accent or nil);
+                            draw_glass_text(dl,name,x,y,sw,sh,key~='None' and key or '',false,true);
+                        end);
                         if not ok then glass.custom=false; glass.diagnostic='StateBar draw fallback: '..tostring(err); end
                     end
                     if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() then
                         local action=b.source=='command' and (b.command or '') or ('Current book/set: '..b.row..' '..tostring(b.slot==10 and 0 or b.slot));
-                        local behaviour=b.kind=='utility' and 'Utility: one-off action; keeps current State highlight.' or 'State: stays highlighted after activation; gear is not verified.';
-                        if state.classic75 then
+                        local behaviour=b.kind=='utility' and 'Utility: one-off action.' or 'Manual highlight: press again to clear.';
+                        if state.classic75 or (b.kind~='utility' and classic.tracked_mode(b)) then
                             action=unavailable and 'Unavailable for this job or level' or action;
-                            behaviour=saved and ('Saved Aegis mode. '..(saved.locked and 'Locked.' or saved.enabled and 'Enabled.' or 'Disabled.'))
+                            behaviour=saved and ('Saved Aegis mode: '..(saved.locked and 'locked' or not saved.enabled and 'disabled' or sbSelected and 'active' or 'inactive')..'.')
                                 or 'Saved Aegis mode unknown.';
                         end
                         imgui.SetTooltip(name..'\n'..action..'\nKey: '..(key or 'None')..'\n'..behaviour);
@@ -2054,6 +2250,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     imgui.End();
     pop_glass_background(hudColours,hudVars);
     end -- visible macro HUD; Settings is independent
+    if not state.showTests or state.settingsTab~='StateBar' then state.statebarDrag=nil; end
     if state.showTests then
         imgui.SetNextWindowSize({490,370},ImGuiCond_FirstUseEver);
         local thinScroll=type(ImGuiStyleVar_ScrollbarSize)=='number' and imgui.PushStyleVar and imgui.PopStyleVar;
@@ -2116,8 +2313,10 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.TextWrapped('Windows PowerShell is required. Downloads run in the background over HTTPS, are SHA-256 checked and compiled before installation. A backup enables rollback. Reload affects Decker only; reconnect macros afterward.');
             elseif state.settingsTab=='StateBar' then
                 local preset={state.classic75};
-                if imgui.Checkbox('Classic 75 job presets',preset) then state.classic75=preset[1]; save_display(); end
-                if state.classic75 then imgui.TextWrapped('Presets follow the current job. Highlight shows saved Aegis mode; check LuAshitacast and equipment in game. Custom slots are preserved below.'); end
+                if imgui.Checkbox('Classic 75 job presets',preset) then state.classic75=preset[1]; state.statebarDrag=nil; save_display(); end
+                if state.classic75 then imgui.TextWrapped('Presets follow your current job. Your preset order is shared across jobs on this character.'); end
+                classic.draw_order_editor();
+                imgui.Separator();
                 local enabled={state.statebarEnabled};
                 if imgui.Checkbox('Enable StateBar',enabled) then state.statebarEnabled=enabled[1]; save_display(); end
                 local vert={state.statebarVertical};
@@ -2144,7 +2343,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if imgui.Button('StateBar smaller') then state.statebarScale=math.max(.7,state.statebarScale-.1); save_display(); end
                 imgui.SameLine(); imgui.Text(('%.0f%%'):format(state.statebarScale*100)); imgui.SameLine();
                 if imgui.Button('StateBar larger') then state.statebarScale=math.min(1.5,state.statebarScale+.1); save_display(); end
-                imgui.TextWrapped('State: a lasting mode, such as PDT or MDT; its button stays highlighted after activation. Utility: a one-off action, such as food or a mount; it leaves your State highlight unchanged. Both run the action you assign. A highlight records your request; it does not verify equipped gear.');
+                classic.draw_font_controls();
+                imgui.TextWrapped('Aegis gear modes highlight while active in the saved profile. Manual highlights toggle on each press. Utility slots run one-off actions.');
                 imgui.Separator();
                 imgui.TextWrapped('Each button has an action to run and a separate key to press. Enable StateBar hotkeys to reserve those keys; this switch is independent of the main macro keyboard switch. Disable before typing or editing macros.');
                 local sbhot={state.statebarHotkeysEnabled};
@@ -2152,15 +2352,17 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.Text('StateBar keyboard: '..(not state.statebarHotkeysEnabled and 'OFF' or not state.statebarEnabled and 'Enable StateBar first' or statebar_input_ready() and 'READY' or 'WAITING - Connect to in-game macros'));
                 if not state.allowAllClicks and imgui.Button('Connect to in-game macros##statebarconnect') then connect_macros(); end
                 imgui.TextWrapped(state.clickSummary);
+                if state.classic75 then imgui.TextWrapped('Turn off Classic 75 job presets to edit your custom slots.'); end
+                if not state.classic75 then
                 for i,b in ipairs(state.statebarSlots) do
                     imgui.Separator(); imgui.Text('Slot '..i);
                     local label={b.label or ''}; if imgui.InputText('Label (optional)##sblabel'..i,label,25) then b.label=label[1]:gsub('[%c#]',''):sub(1,24); save_display(); end
-                    if imgui.BeginCombo('Highlight behaviour##sbtype'..i,b.kind=='utility' and 'Utility: one-off action' or 'State: keep highlighted') then
-                        for _,kind in ipairs({'state','utility'}) do if imgui.Selectable(kind=='utility' and 'Utility: food/mount; keep current State highlight' or 'State: PDT/MDT; keep this button highlighted',b.kind==kind or (b.kind==nil and kind=='state')) then b.kind=kind; if kind=='utility' and state.statebarSelected==i then state.statebarSelected=0; end; save_display(); end end
+                    if imgui.BeginCombo('Highlight behaviour##sbtype'..i,b.kind=='utility' and 'Utility: one-off action' or 'State: show mode or manual toggle') then
+                        for _,kind in ipairs({'state','utility'}) do if imgui.Selectable(kind=='utility' and 'Utility: food or mount' or 'State: show mode or manual toggle',b.kind==kind or (b.kind==nil and kind=='state')) then b.kind=kind; if kind=='utility' and state.statebarSelected==i then state.statebarSelected=0; end; save_display(); end end
                         imgui.EndCombo();
                     end
                     if imgui.BeginCombo('Action type##sbsource'..i,b.source=='command' and 'Single command' or 'Existing FFXI macro') then
-                        for _,source in ipairs({'macro','command'}) do if imgui.Selectable(source=='command' and 'Single command' or 'Existing FFXI macro',b.source==source or (b.source==nil and source=='macro')) then b.source=source; save_display(); end end
+                        for _,source in ipairs({'macro','command'}) do if imgui.Selectable(source=='command' and 'Single command' or 'Existing FFXI macro',b.source==source or (b.source==nil and source=='macro')) then b.source=source; if state.statebarSelected==i then state.statebarSelected=0; end; save_display(); end end
                         imgui.EndCombo();
                     end
                     if b.source=='command' then
@@ -2169,6 +2371,18 @@ ashita.events.register('d3d_present','decker_draw',function()
                         if not valid_command(b.command) then imgui.TextWrapped('Use /lac fwd tank pdt, /lac set Convert 8, /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
                     end
                     if b.source~='command' then
+                    if b.kind~='utility' and imgui.BeginCombo('Highlight source##sbtrack'..i,
+                        b.trackDefence and ('Aegis '..b.trackDefence:upper()) or 'Manual toggle') then
+                        for _,choice in ipairs({'auto','pdt','mdt'}) do
+                            local label=choice=='auto' and 'Manual toggle' or ('Aegis '..choice:upper());
+                            if imgui.Selectable(label,(b.trackDefence or 'auto')==choice) then
+                                b.trackDefence=choice~='auto' and choice or nil;
+                                if state.statebarSelected==i then state.statebarSelected=0; end
+                                save_display();
+                            end
+                        end
+                        imgui.EndCombo();
+                    end
                     imgui.TextWrapped('FFXI macro source: choose the action from its upper (CTRL) or lower (ALT) row. These are the two native rows, regardless of your Decker key labels.');
                     if imgui.BeginCombo('Macro to run##bar'..i,(b.row=='CTRL' and 'Upper row (CTRL) ' or 'Lower row (ALT) ')..tostring(b.slot==10 and 0 or b.slot)) then
                         for _,row in ipairs({'CTRL','ALT'}) do
@@ -2195,10 +2409,19 @@ ashita.events.register('d3d_present','decker_draw',function()
                         imgui.EndCombo();
                     end
                     imgui.SameLine();
-                    if imgui.Button('Remove##bar'..i) then table.remove(state.statebarSlots,i); table.remove(state.statebarHotkeys,i); if state.statebarSelected==i then state.statebarSelected=0 elseif state.statebarSelected>i then state.statebarSelected=state.statebarSelected-1 end; save_display(); break; end
+                    if imgui.Button('Remove##bar'..i) then
+                        table.remove(state.statebarSlots,i);
+                        for j=i,#state.statebarSlots do state.statebarHotkeys[j]=state.statebarHotkeys[j+1]; end
+                        state.statebarHotkeys[#state.statebarSlots+1]=nil;
+                        if state.statebarSelected==i then state.statebarSelected=0
+                        elseif state.statebarSelected>i then state.statebarSelected=state.statebarSelected-1; end
+                        save_display();
+                        break;
+                    end
                 end
                 if #state.statebarSlots<12 and imgui.Button('Add StateBar slot') then table.insert(state.statebarSlots,{row='CTRL',slot=1}); save_display(); end
-                imgui.TextWrapped('StateBar macros use the current book and set. Hotkeys are single keys: letters, F1-F12, number pad, punctuation and editing keys. Ctrl/Alt combinations remain native FFXI controls. Changing State/Utility changes highlighting, not the action.');
+                imgui.TextWrapped('StateBar macros use the current book and set. Hotkeys are single keys: letters, F1-F12, number pad, punctuation and editing keys. Ctrl/Alt combinations remain native FFXI controls. Changing State/Utility only changes highlighting.');
+                end
             end
             if state.settingsTab=='Appearance' then
             if imgui.CollapsingHeader('Display',ImGuiTreeNodeFlags_DefaultOpen or 32) then
