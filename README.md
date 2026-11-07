@@ -1,10 +1,14 @@
 # Decker — by Mutant X
 
-**Stable: v1.50.13-dev · Development updater: v1.50.17-dev (experimental, awaiting live testing)** · Ashita v4 / Vanacor / CatsEyeXI
+**Stable updater: v1.50.26-dev · Development updater: v1.50.26-dev** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
-[Download the latest release ZIP](https://github.com/danhughes381/FFXI-Decker/releases/download/v1.50.13-dev/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
+[Download the v1.50.13-dev release ZIP](https://github.com/danhughes381/FFXI-Decker/releases/download/v1.50.13-dev/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
+
+## Update an existing installation
+
+Open `/decker settings` → **More** → **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. Both channels serve the same build. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
 
 ## Install
 
@@ -15,13 +19,13 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 
 Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.13.md).
 
-Development v1.50.16-dev adds an optional **Immediately (0s)** post-action auto-hide setting for Toggle mode on top of the v1.50.14/15 font, keyboard, animated HUD and interactive guide experiments. **65/65 mocked regression groups pass under Lua 5.4 and LuaJIT**; live Windows/VanaCore testing is still required. [0s testing instructions](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md). Stable and the latest public GitHub Release remain v1.50.13-dev. No Stable merge or public release has been created.
+Historically, Development v1.50.16-dev added an optional **Immediately (0s)** post-action auto-hide setting for Toggle mode on top of the v1.50.14/15 font, keyboard, animated HUD and interactive guide experiments. **65/65 mocked regression groups pass under Lua 5.4 and LuaJIT**; live Windows/VanaCore testing is still required. [0s testing instructions](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md). The Stable updater was at v1.50.13-dev for that test.
 
-## Baseline status
+## Historical v1.50.13-dev baseline
 
 This main-branch baseline was selected by the owner on 21 October 2026 and includes the feedback passes through 1.50.13-dev. **54 host-mocked regression groups pass** under Lua 5.4 with the existing compatibility shims. Archive integrity, exact source and SHA-256 are checked. The owner confirmed shared number-key control and native book changes in earlier candidates. The owner confirms in-game testing of this build using VanaCore/Ashita; individual features and the complete Windows updater install/reload flow have not all been independently verified. LuaJIT and native execution are unavailable in this workspace. See [release-readiness issue #3](https://github.com/danhughes381/FFXI-Decker/issues/3).
 
-The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.13-dev. Channel promotion does not add live verification. The updater now shows installed and published versions explicitly. Stable and Development offer the same current build.
+The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.13-dev. Channel promotion does not add live verification. The updater now shows installed and published versions explicitly. Stable and Development offered the same build at that promotion.
 
 **CatsEyeXI: T1 Sanctioned — approved 19 October 2026.** This records the existing addon approval; it does not claim every subsequent development build was separately reviewed.
 
@@ -35,4 +39,4 @@ Published 21 October 2026: [v1.50.13-dev GitHub release](https://github.com/danh
 
 Development v1.50.17-dev adds explicit per-character HUD, StateBar and collapsed-button position saving/restoration. [PR #12](https://github.com/danhughes381/FFXI-Decker/pull/12): both GitHub validation runs passed Lua 5.4/LuaJIT regression and test ZIP checks (67 groups each). All served Development updater locations offer v1.50.17-dev; live character-switch/restart and different-resolution acceptance remain pending. Earlier Development notes above describe superseded candidates.
 
-Both in-game channels now offer 1.50.18-dev, including character-position and assigned-key preference fixes. The linked public release ZIP above remains historical 1.50.13-dev. After updating, Connect and enable Use my assigned keys once if its old preference was already overwritten. Offline validation passes; live client verification remains pending.
+The v1.50.18-dev promotion covered both in-game channels, including character-position and assigned-key preference fixes. The linked public release ZIP above remains historical 1.50.13-dev. After updating, Connect and enable Use my assigned keys once if its old preference was already overwritten. Offline validation passes; live client verification remains pending.

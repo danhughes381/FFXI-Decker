@@ -85,3 +85,25 @@ Owner directed consolidation and in-game updater publication. [PR #22](https://g
 Stable and Development manifests on main, the `development` branch and the actual legacy Development updater path `dev/decker-v1.49.5-integration/updates/development.txt` all point to immutable merge commit `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0` and the matching SHA-256 above. Published in-game update; no separate GitHub Release/tag/ZIP was created. Live install/reload, actual native macro book display and per-character position restoration require owner acceptance in Ashita. Prior character CFG files must be preserved.
 
 Next: in-game update via Decker Settings > Updates, then test held arrow release and book/set changes, assign different HUD/StateBar coordinates on Peppa and Salts, run `/decker savelayout`, reload/restart and verify both restore correctly. Readiness issue #3 is not closed.
+
+## v1.50.23-dev StateBar and cooldown candidate
+
+Based on main `57c5558`. The StateBar accepts a narrow set of Aegis gear mode commands and timed Convert prep from 1 to 15 seconds. It still submits a single command and reports a request, without verifying the active gear mode. Convert itself remains a separate manual action.
+
+Cooldown mappings now use the character profile, tracked book and set, row/slot and a matching native macro-name snapshot. Observed page transitions suppress colours while waiting for refresh. Old unscoped mappings are retained in configuration and must be reassigned on the intended page. Book and set are tracked display values. Duplicate macro names and unobserved native changes are limitations of the existing tracking.
+
+`python3 tests/run_lua54.py` passed 81 mocked groups. Live acceptance: test StateBar PDT/Fire and Convert prep, then assign different cooldowns to the same slot on two visibly distinct pages. Switch between them, reconnect and verify again on each character. Review branch `fix/statebar-page-cooldowns` targets main. In-game release requires live validation.
+
+## Classic 75 integration candidate v1.50.24-dev
+
+Optional per-character Classic 75 preset follows the active main job. It preserves custom slots and hotkeys, the native macro books, and saved navigation choices. Fixed preset controls are F6/F7/F9/F10/F11/F12; F8 remains available for targeting. PLD, BLM, WHM, NIN and RDM have supported commands. Other Classic 75 jobs show unavailable slots. Preset highlights come from decoded Aegis saved modes scoped to the active character and job. They are not equipment or live profile confirmation.
+
+Native subtarget/action-target selection takes precedence over Decker navigation on both key streams. Pending navigation is discarded and each already-held key retains its owner until release. Tested in 84 mocked Lua 5.4 regression groups. The separate manual integration ZIP includes the five Aegis profiles and runtime v0.7.3. Native Ashita/VanaCore execution remains untested. Verify Hold and Toggle with a real alliance Cure from a Decker macro, both Enter and Escape, then confirm navigation resumes, F8 targets, F11 preserves casting/accuracy, and a new job selects the right bar. No updater promotion.
+
+## Stable and Development v1.50.26-dev — 7 November 2026
+
+[PR #25](https://github.com/danhughes381/FFXI-Decker/pull/25) carries Classic 75 StateBar presets, native ally-selection priority, page-scoped cooldowns, slot reordering, saved Aegis mode highlights and independent action and hotkey label sizes. Source `addons/decker/decker.lua` matches the tested manual ZIP byte for byte.
+
+Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
+
+Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.

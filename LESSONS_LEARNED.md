@@ -14,3 +14,11 @@ Code inspection and mocked regressions show that per-character preference files 
 - 3 November 2026 (offline): current 1.50.18 input queues only physical press edges; an unchanged held arrow cannot advance again. Deterministic mocked polling reproduces the gap. All 72 groups pass after adding delayed repeats and cancellation at both queue-consumption and deferred-set execution boundaries. Live timing and native set transitions remain unverified.
 
 Offline regression reproduced End being rewritten to RSHIFT during cfg load; preserving the configured choice fixes persistence. Right Shift row switching also needs exclusion from unrelated-modifier gating. Current-character title detection and periodic refresh are offline tested only; real registered paths, client saves and private-server character-ID mapping still require in-game verification.
+
+## Cooldown annotations follow the action
+
+A CTRL or ALT position can represent different actions in every book and set. Key annotations to the tracked context, check the native label snapshot, and hide cooldown colour during an observed page transition. A matching label snapshot alone cannot distinguish identical pages.
+
+- An open macro HUD does not itself consume alliance navigation. Armed Decker navigation captures the same arrows and Enter in both event and held-state paths. The native targeting guard must cover both, discard deferred page work and preserve the owner of keys already down until release.
+
+- A remembered button press cannot establish that an Aegis toggle remains active. Mocked Decker checks now cover the transition from MDT to neutral, sparse hotkey reordering and separate font settings after a CFG reload.

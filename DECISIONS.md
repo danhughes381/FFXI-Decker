@@ -76,3 +76,15 @@ Persist HUD/StateBar/collapsed coordinates in the existing character cfg rather 
 Use physical key-state polling for delayed arrow repeats, with one repeat per due poll and no catch-up burst. Repeat selection/set navigation only; never repeat macro execution or row switches. Tag repeated requests so releases can cancel them before rendering or a delayed native set call, preserving the established single-tap path. Keep existing single-file deployment and cfg schema.
 
 Navigation key names/codes now share one table across configuration, UI, capture and conflict checks. Selecting the other navigation control's key swaps assignments to permit End/Right Shift exchange without temporary collisions. Book title discovery reads only exact current-character ID folders; ambiguous installs require an explicit folder rather than a guess. Aliases remain intentional overrides. Status emphasis is draw-only so existing header geometry stays fixed.
+
+## StateBar gear commands and cooldown context
+
+Aegis remains responsible for applying gear modes. Decker allows only explicitly supported single gear commands. Timed Convert prep is restricted to the named Convert set, and the ability itself remains a separate press. Cooldown metadata follows the tracked macro context and a matching name snapshot. Unscoped entries require deliberate reassignment.
+
+### Classic 75 candidate
+
+Keep native action rows and custom StateBars as saved. The opt-in preset supplies job-specific command slots without migrating configuration or writing macro books. Read back the Aegis mode record through its existing decoder and label it as saved. The addon does not infer equip success from a queued command.
+
+## StateBar v1.50.26-dev
+
+Store slot order and label sizes in the character CFG. Move hotkeys with their slots, keep Classic 75 order separate from custom order and use the saved Aegis state for supported mode highlights. The owner requested both updater channels carry the same tested source and version.
