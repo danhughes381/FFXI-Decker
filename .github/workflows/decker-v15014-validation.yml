@@ -1,0 +1,45 @@
+name: Decker 1.50.14 experimental validation
+on:
+  push:
+    branches:
+      - dev/decker-v1.50.14-yunaui-hardening
+    paths:
+      - .github/workflows/decker-v15014-validation.yml
+      - addons/decker/decker.lua
+      - tests/regression.lua
+      - tests/run_lua54.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Offline Lua regression and test-only package
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua runtimes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends liblua5.4-0 lua5.4 luajit zip unzip
+      - name: Lua 5.4 parse checks
+        run: |
+          lua5.4 -e "assert(loadfile('addons/decker/decker.lua'))"
+          lua5.4 -e "assert(loadfile('tests/regression.lua'))"
+      - name: Lua 5.4 mocked regression suite
+        run: python3 tests/run_lua54.py
+      - name: LuaJIT mocked regression suite
+        run: luajit tests/regression.lua .
+      - name: Package isolated test source (not an updater release)
+        run: |
+          mkdir -p dist/test-only
+          zip -q -9 -r dist/test-only/Decker_v1.50.14_dev_Mutant_X_TEST_ONLY.zip addons/decker/decker.lua docs/YUNAUI_HARDENING_1.50.14.md LICENSE NOTICE
+          unzip -t dist/test-only/Decker_v1.50.14_dev_Mutant_X_TEST_ONLY.zip
+          sha256sum addons/decker/decker.lua dist/test-only/Decker_v1.50.14_dev_Mutant_X_TEST_ONLY.zip | tee dist/test-only/SHA256SUMS.txt
+      - name: Upload test-only ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Decker-v1.50.14-dev-TEST-ONLY
+          path: dist/test-only/
+          if-no-files-found: error
+          retention-days: 14
