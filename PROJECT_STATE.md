@@ -99,3 +99,11 @@ Cooldown mappings now use the character profile, tracked book and set, row/slot 
 Optional per-character Classic 75 preset follows the active main job. It preserves custom slots and hotkeys, the native macro books, and saved navigation choices. Fixed preset controls are F6/F7/F9/F10/F11/F12; F8 remains available for targeting. PLD, BLM, WHM, NIN and RDM have supported commands. Other Classic 75 jobs show unavailable slots. Preset highlights come from decoded Aegis saved modes scoped to the active character and job. They are not equipment or live profile confirmation.
 
 Native subtarget/action-target selection takes precedence over Decker navigation on both key streams. Pending navigation is discarded and each already-held key retains its owner until release. Tested in 84 mocked Lua 5.4 regression groups. The separate manual integration ZIP includes the five Aegis profiles and runtime v0.7.3. Native Ashita/VanaCore execution remains untested. Verify Hold and Toggle with a real alliance Cure from a Decker macro, both Enter and Escape, then confirm navigation resumes, F8 targets, F11 preserves casting/accuracy, and a new job selects the right bar. No updater promotion.
+
+## Stable and Development v1.50.26-dev — 7 November 2026
+
+[PR #25](https://github.com/danhughes381/FFXI-Decker/pull/25) carries Classic 75 StateBar presets, native ally-selection priority, page-scoped cooldowns, slot reordering, saved Aegis mode highlights and independent action and hotkey label sizes. Source `addons/decker/decker.lua` matches the tested manual ZIP byte for byte.
+
+Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
+
+Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.

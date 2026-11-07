@@ -84,3 +84,7 @@ Aegis remains responsible for applying gear modes. Decker allows only explicitly
 ### Classic 75 candidate
 
 Keep native action rows and custom StateBars as saved. The opt-in preset supplies job-specific command slots without migrating configuration or writing macro books. Read back the Aegis mode record through its existing decoder and label it as saved. The addon does not infer equip success from a queued command.
+
+## StateBar v1.50.26-dev
+
+Store slot order and label sizes in the character CFG. Move hotkeys with their slots, keep Classic 75 order separate from custom order and use the saved Aegis state for supported mode highlights. The owner requested both updater channels carry the same tested source and version.
