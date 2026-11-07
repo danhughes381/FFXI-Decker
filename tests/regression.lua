@@ -21,20 +21,38 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
-local tmp=os.tmpname();os.remove(tmp);assert(os.execute('mkdir -p '..tmp)==0)
+local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
 local api=assert(loadfile(path))();local s=api.state
 local passed=0
 local function test(name,fn) fn();passed=passed+1;print('PASS '..name) end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
 api.refresh()
+test('native macro command updates Decker book and set display only',function()
+    local function send(command,blocked)
+        local pieces={};for word in command:gmatch('%S+') do pieces[#pieces+1]=word end
+        local e={command={args=function() return pieces end},blocked=blocked or false}
+        events.decker_cmd(e)
+        return e
+    end
+    s.manualBook=1;s.trackedSet=1;s.pendingRefreshFrames=0
+    local e=send('/macro book 9')
+    assert(not e.blocked and s.manualBook==9 and s.pendingRefreshFrames==3)
+    assert(s.trackedSource=='macro book command (unverified)')
+    e=send('/macro set 4')
+    assert(not e.blocked and s.trackedSet==4 and s.pendingRefreshFrames==3)
+    send('/macro book 21');assert(s.manualBook==9)
+    send('/macro book no');assert(s.manualBook==9)
+    send('/macro book 2',true);assert(s.manualBook==9)
+    send('/MACRO BOOK 1');assert(s.manualBook==1)
+end)
 test('first install: safe defaults and Quick Setup',function() assert(s.profileId=='1_Salts' and not s.keybinds and not s.autoHide and s.settingsTab=='Controls' and s.mappingMode=='numbers') end)
 test('profile switching isolates all settings',function()
  s.theme=4;s.scale=1.4;s.statebarSelected=3;s.statebarHotkeys={87};s.statebarHotkeysEnabled=true;s.savedNavEnabled=true;s.navQueue={200};s.names={'stale'};api.save();character='Pepper';api.refresh()
  assert(s.theme==1 and s.scale==1 and s.statebarSelected==0 and not s.statebarHotkeysEnabled and not s.savedNavEnabled and #s.navQueue==0 and #s.names==0 and not s.allowAllClicks)
- s.theme=2;api.save();character='Salts';api.refresh();assert(s.theme==4 and s.scale==1.4 and s.statebarSelected==3 and s.statebarHotkeys[1]==87)
+ s.theme=2;api.save();character='Salts';api.refresh();assert(s.theme==4 and s.scale==1.4 and s.statebarSelected==0 and s.statebarHotkeys[1]==87)
 end)
 test('profile reload and zero slots persist',function() s.statebarSlots={};api.save();s.statebarSlots={{row='CTRL',slot=1}};api.load();assert(#s.statebarSlots==0) end)
 test('State and Utility requests',function()
@@ -47,6 +65,48 @@ test('command allowlist rejects Lua chaining and chat',function()
  for _,c in ipairs({'/lua exec print(1)','/lac set PDT; /quit','/equipset 0','/equipset 101','/tell Someone hi','/item "Food" <me>\n/quit'}) do assert(not api.valid(c),c) end
  ready();s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/lac set PDT',label='PDT'}};assert(api.request(1));assert(requested[#requested]=='/lac set PDT')
  api.save();s.statebarSlots={};api.load();assert(s.statebarSlots[1].command=='/lac set PDT' and s.statebarSlots[1].source=='command' and s.statebarSlots[1].label=='PDT')
+end)
+test('StateBar accepts bounded gear commands and keeps Convert separate',function()
+ for _,command in ipairs({'/lac fwd tank pdt','/lac fwd tank defence fire','/lac fwd rdm casting enmity','/lac fwd blm casting cycle','/lac set Convert 8'}) do
+  assert(api.valid(command),command)
+ end
+ for _,command in ipairs({'/lac set Convert 0','/lac set Convert 16','/lac set Convert 1.5','/lac fwd tank reset','/lac fwd unknown pdt','/lac fwd tank pdt extra','/lac fwd tank pdt; /ja "Convert" <me>'}) do
+  assert(not api.valid(command),command)
+ end
+ ready();s.statebarSlots={{kind='utility',source='command',command='/lac set Convert 8',label='Convert Prep',row='CTRL',slot=1}}
+ local count=#requested
+ assert(api.request(1) and #requested==count+1 and requested[#requested]=='/lac set Convert 8')
+end)
+test('cooldowns follow book, set and refreshed macro names through save and reload',function()
+ local function command(...)
+  local args={...};events.decker_cmd({command={args=function()return args end}})
+ end
+ local function binding(index)
+  local page,fingerprint=api.cooldown.page()
+  return api.cooldown.binding(page,fingerprint,index)
+ end
+ ready();s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil;s.trackedSource='manual'
+ s.manualBook=3;s.trackedSet=1;s.previousFingerprint=table.concat(s.names,'\031')
+ s.cooldownBindings={[1]={kind='ability',id=5}}
+ assert(binding(1)==nil,'old unscoped mapping must not leak')
+ command('/decker','cooldown','ctrl','1','spell','338')
+ assert(binding(1).id==338)
+ local first=s.previousFingerprint
+ s.trackedSet=2;s.names[1]='Cure';s.previousFingerprint=table.concat(s.names,'\031')
+ assert(binding(1)==nil,'next set must not inherit Ichi')
+ command('/decker','cooldown','ctrl','1','spell','1')
+ assert(binding(1).id==1)
+ api.save();s.cooldownBindings={};api.load()
+ assert(binding(1).id==1 and s.cooldownBindings[1].id==5)
+ s.manualBook=4;assert(binding(1)==nil,'next book must not inherit Cure')
+ s.manualBook=3;s.trackedSet=1;s.previousFingerprint=first;assert(binding(1).id==338)
+ s.pendingRefreshFrames=1;assert(binding(1)==nil)
+ s.pendingRefreshFrames=0;s.trackedSource='unverified (same names)';assert(binding(1)==nil)
+ s.trackedSource='manual';s.previousFingerprint='different';assert(binding(1)==nil)
+ s.previousFingerprint=first;command('/decker','cooldown','ctrl','1','clear')
+ assert(binding(1)==nil and s.cooldownBindings['3.2.1'].id==1)
+ local original=character;character='Another';api.refresh();assert(binding(1)==nil and next(s.cooldownBindings)==nil)
+ character=original;api.refresh()
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
@@ -128,9 +188,9 @@ local previewPaints
  s.names={'Provoke','Flash','Sentinel','Rampart','Cure IV','Cover','Bash','Invincible','Chivalry','Shield','PDT','MDT','Idle','Auto','Food','Protect','Shell','Reprisal','Cure III','Cancel'}
  s.lastExecuted={row='CTRL',slot=2,name='Flash',set=s.trackedSet};s.navRow='CTRL';s.navSlot=2;s.flashUntil=0;s.trackedSource='verified';api.glass.custom=true;s.motionEnabled=false -- Legacy pixel/draw-order assertion checks baseline appearance.
  cursorX=20;cursorY=50;api.drawrow('CTRL',0);cursorX=20;cursorY=98;api.drawrow('ALT',10)
- assert(texts==60 and outlines==1 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
+ assert(texts==60 and outlines==20 and #fills==20 and fills[2][1]>.2 and fills[1][1]<.1 and fontDepth==0 and styles==0 and vars==0)
  assert(api.glass.custom,api.glass.diagnostic)
- local key=paints[4];assert(key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
+ local key;for _,paint in ipairs(paints) do if paint[1]=='text' and paint[6]=='F1' then key=paint;break end end;assert(key and key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
  previewPaints=paints;s.motionEnabled=true
 end)
 test('mouse and direct keyboard dispatch update execution only once',function()
@@ -219,7 +279,7 @@ test('thin Settings scrollbar balances style scope',function()
  ui.Begin=begin;ui.PushStyleVar=push;ImGuiStyleVar_ScrollbarSize=nil
 end)
 test('StateBar physical hotkey edges execute once and suppress native input',function()
- ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.mappingMode='split';s.held={};s.suppressed={}
+ ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.mappingMode='split';s.held={};s.suppressed={};s.statebarSelected=0
  s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/equipset 1'}};s.statebarHotkeys={79}
  local n=#requested;local raw={};for i=0,255 do raw[i]=0 end;raw[79]=128
  events.decker_exclusive_key_state({data_raw=raw,size=256});assert(#requested==n+1 and raw[79]==0 and s.statebarSelected==1)
@@ -466,7 +526,7 @@ test('title-file reader preserves blank slots and rejects malformed or unsupport
 end)
 test('read-only twenty-book title import persists isolated aliases',function()
  local function fixture(prefix) local b=string.rep('\0',24);for i=1,20 do local t=prefix..i;b=b..t..string.rep('\0',16-#t) end;return b end
- local one,two=fixture('Main'),fixture('Extra');local dir=tmp..'/titles';assert(os.execute('mkdir -p '..dir)==0)
+ local one,two=fixture('Main'),fixture('Extra');local dir=tmp..'/titles';assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..dir)))
  for name,bytes in pairs({['mcr.ttl']=one,['mcr_2.ttl']=two}) do local out=assert(io.open(dir..'/'..name,'wb'));out:write(bytes);out:close() end
  ready();s.bookPath=dir;assert(api.importBooks());assert(s.bookNames[1]=='Main1' and s.bookNames[20]=='Main20' and s.bookNames[21]==nil)
  local input=assert(io.open(dir..'/mcr.ttl','rb'));assert(input:read('*a')==one);input:close()
@@ -490,6 +550,17 @@ test('HUD heading uses the selected book alias or imported game title',function(
  s.manualBook=2;events.decker_draw();assert(heading:find('Book 2 - Bard',1,true))
  s.bookAliases[2]=nil;s.bookNames[2]='IngameBRD';events.decker_draw();assert(heading:find('Book 2 - IngameBRD',1,true))
  ui.Text=text
+end)
+test('prominent page indicator follows tracked macro set, not book title',function()
+ ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0
+ local previous=ui.Text;local labels={}
+ ui.Text=function(value) labels[#labels+1]=value end
+ s.bookAliases[1]='PLD';s.manualBook=1;s.trackedSet=1;events.decker_draw()
+ assert(labels[#labels]~='BOOK 01' or #labels>0)
+ local found=false;for _,value in ipairs(labels) do if value=='PAGE 01' then found=true end end;assert(found,'page one label missing')
+ labels={};s.manualBook=9;s.trackedSet=9;s.bookAliases[9]='PALADIN';events.decker_draw()
+ found=false;for _,value in ipairs(labels) do if value=='PAGE 09' then found=true end end;assert(found,'page nine label missing')
+ ui.Text=previous
 end)
 test('HUD Macro set and book controls select native books 1-20 with wrapping arrows',function()
  ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.navKeysEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0;s.allowSwitch=true;s.macroObject=65536;s.addresses.macro_object=65536;s.addresses.set_book=65536
@@ -733,6 +804,25 @@ test('drag positions save after settling and flush on unload',function()
  ui.GetWindowPos=get;ui.SetNextWindowPos=set;character='Salts';api.refresh()
 end)
 
+test('auto-connect permission is per-character and defaults disabled',function()
+ character='AutoConnectFresh';api.refresh()
+ assert(s.autoConnect==false and not s.autoConnectPending)
+ s.autoConnect=true;api.save();s.autoConnect=false;api.load();assert(s.autoConnect)
+ character='AutoConnectOther';api.refresh();assert(not s.autoConnect)
+ character='AutoConnectFresh';api.refresh();assert(s.autoConnect and s.autoConnectPending)
+ character='Salts';api.refresh()
+end)
+test('manual layout save command persists the active character only',function()
+ character='ManualLayoutA';api.refresh()
+ s.windowPositions={hud={111,222},statebar={333,444},collapsed={555,666}}
+ events.decker_cmd({command={args=function() return {'/decker','savelayout'} end},blocked=false})
+ s.windowPositions={};api.load()
+ assert(s.windowPositions.hud[1]==111 and s.windowPositions.statebar[2]==444 and s.windowPositions.collapsed[1]==555)
+ character='ManualLayoutB';api.refresh()
+ assert(not s.windowPositions.hud,'another character must not inherit the saved layout')
+ character='ManualLayoutA';api.refresh();assert(s.windowPositions.hud[1]==111)
+ character='Salts';api.refresh()
+end)
 test('assigned keys preference survives disconnected saves, reload and character switches',function()
  character='KeysEnabled';api.refresh()
  s.savedKeybinds=true;s.savedAck=true;s.keybinds=false;s.acknowledgeKeys=false
@@ -745,6 +835,230 @@ test('assigned keys preference survives disconnected saves, reload and character
  assert(s.savedKeybinds and s.savedAck,'unload erased assigned-key preference')
  character='KeysDisabled';api.refresh();assert(not s.savedKeybinds and not s.savedAck)
  character='Salts';api.refresh()
+end)
+
+-- Drive real input callbacks and UI frames with deterministic held-key timing.
+local function repeat_setup()
+ ready();s.allowSwitch=true;s.navKeysEnabled=true;s.navModifier='RSHIFT'
+ s.stickyNavigation=true;s.navToggleActive=true;s.navPhysicalDown=false;s.navModifierHeld=false
+ s.navCaptured={};s.navPhysicalKeys={};s.navRepeatAt={};s.navQueue={};s.deferredNav={};s.held={}
+ s.guideOpen=false;s.navSlot=1;s.navRow='CTRL';s.visible=false;s.showTests=false;s.statebarEnabled=false
+end
+local function physical_keys(keys)
+ local raw={};for i=0,255 do raw[i]=0 end
+ for _,key in ipairs(keys) do raw[key]=128 end
+ events.decker_custom_set_state({data_raw=raw,size=256})
+ return raw
+end
+test('all four held arrows repeat after delay without OS duplicate edges or catch-up bursts',function()
+ local clock=os.clock;local now=clock();os.clock=function() return now end
+ for _,key in ipairs({203,205,200,208}) do
+  repeat_setup()
+  physical_keys({key});assert(#s.navQueue==1)
+  now=now+.34;physical_keys({key});assert(#s.navQueue==1,'repeat started too early')
+  now=now+.02;physical_keys({key});assert(#s.navQueue==2 and s.navQueue[2].key==key)
+  events.decker_custom_set_navigation({key=key,down=true});assert(#s.navQueue==2,'OS repeat duplicated input')
+  now=now+.01;physical_keys({key});assert(#s.navQueue==2)
+  now=now+10;physical_keys({key});assert(#s.navQueue==3,'stalled frame must produce only one repeat')
+  physical_keys({});now=now+1;physical_keys({});assert(#s.navQueue==3,'released arrow repeated')
+ end
+ os.clock=clock;s.navQueue={};s.deferredNav={};s.navKeysEnabled=false
+end)
+test('held left/right wrap and stop on either release stream before the UI frame',function()
+ repeat_setup();physical_keys({205});events.decker_draw();assert(s.navSlot==2)
+ s.navRepeatAt[205]=0;physical_keys({205});events.decker_draw();assert(s.navSlot==3)
+ s.navRepeatAt[205]=0;physical_keys({205});physical_keys({});events.decker_draw();assert(s.navSlot==3)
+ physical_keys({203});events.decker_draw();assert(s.navSlot==2)
+ s.navSlot=1;s.navRepeatAt[203]=0;physical_keys({203});events.decker_draw();assert(s.navSlot==10)
+ s.navRepeatAt[203]=0;physical_keys({203});events.decker_custom_set_navigation({key=203,down=false})
+ events.decker_draw();assert(s.navSlot==10,'key_data release must cancel queued repeat')
+ s.navKeysEnabled=false
+end)
+test('held set repeats retain bounded deferred requests and cancel on release',function()
+ repeat_setup();physical_keys({208});events.decker_draw();assert(#s.deferredNav==1)
+ -- Initial taps retain the established delayed execution; only repeats cancel on release.
+ s.deferredNav={};s.navRepeatAt[208]=0;physical_keys({208});events.decker_draw()
+ assert(#s.deferredNav==1 and s.deferredNav[1].repeating)
+ s.navRepeatAt[208]=0;physical_keys({208});events.decker_draw();assert(#s.deferredNav==1)
+ physical_keys({});s.deferredNav[1].frames=1;local old=s.trackedSet
+ events.decker_draw();assert(#s.deferredNav==0 and s.trackedSet==old,'released repeat changed set')
+ s.navKeysEnabled=false
+end)
+test('repeat stops when navigation exits, guide opens or profile changes; actions never repeat',function()
+ for _,stop in ipairs({'hold','toggle','disable','guide','modifier'}) do
+  repeat_setup();physical_keys({205});events.decker_draw();s.navRepeatAt[205]=0;physical_keys({205})
+  if stop=='hold' then s.stickyNavigation=false;s.navModifierHeld=false
+  elseif stop=='toggle' then s.navToggleActive=false
+  elseif stop=='disable' then s.navKeysEnabled=false
+  elseif stop=='guide' then s.guideOpen=true
+  else s.held[29]=true end
+  events.decker_draw();assert(s.navSlot==2,'inactive navigation consumed repeat: '..stop)
+ end
+ repeat_setup();physical_keys({28,57,207});s.navQueue={};physical_keys({28,57,207});assert(#s.navQueue==0)
+ physical_keys({205});s.navRepeatAt[205]=0;physical_keys({205})
+ character='RepeatFresh';api.refresh();assert(next(s.navRepeatAt)==nil and #s.navQueue==0)
+ character='Salts';api.refresh();s.navKeysEnabled=false;s.guideOpen=false
+end)
+
+test('expanded navigation keys persist and swapped End Right Shift works in physical input',function()
+ for _,choice in ipairs(api.navOptions) do
+  s.navModifier=choice;s.rowSwitchKey='RSHIFT';api.save();s.navModifier='invalid';api.load();assert(s.navModifier==choice)
+  s.rowSwitchKey=choice;api.save();s.rowSwitchKey='invalid';api.load();assert(s.rowSwitchKey==choice)
+ end
+ repeat_setup();s.navModifier='END';s.rowSwitchKey='RSHIFT';s.navToggleActive=false
+ physical_keys({207});assert(s.navToggleActive);physical_keys({});physical_keys({54});events.decker_draw();assert(s.navRow=='ALT')
+ physical_keys({54});events.decker_draw();assert(s.navRow=='ALT','held row key repeated')
+ s.navKeysEnabled=true;assert(api.conflict(54,0) and api.conflict(207,0))
+ s.navKeysEnabled=false;s.navModifier='RSHIFT';s.rowSwitchKey='END';s.held={}
+end)
+test('current character saved titles auto-detect, refresh renames and avoid ambiguous installs',function()
+ local core=AshitaCore.GetMemoryManager;local fs=ashita.fs;local dir=tmp..'/game';assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..dir..'/USER/00001234')))
+ local function titles(name)
+  local out=string.rep('\0',24)
+  for i=1,20 do local t=i==3 and name or ('Book'..i);out=out..t..string.rep('\0',16-#t) end
+  local f=assert(io.open(dir..'/USER/00001234/mcr.ttl','wb'));f:write(out);f:close()
+ end
+ AshitaCore.GetMemoryManager=function() return {GetParty=function()return {GetMemberServerId=function()return 4660 end}end}end
+ ashita.fs={get_install_directory=function(_,game)assert(game==1);return dir end}
+ ready();s.bookPath='';s.bookNames={};s.bookAliases={};titles('Paladin');assert(api.refreshBooks());assert(api.bookLabel(3)=='Book 3 - Paladin')
+ titles('NewPLD');assert(api.refreshBooks() and s.bookNames[3]=='NewPLD');s.bookAliases[3]='Personal';assert(api.bookLabel(3)=='Book 3 - Personal')
+ local other=tmp..'/othergame';assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..other..'/USER/00001234')))
+ local f=assert(io.open(dir..'/USER/00001234/mcr.ttl','rb'));local bytes=f:read('*a');f:close();f=assert(io.open(other..'/USER/00001234/mcr.ttl','wb'));f:write(bytes);f:close()
+ s.bookPath='';ashita.fs.get_install_directory=function(lang)return lang==3 and other or dir end;assert(not api.refreshBooks() and s.bookPath=='','ambiguous installs must require selection')
+ s.bookPath='';ashita.fs.get_install_directory=function()return nil end;assert(not api.refreshBooks())
+ AshitaCore.GetMemoryManager=core;ashita.fs=fs;s.bookPath='';s.bookNames={};s.bookAliases={}
+end)
+test('status badge draws without changing header columns or font',function()
+ ready();s.visible=true;s.showTests=false;s.autoHide=false;s.statebarEnabled=false
+ local pos,draw,col=ui.GetCursorScreenPos,ui.GetWindowDrawList,ui.GetColorU32;local fill,border=0,0
+ ui.GetCursorScreenPos=function()return {500,10}end;ui.GetColorU32=function()return 1 end
+ ui.GetWindowDrawList=function()return {AddRectFilled=function(_,a,b)assert(b[1]>a[1]);fill=fill+1 end,AddRect=function()border=border+1 end}end
+ events.decker_draw();assert(fill>0 and border>0)
+ ui.GetCursorScreenPos=pos;ui.GetWindowDrawList=draw;ui.GetColorU32=col
+end)
+
+test('active native target selection owns arrows and Enter, including held key transitions',function()
+ local original=AshitaCore.GetMemoryManager
+ local sub,action=0,0
+ AshitaCore.GetMemoryManager=function()
+  local mm=original()
+  mm.GetTarget=function() return {GetIsSubTargetActive=function() return sub end,
+   GetActionTargetActive=function() return action end} end
+  return mm
+ end
+ for _,hold in ipairs({false,true}) do
+  repeat_setup();s.visible=true;s.stickyNavigation=not hold
+  local e={key=28,down=true}
+  if hold then physical_keys({54}) end
+  events.decker_custom_set_navigation(e);assert(e.blocked)
+  if hold then action=1 else sub=1 end
+  events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
+  assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
+  physical_keys({54})
+  for _,key in ipairs({200,208,28,156,1}) do
+   local e={key=key,down=true}
+   events.decker_custom_set_navigation(e);assert(not e.blocked,'target key swallowed')
+   assert(physical_keys({54,key})[key]==128,'target key cleared in held-state path')
+   assert(#s.navQueue==0 and #s.deferredNav==0)
+   if key~=28 then physical_keys({54}) else break end
+  end
+  sub,action=0,0
+  assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
+  physical_keys({54})
+  assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
+  physical_keys({})
+ end
+ AshitaCore.GetMemoryManager=original
+ s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false
+end)
+
+test('Classic 75 layout follows main job, preserves custom slots and gates unsupported keys',function()
+ ready();s.classic75=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.held={};s.suppressed={}
+ local original=AshitaCore.GetMemoryManager
+ local job,level=7,75
+ player.GetMainJob=function() return job end;player.GetMainJobLevel=function() return level end
+ player.GetSubJob=function() return 13 end;player.GetSubJobLevel=function() return 37 end
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetParty=function() return {GetMemberServerId=function() return 1 end} end
+  return mm
+ end
+ local custom=s.statebarSlots
+ assert(api.hotkey(64)==1 and api.hotkey(66)==nil and api.hotkey(88)==nil)
+ assert(api.request(5) and requested[#requested]=='/lac fwd pld defence none')
+ job=5;assert(api.hotkey(88)==6 and api.request(6) and requested[#requested]=='/lac set Convert 8')
+ assert(api.request(3) and requested[#requested]=='/lac fwd rdm casting accuracy')
+ job=4;assert(api.request(6) and requested[#requested]=='/lac fwd blm casting burst')
+ job=3;assert(api.request(2) and requested[#requested]=='/lac fwd whm mdt')
+ job=13;assert(api.request(4) and requested[#requested]=='/lac fwd nin defence fire')
+ job=10;assert(#api.classic.slots()==6 and api.hotkey(64)==nil and not api.request(1))
+ job,level=7,74;assert(api.hotkey(64)==nil and not api.request(1))
+ job=0;assert(#api.classic.slots()==0)
+ api.save();s.classic75=false;api.load();assert(s.classic75)
+ s.classic75=false;assert(#s.statebarSlots==#custom)
+ AshitaCore.GetMemoryManager=original
+end)
+
+test('Classic 75 saved readback uses character, job and PLD subjob scope',function()
+ ready()
+ local original,install=AshitaCore.GetMemoryManager,AshitaCore.GetInstallPath
+ local job,sub,id=7,13,1
+ player.GetMainJob=function() return job end;player.GetMainJobLevel=function() return 75 end
+ player.GetSubJob=function() return sub end;player.GetSubJobLevel=function() return 37 end
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetParty=function() return {GetMemberServerId=function() return id end} end
+  return mm
+ end
+ AshitaCore.GetInstallPath=function() return tmp end
+ os.execute('mkdir -p '..tmp..'/addons/aegis/aegis '..tmp..'/config/addons/aegis/1/profiles/PLD '..tmp..'/config/addons/aegis/1/profiles/BLM')
+ local function write(path,data) local f=assert(io.open(tmp..path,'wb'));f:write(data);f:close() end
+ write('/addons/aegis/aegis/swap_modes.lua','return { decode=function(raw,scope) if raw==scope then return {enabled=true} end end }')
+ write('/config/addons/aegis/1/profiles/PLD/swap_1_7_75_13_37.aegis','1_7_75_13_37')
+ write('/config/addons/aegis/1/profiles/BLM/swap_1_4_75_shared_subjobs.aegis','1_4_75_shared_subjobs')
+ assert(api.classic.saved_modes().enabled)
+ sub=1;assert(api.classic.saved_modes()==nil)
+ job=4;assert(api.classic.saved_modes().enabled)
+ id=2;assert(api.classic.saved_modes()==nil)
+ AshitaCore.GetMemoryManager=original;AshitaCore.GetInstallPath=install
+end)
+
+test('StateBar reorder preserves sparse hotkeys and persists separate layouts',function()
+ ready();s.classic75=false;s.statebarSelected=2
+ local mdt={row='CTRL',slot=1,label='MDT',source='command',command='/lac fwd pld mdt'}
+ local pdt={row='ALT',slot=2,label='PDT',trackDefence='pdt'}
+ s.statebarSlots={mdt,pdt,{row='ALT',slot=3,label='Utility'}}
+ s.statebarHotkeys={[1]=66,[3]=88}
+ api.classic.reorder(1,3)
+ assert(s.statebarSlots[3]==mdt and s.statebarHotkeys[3]==66)
+ assert(s.statebarSlots[1]==pdt and not s.statebarHotkeys[1] and s.statebarSelected==1)
+ s.classic75=true;api.classic.reorder(2,1)
+ s.classicOrder={1,2,3,4,5,6};api.load()
+ assert(s.classicOrder[1]==2 and s.classicOrder[2]==1)
+ assert(s.statebarSlots[3].label=='MDT' and s.statebarHotkeys[3]==66 and s.statebarSlots[1].trackDefence=='pdt')
+ s.classic75=false
+end)
+
+test('StateBar MDT highlight follows the saved mode instead of the last press',function()
+ ready();s.classic75=false;s.statebarSelected=1
+ local slot={source='command',command='/lac fwd pld mdt'}
+ local saved={enabled=true,locked=false,defence='mdt'}
+ assert(api.classic.highlight(slot,1,saved,'PLD',false))
+ assert(not api.classic.highlight(slot,1,saved,'NIN',false))
+ saved.defence='none';assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ saved.defence='mdt';saved.enabled=false;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ saved.enabled=true;saved.locked=true;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
+ assert(not api.classic.highlight(slot,1,nil,'PLD',false))
+end)
+
+test('StateBar font overrides fit independently and survive reload',function()
+ s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
+ api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
+ assert(s.statebarLabelSize==14 and s.statebarKeySize==16)
+ local text={}
+ local canvas={AddText=function(_,font,size,pos,col,label) text[label]={size=size,y=pos[2]} end}
+ api.drawGlassText(canvas,'MDT',0,0,100,40,'F8',false,true)
+ assert(text.MDT.size==14 and text.F8.size==16 and text.MDT.y+text.MDT.size<text.F8.y)
+ api.drawGlassText(canvas,'Macro',0,0,100,40,'1',false)
+ assert(text.Macro.size==18 and text['1'].size==10)
 end)
 
 os.execute('rm -r '..tmp)
