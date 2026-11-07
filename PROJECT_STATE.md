@@ -85,3 +85,11 @@ Owner directed consolidation and in-game updater publication. [PR #22](https://g
 Stable and Development manifests on main, the `development` branch and the actual legacy Development updater path `dev/decker-v1.49.5-integration/updates/development.txt` all point to immutable merge commit `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0` and the matching SHA-256 above. Published in-game update; no separate GitHub Release/tag/ZIP was created. Live install/reload, actual native macro book display and per-character position restoration require owner acceptance in Ashita. Prior character CFG files must be preserved.
 
 Next: in-game update via Decker Settings > Updates, then test held arrow release and book/set changes, assign different HUD/StateBar coordinates on Peppa and Salts, run `/decker savelayout`, reload/restart and verify both restore correctly. Readiness issue #3 is not closed.
+
+## v1.50.23-dev StateBar and cooldown candidate
+
+Based on main `57c5558`. The StateBar accepts a narrow set of Aegis gear mode commands and timed Convert prep from 1 to 15 seconds. It still submits a single command and reports a request, without verifying the active gear mode. Convert itself remains a separate manual action.
+
+Cooldown mappings now use the character profile, tracked book and set, row/slot and a matching native macro-name snapshot. Observed page transitions suppress colours while waiting for refresh. Old unscoped mappings are retained in configuration and must be reassigned on the intended page. Book and set are tracked display values. Duplicate macro names and unobserved native changes are limitations of the existing tracking.
+
+`python3 tests/run_lua54.py` passed 81 mocked groups. Live acceptance: test StateBar PDT/Fire and Convert prep, then assign different cooldowns to the same slot on two visibly distinct pages. Switch between them, reconnect and verify again on each character. Review branch `fix/statebar-page-cooldowns` targets main. In-game release requires live validation.

@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.22-dev';
+addon.version = '1.50.23-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -85,6 +85,28 @@ end
 -- Cooldown bindings are optional per button; never infer actions from user-defined labels.
 state.cooldownEnabled=false;
 state.cooldownBindings={};
+local cooldown = {};
+function cooldown.page()
+    if not state.profileReady or state.phase<4 or state.pendingRefreshFrames>0
+        or state.awaitingPageFingerprint or state.trackedSource=='unverified (same names)'
+        or not state.previousFingerprint or state.nameCount==0 then return nil; end
+    return state.manualBook..'.'..state.trackedSet..'.', state.previousFingerprint;
+end
+function cooldown.binding(page,fingerprint,index)
+    local binding=page and state.cooldownBindings[page..index];
+    return binding and binding.fingerprint==fingerprint and binding or nil;
+end
+function cooldown.encode(fingerprint)
+    return (fingerprint:gsub('.',function(byte) return ('%02x'):format(byte:byte()); end));
+end
+function cooldown.decode(value)
+    local kind,id,encoded=value:match('^(%l+):(%d+):([0-9a-f]+)$');
+    if (kind~='spell' and kind~='ability') or #encoded>358 or #encoded%2~=0 then return nil; end
+    local fingerprint=encoded:gsub('..',function(pair) return string.char(tonumber(pair,16)); end);
+    local _,separators=fingerprint:gsub('\031','');
+    if separators~=19 then return nil; end
+    return {kind=kind,id=tonumber(id),fingerprint=fingerprint};
+end
 local function cooldown_recast(binding)
     if not binding or not state.cooldownEnabled then return false; end
     local ok,remaining=pcall(function()
@@ -133,6 +155,11 @@ local function save_display()
     end
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
+    for key,binding in pairs(state.cooldownBindings) do
+        if type(key)=='string' then
+            f:write('cooldownpage.',key,'=',binding.kind,':',binding.id,':',cooldown.encode(binding.fingerprint),'\n');
+        end
+    end
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
     f:close(); state.layoutDirtyAt=nil;
 end
@@ -140,7 +167,7 @@ local function load_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'r'); if not ok or not f then return; end
     for line in f:lines() do
-        local key,value=line:match('^(%w+)=([%w_.:%-]+)$');
+        local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local n=tonumber(value);
         for _,id in ipairs({'hud','statebar','collapsed'}) do
             if (key==id..'posx' or key==id..'posy') and n and n>=-20000 and n<=20000 then
@@ -196,6 +223,12 @@ local function load_display()
         if key=='posx' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[1]=n; end
         if key=='posy' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[2]=n; end
         if key=='cooldownenabled' then state.cooldownEnabled=value=='1'; end
+        local book,page,slot;
+        if key then book,page,slot=key:match('^cooldownpage%.(%d+)%.(%d+)%.(%d+)$'); end
+        book,page,slot=tonumber(book),tonumber(page),tonumber(slot);
+        if book and book>=1 and book<=BOOK_COUNT and page>=1 and page<=10 and slot>=1 and slot<=20 then
+            state.cooldownBindings[book..'.'..page..'.'..slot]=cooldown.decode(value);
+        end
         local ci=key and tonumber(key:match('^cooldown(%d+)$'));
         if ci and ci>=1 and ci<=20 then local kind,id=value:match('^(spell):(%d+)$'); if not kind then kind,id=value:match('^(ability):(%d+)$'); end; if kind and tonumber(id) then state.cooldownBindings[ci]={kind=kind,id=tonumber(id)}; end end
         local directIndex=key and tonumber(key:match('^direct(%d+)$'));
@@ -329,7 +362,7 @@ local function refresh_profile()
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
     state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={}; state.navRepeatAt={}; state.navQueue={}; state.deferredNav={};
-    state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.lastExecuted=nil;
+    state.navSetVerifyFrames=0; state.pendingRefreshFrames=0; state.awaitingPageFingerprint=nil; state.lastExecuted=nil;
     state.flashRow=nil; state.flashSlot=nil; state.flashUntil=0;
     state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold';
     state.hudReadySince=nil; state.hudLastActivity=os.clock(); state.hudImmediateHide=false;
@@ -552,6 +585,7 @@ local function select_native_book(book)
         ffi.cast('Decker_FsMacroContainer_setBook_f',state.addresses.set_book)(obj,book-1);
     end);
     if not good then state.switchSummary='Native book request failed: '..tostring(err); return; end
+    state.awaitingPageFingerprint=state.previousFingerprint;
     state.manualBook=book;
     state.trackedSource='book requested (unverified)';
     state.previousFingerprint=nil;
@@ -677,6 +711,20 @@ local function valid_command(command)
     if type(command)~='string' or #command>240 or command:find('[%c;|]') then return false; end
     if command:match('^/equipset %d+$') then local n=tonumber(command:match('%d+')); return n>=1 and n<=100; end
     if command:match('^/lac set [%w_%-]+$') then return true; end
+    local duration=tonumber(command:lower():match('^/lac set convert (%d+)$'));
+    if duration then return duration>=1 and duration<=15; end
+    local profile,operation=command:match('^/lac fwd ([a-z]+) (.+)$');
+    if profile=='tank' or profile=='nin' or profile=='rdm' or profile=='pld' then
+        if operation=='pdt' or operation=='mdt' or operation=='accuracy' or operation=='auto'
+            or operation=='kite' or operation=='ws normal' or operation=='ws accuracy' then return true; end
+        if profile~='pld' and (operation=='defence fire' or operation=='defence evasion'
+            or operation=='defence none') then return true; end
+        if (profile=='tank' or profile=='nin') and (operation=='defence earth' or operation=='defence ice') then return true; end
+        if (profile=='tank' or profile=='rdm') and operation=='casting enmity' then return true; end
+    elseif profile=='blm' and (operation=='casting normal' or operation=='casting accuracy'
+        or operation=='casting damage' or operation=='casting burst' or operation=='casting cycle') then
+        return true;
+    end
     if command:match('^/item "[^"<>]+" <me>$') or command:match('^/ma "[^"<>]+" <me>$') or command:match('^/ja "[^"<>]+" <me>$') or command:match('^/mount "[^"<>]+"$') then return true; end
     return false;
 end
@@ -876,6 +924,7 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,displayScale)
 end
 local function draw_row(title,offset)
     local now=os.clock(); -- One animation clock sample for the entire row.
+    local page,fingerprint=cooldown.page();
     local w=math.floor(state.hudWidth*state.scale);
     local h=math.floor(state.hudHeight*state.scale);
     for i=1,10 do
@@ -889,7 +938,7 @@ local function draw_row(title,offset)
         local e=state.lastExecuted;
         local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=state.navRow==title and state.navSlot==i;
-        local cooling=cooldown_recast(state.cooldownBindings[offset+i]);
+        local cooling=cooldown_recast(cooldown.binding(page,fingerprint,offset+i));
         local a=state.buttonOpacity;
         local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
         local base=flashing and {.45,.34,.13,a} or remembered and (accents[state.theme] or accents[1]) or {.025,.028,.035,a};
@@ -1206,6 +1255,7 @@ ashita.events.register('key_data','decker_native_arrow_watch',function(e)
     if not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
         and state.phase>=4 and #state.names==20 then
         state.pendingRefreshFrames=3;
+        state.awaitingPageFingerprint=state.previousFingerprint;
         state.nativeArrowRefreshes=state.nativeArrowRefreshes+1;
         -- Native arrow navigation is allowed through. A known Decker-requested set
         -- gives us a tracking anchor, but is NOT an independently verified getter.
@@ -1325,6 +1375,7 @@ local function observe_native_macro_command(args)
     local n=tonumber(value);
     if kind=='book' and n>=1 and n<=BOOK_COUNT then
         if state.manualBook~=n then
+            state.awaitingPageFingerprint=state.previousFingerprint;
             state.manualBook=n;
             state.trackedSource='macro book command (unverified)';
             state.pendingRefreshFrames=3;
@@ -1334,6 +1385,7 @@ local function observe_native_macro_command(args)
     end
     if kind=='set' and n>=1 and n<=10 then
         if state.trackedSet~=n then
+            state.awaitingPageFingerprint=state.previousFingerprint;
             state.trackedSet=n;
             state.trackedSource='macro set command (unverified)';
             state.pendingRefreshFrames=3;
@@ -1387,9 +1439,14 @@ ashita.events.register('command','decker_cmd',function(e)
         local kind=(a[5] or ''):lower(); local id=tonumber(a[6]);
         if (row=='ctrl' or row=='alt') and slot and slot>=1 and slot<=10 and slot==math.floor(slot) then
             local index=(row=='alt' and 10 or 0)+slot;
-            if kind=='clear' then state.cooldownBindings[index]=nil; save_display(); say('Cooldown mapping cleared.',true);
+            local page,fingerprint=cooldown.page();
+            if not page then
+                say('Cooldown mapping needs a refreshed macro page. Verify the book and set in FFXI first.',true);
+            elseif kind=='clear' then
+                state.cooldownBindings[page..index]=nil; save_display(); say('Cooldown mapping cleared for this page.',true);
             elseif (kind=='spell' or kind=='ability') and id and id>=0 and id==math.floor(id) then
-                state.cooldownBindings[index]={kind=kind,id=id}; save_display(); say('Cooldown mapping saved for '..row..' '..slot,true);
+                state.cooldownBindings[page..index]={kind=kind,id=id,fingerprint=fingerprint};
+                save_display(); say('Cooldown mapping saved for this book/set and '..row..' '..slot,true);
             else say('Usage: /decker cooldown ctrl 1 spell 123 | ability TIMER_ID | clear',true); end
         else say('Usage: /decker cooldown ctrl|alt SLOT spell|ability ID',true); end
     elseif cmd=='guide' then open_guide()
@@ -1429,7 +1486,7 @@ end
 local function update_manifest(bytes)
     if type(bytes)~='string' or #bytes>1024 then return nil; end
     local m={}; for line in bytes:gmatch('[^\r\n]+') do
-        local k,v=line:match('^(%w+)=(.+)$'); if not k or m[k] then return nil; end; m[k]=v;
+        local k,v=line:match('^([%w.]+)=(.+)$'); if not k or m[k] then return nil; end; m[k]=v;
     end
     if m.protocol~='1' or not m.version or not m.version:match('^%d+%.%d+%.%d+%-?[%w.]*$') or not m.commit or #m.commit~=40 or m.commit:find('[^%x]') or not m.sha256 or #m.sha256~=64 or m.sha256:find('[^%x]') then return nil; end
     return m;
@@ -1957,7 +2014,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if b.source=='command' then
                         local text={b.command or ''};
                         if imgui.InputText('Command##sbcmd'..i,text,241) then b.command=text[1]; if valid_command(b.command) then save_display(); end end
-                        if not valid_command(b.command) then imgui.TextWrapped('Use /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
+                        if not valid_command(b.command) then imgui.TextWrapped('Use /lac fwd tank pdt, /lac set Convert 8, /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
                     end
                     if b.source~='command' then
                     imgui.TextWrapped('FFXI macro source: choose the action from its upper (CTRL) or lower (ALT) row. These are the two native rows, regardless of your Decker key labels.');
@@ -2130,14 +2187,15 @@ ashita.events.register('d3d_present','decker_draw',function()
             local cool={state.cooldownEnabled};
             if imgui.Checkbox('Red macro text when ability/spell is recasting',cool) then state.cooldownEnabled=cool[1]; save_display(); end
             imgui.TextWrapped('Only explicitly mapped actions are checked. Unmapped buttons stay their normal colour. Red buttons remain clickable. Spell IDs and ability recast timer IDs are different; do not use ability IDs as timer IDs.');
+            local page,fingerprint=cooldown.page();
             for i=1,20 do
-                local b=state.cooldownBindings[i];
+                local b=cooldown.binding(page,fingerprint,i);
                 local label=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);
                 imgui.Text(label..': '..(b and (b.kind..' '..b.id) or 'unmapped'));
                 imgui.SameLine();
-                if imgui.Button('Clear##cool'..i) then state.cooldownBindings[i]=nil; save_display(); end
+                if b and imgui.Button('Clear##cool'..i) then state.cooldownBindings[page..i]=nil; save_display(); end
             end
-            imgui.TextWrapped('To map a button: /decker cooldown ctrl 1 spell 123, or /decker cooldown alt 2 ability 5. Use /decker cooldown ctrl 1 clear to remove. Ability value is a recast timer ID.');
+            imgui.TextWrapped('Verify the displayed book and set in FFXI before mapping. Old unscoped mappings need to be reassigned. To map a button: /decker cooldown ctrl 1 spell 123, or /decker cooldown alt 2 ability 5. Use /decker cooldown ctrl 1 clear to remove. Ability value is a recast timer ID.');
                         imgui.Separator();
                     end -- cooldown options
                     if state.keyAssignmentPage then

@@ -21,7 +21,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -65,6 +65,48 @@ test('command allowlist rejects Lua chaining and chat',function()
  for _,c in ipairs({'/lua exec print(1)','/lac set PDT; /quit','/equipset 0','/equipset 101','/tell Someone hi','/item "Food" <me>\n/quit'}) do assert(not api.valid(c),c) end
  ready();s.statebarSlots={{row='CTRL',slot=1,kind='state',source='command',command='/lac set PDT',label='PDT'}};assert(api.request(1));assert(requested[#requested]=='/lac set PDT')
  api.save();s.statebarSlots={};api.load();assert(s.statebarSlots[1].command=='/lac set PDT' and s.statebarSlots[1].source=='command' and s.statebarSlots[1].label=='PDT')
+end)
+test('StateBar accepts bounded gear commands and keeps Convert separate',function()
+ for _,command in ipairs({'/lac fwd tank pdt','/lac fwd tank defence fire','/lac fwd rdm casting enmity','/lac fwd blm casting cycle','/lac set Convert 8'}) do
+  assert(api.valid(command),command)
+ end
+ for _,command in ipairs({'/lac set Convert 0','/lac set Convert 16','/lac set Convert 1.5','/lac fwd tank reset','/lac fwd unknown pdt','/lac fwd tank pdt extra','/lac fwd tank pdt; /ja "Convert" <me>'}) do
+  assert(not api.valid(command),command)
+ end
+ ready();s.statebarSlots={{kind='utility',source='command',command='/lac set Convert 8',label='Convert Prep',row='CTRL',slot=1}}
+ local count=#requested
+ assert(api.request(1) and #requested==count+1 and requested[#requested]=='/lac set Convert 8')
+end)
+test('cooldowns follow book, set and refreshed macro names through save and reload',function()
+ local function command(...)
+  local args={...};events.decker_cmd({command={args=function()return args end}})
+ end
+ local function binding(index)
+  local page,fingerprint=api.cooldown.page()
+  return api.cooldown.binding(page,fingerprint,index)
+ end
+ ready();s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil;s.trackedSource='manual'
+ s.manualBook=3;s.trackedSet=1;s.previousFingerprint=table.concat(s.names,'\031')
+ s.cooldownBindings={[1]={kind='ability',id=5}}
+ assert(binding(1)==nil,'old unscoped mapping must not leak')
+ command('/decker','cooldown','ctrl','1','spell','338')
+ assert(binding(1).id==338)
+ local first=s.previousFingerprint
+ s.trackedSet=2;s.names[1]='Cure';s.previousFingerprint=table.concat(s.names,'\031')
+ assert(binding(1)==nil,'next set must not inherit Ichi')
+ command('/decker','cooldown','ctrl','1','spell','1')
+ assert(binding(1).id==1)
+ api.save();s.cooldownBindings={};api.load()
+ assert(binding(1).id==1 and s.cooldownBindings[1].id==5)
+ s.manualBook=4;assert(binding(1)==nil,'next book must not inherit Cure')
+ s.manualBook=3;s.trackedSet=1;s.previousFingerprint=first;assert(binding(1).id==338)
+ s.pendingRefreshFrames=1;assert(binding(1)==nil)
+ s.pendingRefreshFrames=0;s.trackedSource='unverified (same names)';assert(binding(1)==nil)
+ s.trackedSource='manual';s.previousFingerprint='different';assert(binding(1)==nil)
+ s.previousFingerprint=first;command('/decker','cooldown','ctrl','1','clear')
+ assert(binding(1)==nil and s.cooldownBindings['3.2.1'].id==1)
+ local original=character;character='Another';api.refresh();assert(binding(1)==nil and next(s.cooldownBindings)==nil)
+ character=original;api.refresh()
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
