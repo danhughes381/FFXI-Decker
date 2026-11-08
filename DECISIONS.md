@@ -92,3 +92,5 @@ Store slot order and label sizes in the character CFG. Move hotkeys with their s
 ## Native target navigation handoff, 8 November 2026
 
 Use the SDK subtarget-active flag for Decker's keyboard handoff. A positive action-target flag alone is insufficient to infer an open input prompt. Preserve ownership of a held confirmation key until release. The test build needs live party-list `<stal>` verification before promotion.
+
+- Main HUD drawing and direct macro input share the same visibility predicate. Keep stored assignments and independent StateBar input separate from that predicate.

@@ -203,6 +203,37 @@ test('mouse and direct keyboard dispatch update execution only once',function()
  assert(#requested==n+2 and s.lastExecuted.row=='CTRL' and s.lastExecuted.slot==1)
  events.decker_exclusive_key_press({key=59,down=false});assert(not s.suppressed[59])
 end)
+test('closed macro HUD passes number keys through on both rows',function()
+ ready();s.navKeysEnabled=false;s.keybinds=true;s.acknowledgeKeys=true;s.mappingMode='numbers'
+ s.held={};s.suppressed={};s.visible=true;s.autoHide=false;s.statebarEnabled=false
+ s.names[1]='Flash';s.names[11]='Provoke'
+ local function press()
+  local e={key=2,down=true};events.decker_exclusive_key_press(e);return e
+ end
+ local function physical(value)
+  local raw={[2]=value};events.decker_exclusive_key_state({data_raw=raw,size=256});return raw[2]
+ end
+ for row,name in pairs({CTRL='Flash',ALT='Provoke'}) do
+  s.navRow=row
+  local before=#requested
+  assert(press().blocked and s.lastExecuted.name==name and #requested==before+1)
+  s.visible=false
+  assert(physical(128)==0,'key captured while visible must remain suppressed until release')
+  physical(0)
+  assert(not press().blocked and physical(128)==128 and #requested==before+1,'closed HUD ran a macro or swallowed 1')
+  physical(0)
+  s.visible=true
+ end
+ s.navKeysEnabled=true;s.stickyNavigation=false;s.navModifierHeld=false
+ assert(not press().blocked and physical(128)==128,'released Hold mode must yield 1')
+ s.navKeysEnabled=false;s.stickyNavigation=true;s.autoHide=true;s.autoHideDelay=0
+ s.hudImmediateHide=true;s.hudForceReveal=false;s.showTests=false
+ assert(not press().blocked and physical(128)==128,'immediate auto-hide must yield 1')
+ s.autoHideDelay=2;s.autoHideMode='collapse';s.hudLastActivity=os.clock()-20;s.hudReadySince=os.clock()-20
+ assert(not press().blocked and physical(128)==128,'collapsed HUD must yield 1')
+ s.autoHide=false;s.hudImmediateHide=false;s.hudReadySince=nil;s.hudLastActivity=os.clock()
+ s.autoHideMode='hide';s.autoHideDelay=10;s.mappingMode='split';s.navRow='CTRL'
+end)
 test('long labels stay within button width and preserve full source',function()
  paints={};s.names[1]=string.rep('Long',30);cursorX=0;cursorY=0;api.drawrow('CTRL',0)
  for _,p in ipairs(paints) do if p[1]=='text' then assert(p[2]>=0 and #p[6]*p[4]*.5<=106) end end

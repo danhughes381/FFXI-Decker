@@ -113,3 +113,16 @@ Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, Z
 The [test branch](https://github.com/danhughes381/FFXI-Decker/tree/fix/action-navigation-recovery) builds v1.50.27-dev from v1.50.26-dev. It changes the native targeting handoff in `addons/decker/decker.lua` and adds post-action recovery assertions in `tests/regression.lua`.
 
 All 87 mocked groups pass under Lua 5.4 and LuaJIT 2.1. The previous implementation fails the updated regression when the native subtarget closes and the action-target flag remains set. In-game confirmation is pending. Verify Right Shift lock/unlock, End row switching and all four arrows after a self-cast and an ability. Verify that a real native target prompt still owns the arrows and Enter, including the party-list `<stal>` prompt, before promotion.
+
+## Hidden macro HUD input — 8 November 2026
+
+The v1.50.29-dev test branch gates assigned macro keys on the same visibility
+conditions used by the main HUD. It covers explicit hide, a released Hold
+modifier, immediate auto-hide and timed collapse. The independent StateBar
+retains its separate key setting. A key captured before hiding is released
+through the existing suppression path.
+
+All 88 mocked groups passed under Lua 5.4 and LuaJIT 2.1. Before promotion,
+verify that slot 1 executes Flash or Provoke with its row visible, passes to
+FFXI with the HUD closed, and resumes after reopening. Test the configured
+Right Shift and row-switch keys.

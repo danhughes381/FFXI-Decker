@@ -1,9 +1,9 @@
--- Decker 1.50.27-dev: restore keyboard navigation after actions.
+-- Decker 1.50.29-dev: direct macro keys require an open macro HUD.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.27-dev';
+addon.version = '1.50.29-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1376,6 +1376,23 @@ local function shortcuts_active()
     return state.keybinds and state.acknowledgeKeys and state.allowAllClicks
         and state.phase>=4 and #state.names==20;
 end
+local function macro_hud_state(activeNav,now)
+    if not state.visible then return false,false; end
+    if state.navKeysEnabled and not state.stickyNavigation then
+        return state.navModifierHeld,false;
+    end
+    if not state.autoHide or state.hudForceReveal or activeNav or state.showTests then return true,false; end
+    local timedHide=state.autoHideDelay>0 and state.hudReadySince
+        and now-state.hudLastActivity>=state.autoHideDelay and now-state.hudReadySince>=10;
+    local instantHide=state.autoHideDelay==0 and state.hudImmediateHide;
+    local hidden=timedHide or instantHide;
+    return not hidden,hidden and state.autoHideMode=='collapse';
+end
+local function direct_input_ready()
+    if not shortcuts_active() then return false; end
+    local activeNav=state.navKeysEnabled and state.navToggleActive;
+    return macro_hud_state(activeNav,os.clock());
+end
 local function statebar_input_ready()
     return state.statebarEnabled and state.statebarHotkeysEnabled and state.allowAllClicks
         and state.profileReady and state.phase>=4 and #state.names==20;
@@ -1638,7 +1655,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
         end
         return;
     end
-    if not row or not shortcuts_active() or e.blocked or modifier_down() then return; end
+    if not row or not direct_input_ready() or e.blocked or modifier_down() then return; end
     if e.down then
         if not state.held[e.key] then
             state.held[e.key]=true;
@@ -1654,7 +1671,8 @@ end);
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
-    if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
+    local directReady=direct_input_ready();
+    if not directReady and not statebar_input_ready() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
     local keys={};
@@ -1684,7 +1702,7 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
                 state.held[code]=nil; state.suppressed[code]=nil;
             end
         end
-        if code<size and (state.suppressed[code] or hotkey or (shortcuts_active() and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
+        if code<size and (state.suppressed[code] or hotkey or (directReady and not modifier_down() and mapped_key(code)~=nil)) then ptr[code]=0; end
     end
 end);
 ashita.events.register('load','decker_load',function() load_glass_fonts(); say('Decker v'..addon.version..' loaded',false); end);
@@ -2124,15 +2142,10 @@ ashita.events.register('d3d_present','decker_draw',function()
     -- Timed options keep the existing startup grace and idle behaviour.
     -- 0s is event-based: do not hide on startup or before the first usable action.
     if not state.hudReadySince then state.hudReadySince=os.clock(); end
-    -- Hold visibility follows the physical key immediately; timers belong to Toggle.
-    local holdMode=state.navKeysEnabled and not state.stickyNavigation;
-    local holdHidden=holdMode and not state.navModifierHeld;
-    local timedHide=state.autoHideDelay>0 and (os.clock()-state.hudLastActivity)>=state.autoHideDelay and (os.clock()-state.hudReadySince)>=10;
-    local instantHide=state.autoHideDelay==0 and state.hudImmediateHide;
-    local idleHidden=not holdMode and state.autoHide and not state.hudForceReveal and not activeNav and not state.showTests and (instantHide or timedHide);
+    local hudOpen,hudCollapsed=macro_hud_state(activeNav,os.clock());
     state.hudForceReveal=false;
     -- /decker settings and /decker show recover the HUD without a permanent window.
-    if state.visible and idleHidden and state.autoHideMode=='collapse' then
+    if hudCollapsed then
         size_window('collapsed',88,40);
         pin_window('collapsed',state.positionLocked);
         if imgui.Begin('###DeckerCollapsed',{true},(ImGuiWindowFlags_NoTitleBar or 1)+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
@@ -2141,7 +2154,7 @@ ashita.events.register('d3d_present','decker_draw',function()
         end
         imgui.End();
     end
-    if state.visible and not holdHidden and not idleHidden then
+    if hudOpen then
     local hudw=math.floor(10*state.hudWidth*state.scale+9*8+32);
     size_window('hud',hudw,math.floor(2*state.hudHeight*state.scale+90));
     pin_window('hud',state.positionLocked);
@@ -2500,7 +2513,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                         state.acknowledgeKeys=enabled[1]; state.savedAck=enabled[1];
                         state.held={}; save_display();
                     end
-                    imgui.TextWrapped('Uses the keys in your selected layout or custom slots. Disable before typing or editing macros.');
+                    imgui.TextWrapped('Assigned keys run macros while the macro display is open. Disable before typing or editing macros.');
                 else
                     imgui.TextWrapped('Connect to in-game macros to use your assigned keys. Enabled by default after connection; untick it if preferred.');
                 end
