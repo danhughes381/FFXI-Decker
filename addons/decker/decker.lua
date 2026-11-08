@@ -1,9 +1,9 @@
--- Decker 1.50.27-dev: restore keyboard navigation after actions.
+-- Decker 1.50.28-dev: refresh the update manifest on every check.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.27-dev';
+addon.version = '1.50.28-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1837,7 +1837,9 @@ try {
  if($Mode -eq 'Check') {
   $branch=if($Channel -eq 'stable'){'main'}else{'dev/decker-v1.49.5-integration'}
   $url='https://raw.githubusercontent.com/danhughes381/FFXI-Decker/'+$branch+'/updates/'+$Channel+'.txt'
-  $text=$client.GetStringAsync($url).GetAwaiter().GetResult()
+  # A manual check must not reuse the last cached branch manifest.
+  $checkId=[Guid]::NewGuid().ToString('N')
+  $text=$client.GetStringAsync($url+'?check='+$checkId).GetAwaiter().GetResult()
  } else { $text=[IO.File]::ReadAllText($meta) }
  if($text.Length -gt 1024){throw 'Manifest too large'}
  $m=@{}
