@@ -24,3 +24,5 @@ A CTRL or ALT position can represent different actions in every book and set. Ke
 - A remembered button press cannot establish that an Aegis toggle remains active. Mocked Decker checks now cover the transition from MDT to neutral, sparse hotkey reordering and separate font settings after a CFG reload.
 
 - 8 November 2026 (mocked v1.50.26-dev): when the subtarget clears but the action-target flag stays positive, Decker keeps yielding navigation to FFXI. Holding or toggling Right Shift and switching rows now recover in the candidate mock test. The game client's flag values and party-list prompt behaviour still require live confirmation.
+
+- 8 November 2026: The raw branch manifest advertised `max-age=300` during the v1.50.27-dev rollout. A Decker reload resets local status but cannot refresh an upstream cached response.

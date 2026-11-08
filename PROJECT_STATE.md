@@ -113,3 +113,11 @@ Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, Z
 The [test branch](https://github.com/danhughes381/FFXI-Decker/tree/fix/action-navigation-recovery) builds v1.50.27-dev from v1.50.26-dev. It changes the native targeting handoff in `addons/decker/decker.lua` and adds post-action recovery assertions in `tests/regression.lua`.
 
 All 87 mocked groups pass under Lua 5.4 and LuaJIT 2.1. The previous implementation fails the updated regression when the native subtarget closes and the action-target flag remains set. In-game confirmation is pending. Verify Right Shift lock/unlock, End row switching and all four arrows after a self-cast and an ability. Verify that a real native target prompt still owns the arrows and Enter, including the party-list `<stal>` prompt, before promotion.
+
+## Updater manifest freshness — 8 November 2026
+
+The v1.50.28-dev draft uses a unique manifest URL for each explicit check.
+GitHub's raw endpoint advertises a five-minute cache lifetime. The exact
+cause of a stale in-game status remains unconfirmed. Immutable source
+downloads and SHA-256 verification use the existing protocol.
+Live check and installation on Windows remain pending.
