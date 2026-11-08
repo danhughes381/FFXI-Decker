@@ -1,0 +1,4 @@
+protocol=1
+version=1.50.27-dev
+commit=f755cbc8f83d301c0b96e60ceddfc0dd230f916c
+sha256=52c6f609dd55aea2df5218262da1c97ea16464517e95b8b061cf5037d48df557
