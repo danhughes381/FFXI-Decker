@@ -22,3 +22,5 @@ A CTRL or ALT position can represent different actions in every book and set. Ke
 - An open macro HUD does not itself consume alliance navigation. Armed Decker navigation captures the same arrows and Enter in both event and held-state paths. The native targeting guard must cover both, discard deferred page work and preserve the owner of keys already down until release.
 
 - A remembered button press cannot establish that an Aegis toggle remains active. Mocked Decker checks now cover the transition from MDT to neutral, sparse hotkey reordering and separate font settings after a CFG reload.
+
+- 8 November 2026 (mocked v1.50.26-dev): when the subtarget clears but the action-target flag stays positive, Decker keeps yielding navigation to FFXI. Holding or toggling Right Shift and switching rows now recover in the candidate mock test. The game client's flag values and party-list prompt behaviour still require live confirmation.

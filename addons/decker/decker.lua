@@ -1,9 +1,9 @@
--- Decker 1.50.26-dev: independent StateBar action and key label sizes.
+-- Decker 1.50.27-dev: restore keyboard navigation after actions.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.26-dev';
+addon.version = '1.50.27-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1409,15 +1409,13 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
-local selector={methods={'GetIsSubTargetActive','GetActionTargetActive'}};
+local selector={};
 function selector.active()
-    local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
-    if not ok or not target then return false; end
-    for _,method in ipairs(selector.methods) do
-        local read,flag=pcall(function() return target[method](target); end);
-        if read and (flag==true or (type(flag)=='number' and flag>0)) then return true; end
-    end
-    return false;
+    -- The action-target flag can remain set after the selection prompt closes.
+    local ok,flag=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
+    end);
+    return ok and (flag==true or (type(flag)=='number' and flag>0));
 end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};

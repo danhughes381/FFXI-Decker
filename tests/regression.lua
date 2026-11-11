@@ -951,7 +951,7 @@ test('active native target selection owns arrows and Enter, including held key t
   local e={key=28,down=true}
   if hold then physical_keys({54}) end
   events.decker_custom_set_navigation(e);assert(e.blocked)
-  if hold then action=1 else sub=1 end
+  sub,action=1,1
   events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
   assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
   physical_keys({54})
@@ -962,11 +962,19 @@ test('active native target selection owns arrows and Enter, including held key t
    assert(#s.navQueue==0 and #s.deferredNav==0)
    if key~=28 then physical_keys({54}) else break end
   end
-  sub,action=0,0
+  sub=0 -- The action flag can outlast the native prompt.
   assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
   physical_keys({54})
   assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
   physical_keys({})
+  if not hold then
+   physical_keys({54});assert(not s.navToggleActive,'Right Shift cannot unlock after the action')
+   physical_keys({});physical_keys({54});assert(s.navToggleActive,'Right Shift cannot relock after the action')
+   physical_keys({})
+  end
+  assert(physical_keys(hold and {54,207} or {207})[207]==0,'row key must return to Decker')
+  physical_keys({})
+  action=0
  end
  AshitaCore.GetMemoryManager=original
  s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false

@@ -107,3 +107,9 @@ Native subtarget/action-target selection takes precedence over Decker navigation
 Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
 
 Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.
+
+## Action navigation recovery — 8 November 2026
+
+The [test branch](https://github.com/danhughes381/FFXI-Decker/tree/fix/action-navigation-recovery) builds v1.50.27-dev from v1.50.26-dev. It changes the native targeting handoff in `addons/decker/decker.lua` and adds post-action recovery assertions in `tests/regression.lua`.
+
+All 87 mocked groups pass under Lua 5.4 and LuaJIT 2.1. The previous implementation fails the updated regression when the native subtarget closes and the action-target flag remains set. In-game confirmation is pending. Verify Right Shift lock/unlock, End row switching and all four arrows after a self-cast and an ability. Verify that a real native target prompt still owns the arrows and Enter, including the party-list `<stal>` prompt, before promotion.
