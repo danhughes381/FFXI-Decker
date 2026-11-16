@@ -225,7 +225,7 @@ end)
 if os.getenv('DECKER_PREVIEW') then
  local f=assert(io.open(os.getenv('DECKER_PREVIEW'),'w'))
  local function esc(t) return tostring(t):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;') end
- f:write('<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="240"><rect width="1140" height="240" fill="#40544f"/><text x="20" y="24" fill="white" font-family="sans-serif" font-size="14">DECKER | Book 1 (#1) — OFFLINE SIMULATION, NOT A GAME SCREENSHOT</text>')
+ f:write('<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="240"><rect width="1140" height="240" fill="#40544f"/><text x="20" y="24" fill="white" font-family="sans-serif" font-size="14">DECKER | Book 1 (#1) â€” OFFLINE SIMULATION, NOT A GAME SCREENSHOT</text>')
  for _,p in ipairs(previewPaints) do
   local c=p[1]=='text' and p[5] or p[6];local colour
   -- integer conversion is explicit for Lua 5.4 as well as LuaJIT.
@@ -951,7 +951,7 @@ test('active native target selection owns arrows and Enter, including held key t
   local e={key=28,down=true}
   if hold then physical_keys({54}) end
   events.decker_custom_set_navigation(e);assert(e.blocked)
-  if hold then action=1 else sub=1 end
+  sub,action=1,1
   events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
   assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
   physical_keys({54})
@@ -962,11 +962,19 @@ test('active native target selection owns arrows and Enter, including held key t
    assert(#s.navQueue==0 and #s.deferredNav==0)
    if key~=28 then physical_keys({54}) else break end
   end
-  sub,action=0,0
+  sub=0 -- The action flag can outlast the native prompt.
   assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
   physical_keys({54})
   assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
   physical_keys({})
+  if not hold then
+   physical_keys({54});assert(not s.navToggleActive,'Right Shift cannot unlock after the action')
+   physical_keys({});physical_keys({54});assert(s.navToggleActive,'Right Shift cannot relock after the action')
+   physical_keys({})
+  end
+  assert(physical_keys(hold and {54,207} or {207})[207]==0,'row key must return to Decker')
+  physical_keys({})
+  action=0
  end
  AshitaCore.GetMemoryManager=original
  s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false
@@ -1061,5 +1069,25 @@ test('StateBar font overrides fit independently and survive reload',function()
  assert(text.Macro.size==18 and text['1'].size==10)
 end)
 
+test('keypad End has a distinct configurable scan code',function()
+ assert(api.navKeys.NUMPAD1==79 and api.navKeys.END==207)
+end)
+test('first row switch has a visible slot before any macro click',function()
+ s.guideOpen=false;s.navSlot=nil;s.navRow=nil;s.rowSwitchKey='NUMPAD1'
+ api.nav(79,false);assert(s.navSlot==1 and s.navRow=='ALT')
+ api.nav(79,false);assert(s.navSlot==1 and s.navRow=='CTRL')
+end)
+test('stormbar sets four persistent mode commands without macro scans',function()
+ local e={command={args=function()return {'/decker','stormbar'}end}}
+ events.decker_cmd(e)
+ assert(s.classic75==false and s.statebarEnabled and s.statebarHotkeysEnabled)
+ for i,verb in ipairs({'pdt','mdt','accuracy','auto'})do
+  assert(s.statebarHotkeys[i]==64+i and s.statebarSlots[i].command=='/lac fwd tank '..verb)
+ end
+ s.phase=0;s.allowAllClicks=false;s.profileReady=true
+ assert(api.hotkey(65)==1,'Command StateBar must not depend on native macro pointers')
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
+
