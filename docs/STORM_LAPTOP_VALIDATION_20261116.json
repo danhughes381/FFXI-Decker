@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-16",
+  "source_commit": "3198f83718daa626492db384c53dbcbd59e99f71",
+  "version": "1.50.30-dev",
+  "runtime": "Windows LuaJIT 2.1 DLL via isolated Python ctypes runner",
+  "offline_passed": "90 mocked regression groups",
+  "source_tests": true,
+  "live": "Owner-reported partial UI evidence; full PC updater round trip and equipment effects not verified",
+  "stable_changed": false,
+  "review": "https://github.com/danhughes381/FFXI-Decker/pull/29"
+}

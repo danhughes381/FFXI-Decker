@@ -1,4 +1,10 @@
-# Decker — project state
+## Storm laptop controls — 1.50.30-dev (16 November 2026)
+
+Development only, composed with the existing 1.50.27-dev action/navigation recovery. Adds explicit NUMPAD1 (scan 79) separately from END (207), establishes slot 1 when opening navigation without a macro click, and adds `/decker stormbar` for F7 PDT, F8 MDT, F9 Accuracy and F10 Auto. The opt-in command bar no longer requires native macro pointers just to queue an allowlisted command. Native macro execution checks remain intact.
+
+Owner confirmed NUMPAD1 row switching and the four-button display on the laptop. First-open row selection was fixed and tested offline; its latest live check is pending. StateBar mode commands require the matching LAC tank profile; no gear outcome is claimed. Per-character .cfg files are excluded from updates.
+
+# Decker â€” project state
 
 Updated 21 October 2026. Owner selected **v1.50.12-dev as the latest main, Stable and Development baseline**.
 
@@ -6,7 +12,7 @@ Source: `addons/decker/decker.lua`. Exact delivered artifact: `dist/Decker_v1.50
 
 Implemented through this baseline: glass/fonts; sizing/position lock fixes; compact labels and hover fixes; hidden title bars; shared/default/custom keys and simpler setup; native-style Hold visibility and Toggle timers; StateBar independent hotkeys/labels/fitting; Settings close/visibility fixes; red locked/held status and stationary header columns; named books and adjacent Macro set/Book controls, matching the target 20-book menu.
 
-Verified offline: 52 host-mocked regression groups under Lua 5.4 with compatibility shims; diff checks; ZIP integrity, exact packaged source and checksum. Owner live evidence: shared number-key control works; book changes 1–3 worked in v1.50.11. Complete 1.50.12 live proof remains pending. LuaJIT/native execution and target host are unavailable here.
+Verified offline: 52 host-mocked regression groups under Lua 5.4 with compatibility shims; diff checks; ZIP integrity, exact packaged source and checksum. Owner live evidence: shared number-key control works; book changes 1â€“3 worked in v1.50.11. Complete 1.50.12 live proof remains pending. LuaJIT/native execution and target host are unavailable here.
 
 This promotion preserves the exact tested source and delivered ZIP, existing main history and coordination files. Older PRs/history remain available. Owner explicitly requested Stable and Development; both manifests now pin identical source. Main, stable, development and the legacy updater development branch are aligned. Version remains 1.50.12-dev; no GitHub Release/tag is created. Readiness issue #3 remains open.
 
@@ -16,7 +22,7 @@ Source pin: `0f5ebdc03d882b7cdb36451f9f6ba8281fb9efcb`. Source SHA-256: `f94c1e1
 
 Promotion review: [PR #5](https://github.com/danhughes381/FFXI-Decker/pull/5), merged as [797f8f2](https://github.com/danhughes381/FFXI-Decker/commit/797f8f226a83ad8250c151e456188f9791ec6190). Exact source pin: [0f5ebdc](https://github.com/danhughes381/FFXI-Decker/commit/0f5ebdc03d882b7cdb36451f9f6ba8281fb9efcb). Both updater manifests, stable/development branches and legacy Development location use the same version/source. This final metadata follow-up records the completed promotion.
 
-## Updater verification — 1.50.13-dev
+## Updater verification â€” 1.50.13-dev
 
 [PR #6](https://github.com/danhughes381/FFXI-Decker/pull/6) updates the addon status/version, regression tests/results, packaging script, guide, README/changelog, both manifests and release metadata. Source pin: [e095b84](https://github.com/danhughes381/FFXI-Decker/commit/e095b847876ee89badfda00027ccda6e4c474bdb); SHA-256: e4866175eab0a909d44321c80f932716686ca15e68a858e9f0f7d33c112d6543. Latest current build is 1.50.13-dev for both owner-selected channels, superseding the historical .12 baseline above.
 
@@ -24,7 +30,7 @@ Promotion review: [PR #5](https://github.com/danhughes381/FFXI-Decker/pull/5), m
 
 Next action: on a 1.50.12-dev installation, select either channel, Check for updates, install 1.50.13-dev and reconnect macros. Confirm the in-game reload and subsequent Up to date result; record evidence before claiming complete live validation.
 
-## Published GitHub release — 21 October 2026
+## Published GitHub release â€” 21 October 2026
 
 [v1.50.13-dev](https://github.com/danhughes381/FFXI-Decker/releases/tag/v1.50.13-dev) is now the latest public GitHub release, titled **Decker v1.50.13-dev**, published as a regular release at the owner's explicit request. Tag/source commit: `e095b847876ee89badfda00027ccda6e4c474bdb`. Previous v1.47 release is preserved. GitHub displays the Latest badge. The -dev tag/version, existing verification limits and updater source pins are retained.
 
@@ -34,20 +40,20 @@ Owner confirms in-game testing using VanaCore/Ashita. This supersedes earlier st
 
 Publication changes only release metadata and documentation (PROJECT_STATE.md, RELEASE_NOTES.md, README.md). Addon code, packaged ZIP, updater manifests and character settings are unchanged. No Actions workflow was dispatched or modified; the existing import workflow does not trigger on release publication or documentation changes. Next action: record specific live updater and feature results in issue #3 before final production acceptance.
 
-## Development updater test candidate — 22 October 2026
+## Development updater test candidate â€” 22 October 2026
 
 The owner expected today's experimental v1.50.14-dev and v1.50.15-dev changes to be available via **Development** for in-game evaluation. Updated `updates/development.txt` in `main`, `development`, and the updater's actual legacy read path `dev/decker-v1.49.5-integration` to **v1.50.15-dev**. The immutable source pin is `511240f99e3a4ae24d77cdf6b1d61ac898279290` with independently recalculated source SHA-256 `6789da96690d1a685d1e7fa10fd054988c075bf385c79a41a77c8ec1c4162b28`.
 
-v1.50.15 includes v1.50.14 font/preload, key-release and viewport hardening, plus optional HUD micro-motion and simulated interactive guide. GitHub Actions reported **61/61** mocked test groups passing in Lua 5.4 and LuaJIT. No in-game acceptance or live Windows updater install was verified by this promotion; the channel is **experimental for testing only**. Stable, the v1.50.13 GitHub Release, addon source in `main`, and draft PRs #9/#10 remain unchanged. No merge, tag or new release. Live follow-up: on existing v1.50.13, select Development → Check for updates → Install and reload; check `/decker guide`, both macro rows, keyboard/StateBar suppression while the guide is open, recovery afterward, reduced motion, and position/font behaviour. Record evidence in PR #10 / issue #3.
+v1.50.15 includes v1.50.14 font/preload, key-release and viewport hardening, plus optional HUD micro-motion and simulated interactive guide. GitHub Actions reported **61/61** mocked test groups passing in Lua 5.4 and LuaJIT. No in-game acceptance or live Windows updater install was verified by this promotion; the channel is **experimental for testing only**. Stable, the v1.50.13 GitHub Release, addon source in `main`, and draft PRs #9/#10 remain unchanged. No merge, tag or new release. Live follow-up: on existing v1.50.13, select Development â†’ Check for updates â†’ Install and reload; check `/decker guide`, both macro rows, keyboard/StateBar suppression while the guide is open, recovery afterward, reduced motion, and position/font behaviour. Record evidence in PR #10 / issue #3.
 
-## Development v1.50.16-dev immediate auto-hide test — 22 October 2026
+## Development v1.50.16-dev immediate auto-hide test â€” 22 October 2026
 
-Owner requested "hide after activity — immediately (0s)" in the macro HUD Appearance settings. Created `dev/decker-v1.50.16-immediate-hide` on top of v1.50.15 and draft [PR #11](https://github.com/danhughes381/FFXI-Decker/pull/11) targeting its experimental base. Implemented **Immediately (0s)** as event-driven hide on the next UI frame after a successfully requested macro/StateBar action or end of Toggle navigation; avoids instant disappearance on startup. Hold remains physical-key-driven and 2–30-second timings remain unchanged. Per-character saved 0s preference supported. [Live checklist](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md).
+Owner requested "hide after activity â€” immediately (0s)" in the macro HUD Appearance settings. Created `dev/decker-v1.50.16-immediate-hide` on top of v1.50.15 and draft [PR #11](https://github.com/danhughes381/FFXI-Decker/pull/11) targeting its experimental base. Implemented **Immediately (0s)** as event-driven hide on the next UI frame after a successfully requested macro/StateBar action or end of Toggle navigation; avoids instant disappearance on startup. Hold remains physical-key-driven and 2â€“30-second timings remain unchanged. Per-character saved 0s preference supported. [Live checklist](https://github.com/danhughes381/FFXI-Decker/blob/dev/decker-v1.50.16-immediate-hide/docs/IMMEDIATE_HIDE_1.50.16.md).
 
 GitHub Actions [run 39755640087](https://github.com/danhughes381/FFXI-Decker/actions/runs/39755640087) passed **65/65 mocked regression groups in Lua 5.4 and LuaJIT**, syntax and ZIP integrity. Pinned immutable candidate commit `67001453ed8869df076d6831305bcb3ef81cca48`; GitHub Actions source SHA-256 `94dde51ffc250dd3d4aea39d08aca67a134b3bdd69f0ca58561bf05759f6fc7e`. Updated all three served Development manifest locations (`dev/decker-v1.49.5-integration`, `development`, `main`) to v1.50.16-dev. **Stable remains v1.50.13-dev**, source on `main` and public release unchanged. No new public release, tag or merged UI PR. Real VanaCore/Ashita updater and macro execution remain unverified; test in game before Stable promotion.
 
 
-## Development v1.50.17 character-layout fix — 25 October 2026
+## Development v1.50.17 character-layout fix â€” 25 October 2026
 
 [PR #12](https://github.com/danhughes381/FFXI-Decker/pull/12) fixes session-only window positions on top of v1.50.16. Per-character HUD, StateBar and collapsed coordinates now save and restore explicitly, including unlocked restoration, viewport clamping and debounced drag saves with unload/profile-change flush. Existing per-character scale/size preferences remain separate. Source: `f178392675fb062875b2f9cac15de69eb789c253`; source SHA-256: `b9bb26bf42cfdf41052a6a27631cb876bedf87c4b4a3d35102a8f1a65c2c878a`.
 
@@ -55,18 +61,18 @@ GitHub [branch validation](https://github.com/danhughes381/FFXI-Decker/actions/r
 
 Next: select Development, Check for updates, install v1.50.17-dev; give the two characters distinct HUD/StateBar placement and sizing, switch back and forth, reload the addon and restart the game. Live VanaCore vector APIs and different-resolution behaviour remain unverified. Guide: [character layout test](https://github.com/danhughes381/FFXI-Decker/blob/fix/character-layout/docs/CHARACTER_LAYOUT_1.50.17.md). Readiness issue #3 stays open.
 
-## Stable and Development 1.50.18-dev — 27 October 2026
+## Stable and Development 1.50.18-dev â€” 27 October 2026
 
 Owner explicitly requested publication of the assigned-key persistence fix to both channels. Source pin `30e91f63e42d71683f520d408c7cf5403adabe7b`; SHA-256 `b8ae058040e25475b393da5e240dac3c4676d8700c1f5b09292c4e80eb2c5dc9`. Carries current Development features through 1.50.17, including per-character position persistence, plus PR #13. Persist savedKeybinds/savedAck instead of temporary disconnected runtime flags. Existing overwritten preferences require ticking Use my assigned keys once after installation.
 
 PR #13 validation run 40515934316 passed Lua 5.4/LuaJIT regression, syntax and ZIP integrity. After version-only change, all 68 Lua 5.4 mocked groups and diff checks pass locally. Real Windows/VanaCore updater reload and live persistence remain unverified. Stable and Development manifests and both named channel branches are aligned; legacy Development URL remains served. No new public GitHub Release or tag. Next: update in game, Connect, enable assigned keys, reload, make an appearance edit before Connect, reconnect and verify the checkbox; test both characters. Readiness issue #3 remains open.
 
-## Navigation and book-title candidate — 3 November 2026
+## Navigation and book-title candidate â€” 3 November 2026
 
 Based on current main/development `38cb3b8715d3787d42288ffb7d83035a39604456`, updater 1.50.18-dev. Branch `feature/held-arrow-navigation`, candidate **1.50.19-dev**. Recovered uncommitted arrow work and completed it with the owner's additional requests.
 
 - All arrows: 350 ms delay then 80 ms repeats, no OS-repeat duplication or catch-up bursts. Physical release cancels queued/deferred repeat requests. Enter/Space/row switch stay single press.
-- Both navigation key selectors offer 28 choices, including Shift/Ctrl/Alt sides, navigation keys, locks, N and F1–F12. Selecting the other control's key swaps their assignments. Saved End is preserved instead of silently converted to Right Shift. Row-switch modifiers no longer block navigation as an unrelated modifier.
+- Both navigation key selectors offer 28 choices, including Shift/Ctrl/Alt sides, navigation keys, locks, N and F1â€“F12. Selecting the other control's key swaps their assignments. Saved End is preserved instead of silently converted to Right Shift. Row-switch modifiers no longer block navigation as an unrelated modifier.
 - Saved-title detection uses the current party member 0 server ID and exact hex USER folders under registered FFXI installs. Requires one unique valid candidate; multiple installs or missing APIs/files retain explicit folder fallback. Reads 20 book names from mcr.ttl on profile load and every five seconds; saves cfg only for changed titles. Existing aliases take precedence. No live native book-title getter or job-name inference is claimed.
 - Status gets a draw-only coloured background/border. Existing text/font/header columns are preserved, with the prior rendering fallback.
 
@@ -76,7 +82,7 @@ No updater manifest, channel, tag or public release changed. Readiness #3 remain
 
 GitHub review: [draft PR #16](https://github.com/danhughes381/FFXI-Decker/pull/16). Exact tested source commit: [6dc079f](https://github.com/danhughes381/FFXI-Decker/commit/6dc079f2dccff11c7fdfb7a980061e1597cd6a7d). Remote tree equals local tested tree `07b6d9637f68442f1a790c2041a23521cff67ed5`. Manual ZIP is in this branch under dist/test-only; SHA-256 `9d81c189fb6aca569c732a6c7393f20902f8c777a51a104c55c758b6a2a86e24`.
 
-## Published combined Decker v1.50.20-dev — 5 November 2026
+## Published combined Decker v1.50.20-dev â€” 5 November 2026
 
 Owner directed consolidation and in-game updater publication. [PR #22](https://github.com/danhughes381/FFXI-Decker/pull/22) merged into main as `a75a53c5dadf8ce2fb6f9269d17bf7a00630a2f0`; addon `addons/decker/decker.lua` now declares `1.50.20-dev`. Includes v1.50.19 held-arrow repeat (350ms initial, 80ms repeat), expanded keys and automatic book title discovery, plus observed `/macro book` / `/macro set` display synchronisation and manual per-character layout saving (`/decker savelayout` / Settings button). Existing automatic layout save and profile isolation preserved. Book commands executed inside the native game may not be exposed through Ashita command events; this remains unverified live.
 
@@ -100,10 +106,10 @@ Optional per-character Classic 75 preset follows the active main job. It preserv
 
 Native subtarget/action-target selection takes precedence over Decker navigation on both key streams. Pending navigation is discarded and each already-held key retains its owner until release. Tested in 84 mocked Lua 5.4 regression groups. The separate manual integration ZIP includes the five Aegis profiles and runtime v0.7.3. Native Ashita/VanaCore execution remains untested. Verify Hold and Toggle with a real alliance Cure from a Decker macro, both Enter and Escape, then confirm navigation resumes, F8 targets, F11 preserves casting/accuracy, and a new job selects the right bar. No updater promotion.
 
-## Stable and Development v1.50.26-dev — 7 November 2026
+## Stable and Development v1.50.26-dev â€” 7 November 2026
 
 [PR #25](https://github.com/danhughes381/FFXI-Decker/pull/25) carries Classic 75 StateBar presets, native ally-selection priority, page-scoped cooldowns, slot reordering, saved Aegis mode highlights and independent action and hotkey label sizes. Source `addons/decker/decker.lua` matches the tested manual ZIP byte for byte.
 
 Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
 
-Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.
+Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings â†’ More â†’ Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.

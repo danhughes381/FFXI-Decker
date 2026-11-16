@@ -1,21 +1,27 @@
-# Decker — by Mutant X
+## Storm laptop controls — 1.50.30-dev (16 November 2026)
 
-**Stable updater: v1.50.26-dev · Development updater: v1.50.26-dev** · Ashita v4 / Vanacor / CatsEyeXI
+Development only, composed with the existing 1.50.27-dev action/navigation recovery. Adds explicit NUMPAD1 (scan 79) separately from END (207), establishes slot 1 when opening navigation without a macro click, and adds `/decker stormbar` for F7 PDT, F8 MDT, F9 Accuracy and F10 Auto. The opt-in command bar no longer requires native macro pointers just to queue an allowlisted command. Native macro execution checks remain intact.
+
+Owner confirmed NUMPAD1 row switching and the four-button display on the laptop. First-open row selection was fixed and tested offline; its latest live check is pending. StateBar mode commands require the matching LAC tank profile; no gear outcome is claimed. Per-character .cfg files are excluded from updates.
+
+# Decker â€” by Mutant X
+
+**Stable updater: v1.50.26-dev Â· Development updater: v1.50.26-dev** Â· Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
-[Download the v1.50.13-dev release ZIP](https://github.com/danhughes381/FFXI-Decker/releases/download/v1.50.13-dev/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) · [Setup and controls](docs/CONTROLS_1.50.13.md) · [Project state](PROJECT_STATE.md) · [Changelog](CHANGELOG.md)
+[Download the v1.50.13-dev release ZIP](https://github.com/danhughes381/FFXI-Decker/releases/download/v1.50.13-dev/Decker_v1.50.13_dev_Mutant_X_Floating_Glass.zip) Â· [Setup and controls](docs/CONTROLS_1.50.13.md) Â· [Project state](PROJECT_STATE.md) Â· [Changelog](CHANGELOG.md)
 
 ## Update an existing installation
 
-Open `/decker settings` → **More** → **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. Both channels serve the same build. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
+Open `/decker settings` â†’ **More** â†’ **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. Both channels serve the same build. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
 
 ## Install
 
 1. Extract the ZIP and copy `addons/decker/decker.lua` into your existing Ashita `addons/decker` folder. Keep your character `.cfg` files.
 2. Load/reload Decker and select **Connect to in-game macros**. Assigned keys default on after successful connection; an existing saved opt-out is preserved.
-3. New profiles use **Both rows: 1–0**. Under **Advanced keys**, enable the mod/arrow hotkeys. Choose **Hold key pressed down** or **Press key once (Toggle)**. Right Shift and End are the default mod and row-switch keys.
-4. Use **Macro set** and the adjacent **Book** controls to select sets 1–10 and books 1–20. Book names use your Decker label or imported saved game title.
+3. New profiles use **Both rows: 1â€“0**. Under **Advanced keys**, enable the mod/arrow hotkeys. Choose **Hold key pressed down** or **Press key once (Toggle)**. Right Shift and End are the default mod and row-switch keys.
+4. Use **Macro set** and the adjacent **Book** controls to select sets 1â€“10 and books 1â€“20. Book names use your Decker label or imported saved game title.
 
 Hold shows macros while the mod is physically held and hides them on release. Toggle retains Appearance auto-hide settings. `/decker settings`, `/decker show` and `/decker help` provide recovery. Full details, StateBar setup and known limits are in the [current guide](docs/CONTROLS_1.50.13.md).
 
@@ -27,7 +33,7 @@ This main-branch baseline was selected by the owner on 21 October 2026 and inclu
 
 The owner selected this baseline for Stable and Development on 21 October 2026. Both updater manifests pin identical source and SHA-256; the version remains 1.50.13-dev. Channel promotion does not add live verification. The updater now shows installed and published versions explicitly. Stable and Development offered the same build at that promotion.
 
-**CatsEyeXI: T1 Sanctioned — approved 19 October 2026.** This records the existing addon approval; it does not claim every subsequent development build was separately reviewed.
+**CatsEyeXI: T1 Sanctioned â€” approved 19 October 2026.** This records the existing addon approval; it does not claim every subsequent development build was separately reviewed.
 
 Decker uses existing FFXI macros and does not rewrite game macro data. Equipment sets are separate gear presets, not additional macro books. Saved title-file import is read-only and currently supports the documented ASCII format.
 
