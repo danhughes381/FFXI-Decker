@@ -1,9 +1,9 @@
--- Decker 1.50.37-dev: combat-safe input, StateBar readback and clock-only recasts.
+-- Decker 1.50.38-dev: bounded input diagnostics and live-validation gate.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.37-dev';
+addon.version = '1.50.38-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -480,6 +480,49 @@ local patterns = {
 };
 local function say(s, force)
     if force or state.debugLog then print(chat.header(addon.name) .. tostring(s)); end
+end
+-- Explicitly opt-in, memory-only diagnostic ring. Never store chat contents,
+-- character names, passwords, macro text or raw packet/key buffers.
+local inputDiag={enabled=false,records={},limit=80,sequence=0}
+function inputDiag.record(source,reason,code,edge,blocked,context)
+    if not inputDiag.enabled then return end
+    if type(source)~='string' or type(reason)~='string' then return end
+    local t=os.clock()
+    local rec={at=t,source=source,reason=reason,
+        key=type(code)=='number' and code or -1,
+        edge=edge=='up' and 'up' or edge=='down' and 'down' or 'state',
+        blocked=blocked and true or false,
+        chat=context and context.chat==true or false,
+        prompt=context and context.prompt==true or false,
+        shift=context and context.shift==true or false}
+    local prev=inputDiag.records[#inputDiag.records]
+    -- Consolidate duplicate high-frequency polling for one key/state.
+    if prev and prev.source==rec.source and prev.reason==rec.reason
+        and prev.key==rec.key and prev.edge==rec.edge
+        and prev.blocked==rec.blocked and prev.chat==rec.chat
+        and prev.prompt==rec.prompt and prev.shift==rec.shift
+        and t-prev.at<.5 then
+        prev.repeatCount=(prev.repeatCount or 1)+1;prev.at=t;return
+    end
+    inputDiag.sequence=inputDiag.sequence+1;rec.sequence=inputDiag.sequence
+    inputDiag.records[#inputDiag.records+1]=rec
+    if #inputDiag.records>inputDiag.limit then table.remove(inputDiag.records,1) end
+end
+function inputDiag.clear() inputDiag.records={};inputDiag.sequence=0 end
+function inputDiag.report(limit)
+    local result={}
+    limit=math.max(1,math.min(80,tonumber(limit) or 20))
+    for i=math.max(1,#inputDiag.records-limit+1),#inputDiag.records do
+        local r=inputDiag.records[i]
+        result[#result+1]=('input#%d %.3f %s %s k=%d %s blocked=%s chat=%s prompt=%s shift=%s x%d'):format(
+            r.sequence,r.at,r.source,r.reason,r.key,r.edge,
+            tostring(r.blocked),tostring(r.chat),tostring(r.prompt),
+            tostring(r.shift),r.repeatCount or 1)
+    end
+    return result
+end
+local function trace_input(source,reason,code,edge,blocked,chatOpen,prompt,shift)
+    inputDiag.record(source,reason,code,edge,blocked,{chat=chatOpen,prompt=prompt,shift=shift})
 end
 local function validaddr(v)
     return type(v)=='number' and v >= 0x10000 and v <= 0xFFFFFFFF and v == math.floor(v);
@@ -1632,6 +1675,10 @@ local function game_input_open()
     return not ok or flag==nil or (flag~=false and flag~=0)
 end
 local function yield_chat_input()
+    if inputDiag.enabled and (state.navToggleActive or state.navModifierHeld
+        or next(state.suppressed) or next(state.navCaptured)) then
+        trace_input('chat','release-captured-state',-1,'state',false,true,false,state.navModifierHeld)
+    end
     -- Port the v1.50.34 chat-state reset onto the newer native-target handoff.
     -- Never suppress a physical key while the game owns chat input.
     state.navToggleActive=false;state.navModifierHeld=false
@@ -1722,16 +1769,24 @@ end
 -- key_data only suppresses input. Physical key edges are processed from
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
-    if game_input_open() then yield_chat_input();return end
+    if game_input_open() then
+        trace_input('navigation','yield-chat',e.key,e.down and 'down' or 'up',false,true,false,false)
+        yield_chat_input();return
+    end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
-        if native_target_handoff() then return end
-        e.blocked=true;
-        return;
+        if native_target_handoff() then
+            trace_input('navigation','yield-target',e.key,e.down and 'down' or 'up',false,false,true,false)
+            return
+        end
+        e.blocked=true
+        trace_input('navigation','capture-modifier',e.key,e.down and 'down' or 'up',true,false,false,true)
+        return
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
     if native_target_handoff() or state.nativeNavHeld[e.key] then
+        trace_input('navigation','yield-native-target',e.key,e.down and 'down' or 'up',false,false,true,false)
         selector.yield_navigation();
         if state.navCaptured[e.key] then
             e.blocked=true;
@@ -1742,7 +1797,8 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         return;
     end
     if nav_is_active() or state.navCaptured[e.key] then
-        e.blocked=true;
+        e.blocked=true
+        trace_input('navigation','capture-navigation',e.key,e.down and 'down' or 'up',true,false,false,true)
         -- Some clients deliver the first arrow press through key_data before
         -- key_state has populated its physical-edge cache. Capture that edge
         -- here so navigation works before clicking any macro or focusing HUD.
@@ -1764,11 +1820,19 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
     if game_input_open() then
+        if physicalDown~=state.navPhysicalDown then
+            trace_input('modifier','physical-edge-during-chat',modifier,physicalDown and 'down' or 'up',false,true,false,physicalDown)
+        end
         state.navPhysicalDown=physicalDown
         yield_chat_input()
         return
     end
     local targeting=state.navKeysEnabled and native_target_handoff();
+    if physicalDown~=state.navPhysicalDown then
+        trace_input('modifier',targeting and 'yield-target' or 'physical-edge',
+            modifier,physicalDown and 'down' or 'up',
+            state.navKeysEnabled and not targeting,false,targeting,physicalDown)
+    end
     if state.navKeysEnabled and not targeting and state.stickyNavigation
             and physicalDown and not state.navPhysicalDown and not other_modifier_down() then
         state.navToggleActive=not state.navToggleActive; state.hudLastActivity=os.clock(); state.hudForceReveal=true;
