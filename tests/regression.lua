@@ -1049,6 +1049,32 @@ test('StateBar MDT highlight follows the saved mode instead of the last press',f
  assert(not api.classic.highlight(slot,1,nil,'PLD',false))
 end)
 
+test('PLD tank profile buttons highlight from actual Aegis mode readback',function()
+ ready();s.classic75=false;s.statebarSelected=0
+ local saved={enabled=true,locked=false,defence='mdt'}
+ local b={source='command',command='/lac fwd tank mdt',kind='state'}
+ assert(api.classic.tracked_mode(b))
+ assert(api.classic.highlight(b,1,saved,'PLD',false),'PLD must accept generic tank mode')
+ assert(api.classic.highlight(b,1,saved,'NIN',false),'NIN tank mode remains supported')
+ assert(api.classic.highlight(b,1,saved,'RDM',false),'RDM tank mode remains supported')
+ assert(not api.classic.highlight(b,1,saved,'BLM',false),'unrelated job cannot highlight')
+ saved.defence='pdt';assert(not api.classic.highlight(b,1,saved,'PLD',false))
+ saved.defence='mdt';saved.locked=true;assert(not api.classic.highlight(b,1,saved,'PLD',false))
+ saved.locked=false;saved.enabled=false;assert(not api.classic.highlight(b,1,saved,'PLD',false))
+end)
+test('cooldown status explains inactive or unmapped clocks without changing gameplay',function()
+ ready();s.cooldownEnabled=false;s.cooldownBindings={}
+ local words={}
+ local prior=print
+ print=function(x) words[#words+1]=tostring(x) end
+ local ok,err=pcall(function()
+  events.decker_cmd({command={args=function() return {'/decker','cooldown','status'} end}})
+ end)
+ print=prior
+ assert(ok,tostring(err))
+ assert(table.concat(words,' '):find('OFF',1,true))
+ assert(table.concat(words,' '):find('mapped 0/20',1,true))
+end)
 test('StateBar font overrides fit independently and survive reload',function()
  s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
  api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
