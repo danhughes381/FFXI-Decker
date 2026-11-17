@@ -1101,8 +1101,9 @@ test('StateBar MDT highlight follows the saved mode instead of the last press',f
  assert(not api.classic.highlight(slot,1,saved,'NIN',false))
  saved.defence='none';assert(not api.classic.highlight(slot,1,saved,'PLD',false))
  saved.defence='mdt';saved.enabled=false;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
- saved.enabled=true;saved.locked=true;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
- assert(not api.classic.highlight(slot,1,nil,'PLD',false))
+ saved.enabled=true;saved.locked=true;assert(api.classic.highlight(slot,1,saved,'PLD',false),'lock does not erase selected mode')
+ local pending,origin=api.classic.highlight(slot,1,nil,'PLD',false)
+ assert(pending and origin=='pending','unreadable readback should show requested/amber')
 end)
 
 test('StateBar font overrides fit independently and survive reload',function()
@@ -1266,7 +1267,7 @@ test('PLD tank profile buttons highlight from actual Aegis mode readback',functi
  assert(api.classic.highlight(b,1,saved,'RDM',false),'RDM tank mode remains supported')
  assert(not api.classic.highlight(b,1,saved,'BLM',false),'unrelated job cannot highlight')
  saved.defence='pdt';assert(not api.classic.highlight(b,1,saved,'PLD',false))
- saved.defence='mdt';saved.locked=true;assert(not api.classic.highlight(b,1,saved,'PLD',false))
+ saved.defence='mdt';saved.locked=true;assert(api.classic.highlight(b,1,saved,'PLD',false),'verified mode remains active when gear swaps locked')
  saved.locked=false;saved.enabled=false;assert(not api.classic.highlight(b,1,saved,'PLD',false))
 end)
 test('cooldown status explains inactive or unmapped clocks without changing gameplay',function()
@@ -1301,6 +1302,56 @@ test('cooldown on and off command is reversible and does not touch macro data',f
  local function call(arg) events.decker_cmd({command={args=function() return {'/decker','cooldown',arg} end}}) end
  call('off');assert(not s.cooldownEnabled)
  call('on');assert(s.cooldownEnabled and s.names==names)
+end)
+
+test('engaged enemy never blocks independent Flash Reprisal or StateBar keys',function()
+ ready();s.guideOpen=false;s.mappingMode='split';s.directKeys={};s.directKeys[1]=59;s.directKeys[2]=60
+ s.keybinds=true;s.acknowledgeKeys=true;s.navKeysEnabled=true;s.navModifier='RSHIFT'
+ s.held={};s.suppressed={};s.navPhysicalDown=false;s.navToggleActive=false
+ s.classic75=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true
+ s.statebarSlots={{row='CTRL',slot=1,source='command',kind='state',label='PDT',command='/lac fwd tank pdt'}}
+ s.statebarHotkeys={[1]=87}
+ local initial=#requested;subTarget=1
+ s.targetHandoffUntil=os.clock()+30;s.targetGraceUntil=os.clock()+30
+ assert(api.hotkey(87)==1,'engaged combat cannot lock StateBar hotkeys')
+ for _,key in ipairs({59,60}) do
+  local e={key=key,down=true};events.decker_exclusive_key_press(e)
+  assert(e.blocked,'combat macro hotkey should reach Decker')
+  local rel={key=key,down=false};events.decker_exclusive_key_press(rel)
+ end
+ local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked)
+ assert(#requested==initial+3,'two macros and one Aegis command should execute while engaged')
+ subTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0;s.navKeysEnabled=false
+end)
+test('chat input cannot re-arm a stale modifier and release restores navigation',function()
+ ready();s.navKeysEnabled=true;s.navModifier='RSHIFT';s.navPhysicalDown=false
+ s.held={[54]=true};s.navToggleActive=true;chatOpen=0x11
+ events.decker_native_arrow_watch({key=54,down=true})
+ assert(not s.held[54],'chat cannot re-queue modifier held state')
+ local raw={};for i=0,255 do raw[i]=0 end;raw[54]=128
+ events.decker_custom_set_state({data_raw=raw,size=256})
+ assert(not s.navToggleActive and raw[54]==128)
+ chatOpen=0;raw[54]=0;events.decker_custom_set_state({data_raw=raw,size=256})
+ s.stickyNavigation=true;raw[54]=128;events.decker_custom_set_state({data_raw=raw,size=256})
+ assert(s.navToggleActive,'new modifier press must work after chat closes')
+ raw[54]=0;events.decker_custom_set_state({data_raw=raw,size=256})
+ s.navToggleActive=false;s.navKeysEnabled=false
+end)
+test('recast rendering keeps clock and red colour but no numerical overlay',function()
+ assert(source:find('local frac=cooldown.fraction',1,true),'segmented clock was removed')
+ assert(source:find('cooling and {1,.30,.30,1}',1,true),'red recast text was removed')
+ assert(not source:find('cooling and cooldown.label(remaining)',1,true),'numerical timer is still drawn')
+end)
+test('StateBar tracks latest mode request with pending highlight until Aegis confirms',function()
+ ready();s.classic75=false;s.statebarSelected=0
+ s.statebarSlots={{row='CTRL',slot=1,label='PDT',source='command',kind='state',command='/lac fwd tank pdt'}}
+ assert(api.request(1))
+ assert(s.statebarSelected==1)
+ local active,mode=api.classic.highlight(s.statebarSlots[1],1,nil,'PLD',false)
+ assert(active and mode=='pending','pending request must be visibly marked')
+ local saved={enabled=true,locked=false,defence='pdt'}
+ active,mode=api.classic.highlight(s.statebarSlots[1],1,saved,'PLD',false)
+ assert(active and mode=='verified')
 end)
 
 os.execute('rm -r '..tmp)
