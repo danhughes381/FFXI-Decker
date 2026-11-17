@@ -1,6 +1,7 @@
 -- LuaJIT tests use explicit host mocks: no game process or native calls.
 local root=arg[1] or '.'
 local events={}; local requested={}; local character='Salts'; local styles=0; local vars=0
+local chatOpen=0; local subTarget=0
 addon={}
 package.preload.common=function() return {} end
 package.preload.chat=function() return {header=function() return '' end} end
@@ -19,15 +20,18 @@ package.loaded.ffi=ffi
 ImGuiCol_Button=1; ImGuiCol_ButtonHovered=2; ImGuiCol_ButtonActive=3; ImGuiCol_Text=4; ImGuiStyleVar_Alpha=1; ImGuiCond_FirstUseEver=1
 ashita={events={register=function(_,name,cb) assert(not events[name]);events[name]=cb end},memory={read_uint32=function() return 65536 end}}
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
-AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
+AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,readyStatebar=statebar_input_ready,openInput=game_input_open,targetHandoff=native_target_handoff,modifierDown=modifier_down,shortcuts=shortcuts_active,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
 local api=assert(loadfile(path))();local s=api.state
 local passed=0
-local function test(name,fn) fn();passed=passed+1;print('PASS '..name) end
+local function test(name,fn)
+ chatOpen=0;subTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
+ fn();passed=passed+1;print('PASS '..name)
+end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
 api.refresh()
 test('native macro command updates Decker book and set display only',function()
@@ -110,27 +114,47 @@ test('cooldowns follow book, set and refreshed macro names through save and relo
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
-test('StateBar collisions and permission gates',function()
- ready();s.held={};s.suppressed={};s.navKeysEnabled=false;s.classic75=false;s.rowSwitchKey='END';s.navModifier='RSHIFT';s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[i+10]=i==10 and 11 or i+1 end;s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.statebarHotkeys={59};s.mappingMode='split'
- assert(not api.hotkey(59),'direct key collision should win')
- s.statebarHotkeys={87};
- local h=api.hotkey(87);
- if h~=1 then
-   local row,slot=api.mapped(87)
-   print('DEBUG F11',tostring(h),tostring(s.phase),tostring(s.profileReady),tostring(s.statebarEnabled),tostring(s.statebarHotkeysEnabled),
-      tostring(s.allowAllClicks),tostring(s.classic75),tostring(s.navKeysEnabled),tostring(s.rowSwitchKey),
-      tostring(#s.statebarSlots),tostring(#s.names),tostring(s.statebarHotkeys[1]),tostring(row),tostring(slot),
-      tostring(s.held[29]),tostring(s.held[54]),'Ready:',tostring(api.readyStatebar()),'Chat:',tostring(api.openInput()),'Target:',tostring(api.targetHandoff()),'Mod:',tostring(api.modifierDown()),'Shortcuts:',tostring(api.shortcuts()),'Slots:',tostring(api.classic.slots()),tostring(s.statebarSlots[1].row))
+test('chat entry never consumes mod keys or target navigation',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.keybinds=true;s.acknowledgeKeys=true
+ local n=#requested;chatOpen=0x11
+ for _,key in ipairs({54,200,203,205,28}) do
+  local e={key=key,down=true};events.decker_custom_set_navigation(e)
+  assert(not e.blocked,'swallowed chat key '..key)
  end
- assert(h==1,'F11 hotkey expected')
- s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87),'navigation reservation should win')
- s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1,'StateBar independent hotkey expected')
- s.allowAllClicks=false
- local commandsOnly=#s.statebarSlots>0
- for _,b in ipairs(s.statebarSlots) do if b.source~='command' then commandsOnly=false end end
- if not commandsOnly then assert(not api.hotkey(87),'disabled native macro execution must disable StateBar') end
+ local arr={};for i=0,255 do arr[i]=0 end;arr[54]=128;arr[203]=128
+ events.decker_custom_set_state({data_raw=arr,size=256})
+ assert(arr[54]~=0 and arr[203]~=0 and not s.navToggleActive)
+ local e={key=2,down=true};events.decker_exclusive_key_press(e)
+ assert(not e.blocked and #requested==n)
+ chatOpen=0;s.navKeysEnabled=false;s.keybinds=false
 end)
-test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(e.blocked and not s.suppressed[87]) end)
+test('unified chat handoff clears held Decker keys and leaves game keys untouched',function()
+ ready();s.navKeysEnabled=true;s.navModifierHeld=true;s.navToggleActive=true
+ s.held={[2]=true,[54]=true};s.suppressed={[2]=true};s.navCaptured={[203]=true};s.nativeNavHeld={[200]=true}
+ chatOpen=1
+ local e={key=2,down=true};events.decker_exclusive_key_press(e)
+ assert(not e.blocked and not next(s.held) and not next(s.suppressed))
+ assert(not s.navToggleActive and not s.navModifierHeld and not next(s.navCaptured))
+ local raw={};for i=0,255 do raw[i]=0 end;raw[2]=128;raw[54]=128
+ events.decker_exclusive_key_state({data_raw=raw,size=256})
+ assert(raw[2]==128 and raw[54]==128)
+ chatOpen=0;s.navKeysEnabled=false;s.keybinds=false
+end)
+test('friendly target prompt yields arrows and Enter',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ subTarget=1;local n=#requested
+ for _,key in ipairs({54,200,203,205,28,156}) do
+  local e={key=key,down=true};events.decker_custom_set_navigation(e)
+  assert(not e.blocked,'swallowed target key '..key)
+ end
+ local arr={};for i=0,255 do arr[i]=0 end;arr[54]=128;arr[203]=128
+ events.decker_custom_set_state({data_raw=arr,size=256})
+ assert(arr[54]~=0 and arr[203]~=0 and #requested==n)
+ subTarget=0;s.navKeysEnabled=false
+end)
+test('StateBar collisions and permission gates',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split';assert(not api.hotkey(59));s.statebarHotkeys={87};assert(api.hotkey(87)==1);s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87));s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1);s.allowAllClicks=false;assert(not api.hotkey(87)) end)
+test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(not e.blocked and not s.suppressed[87], 'native handoff must not capture key release') end)
 test('Settings sections render with balanced style stacks',function()
  ready();s.showTests=true;s.visible=true;s.statebarEnabled=true;s.statebarSelected=1;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.lastProfileCheck=os.clock();s.autoRefresh=false;s.pendingRefreshFrames=0
  for _,tab in ipairs({'Controls','Appearance','StateBar','General','Profiles','Updates'}) do s.settingsTab=tab;events.decker_draw();assert(styles==0 and vars==0,tab) end
@@ -218,6 +242,10 @@ test('mouse and direct keyboard dispatch update execution only once',function()
  ui.Button=function(label,size) old(label,size);return label=='##decker_ALT3' end
  api.drawrow('ALT',10);ui.Button=old
  assert(#requested==n+1 and s.lastExecuted.row=='ALT' and s.lastExecuted.slot==3 and s.statebarSelected==1)
+ -- FFXI owns the next key during target selection; only resume after it closes.
+ local blockedByHandoff={key=59,down=true};events.decker_exclusive_key_press(blockedByHandoff)
+ assert(not blockedByHandoff.blocked and #requested==n+1)
+ s.targetHandoffUntil=0;s.targetGraceUntil=0
  local e={key=59,down=true};events.decker_exclusive_key_press(e);events.decker_exclusive_key_press({key=59,down=true})
  assert(#requested==n+2 and s.lastExecuted.row=='CTRL' and s.lastExecuted.slot==1)
  events.decker_exclusive_key_press({key=59,down=false});assert(not s.suppressed[59])
@@ -244,7 +272,7 @@ end)
 if os.getenv('DECKER_PREVIEW') then
  local f=assert(io.open(os.getenv('DECKER_PREVIEW'),'w'))
  local function esc(t) return tostring(t):gsub('&','&amp;'):gsub('<','&lt;'):gsub('>','&gt;') end
- f:write('<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="240"><rect width="1140" height="240" fill="#40544f"/><text x="20" y="24" fill="white" font-family="sans-serif" font-size="14">DECKER | Book 1 (#1) — OFFLINE SIMULATION, NOT A GAME SCREENSHOT</text>')
+ f:write('<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="240"><rect width="1140" height="240" fill="#40544f"/><text x="20" y="24" fill="white" font-family="sans-serif" font-size="14">DECKER | Book 1 (#1) â€” OFFLINE SIMULATION, NOT A GAME SCREENSHOT</text>')
  for _,p in ipairs(previewPaints) do
   local c=p[1]=='text' and p[5] or p[6];local colour
   -- integer conversion is explicit for Lua 5.4 as well as LuaJIT.
@@ -357,7 +385,7 @@ test('StateBar F11 captures both input streams with main shortcuts disabled',fun
  ready();s.keybinds=false;s.acknowledgeKeys=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.held={};s.suppressed={}
  s.statebarSlots={{row='ALT',slot=2,kind='utility'}};s.statebarHotkeys={87};local n=#requested
  local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked and #requested==n+1 and s.lastExecuted.row=='ALT')
- local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==0 and #requested==n+1)
+ local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1) -- native target has priority
  events.decker_exclusive_key_press({key=87,down=false});s.statebarHotkeysEnabled=false;raw[87]=128
  events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1)
 end)
@@ -654,7 +682,8 @@ test('lost direct-key release is recovered by physical key_state',function()
  assert(press.blocked and s.suppressed[59] and #requested==before+1)
  local raw={};for i=0,255 do raw[i]=0 end
  raw[59]=128;events.decker_exclusive_key_state({data_raw=raw,size=256})
- assert(raw[59]==0 and s.suppressed[59],'held key must remain suppressed')
+ assert(raw[59]==128 and not s.suppressed[59],'native handoff must release held key')
+ s.targetHandoffUntil=0;s.targetGraceUntil=0
  raw[59]=0;events.decker_exclusive_key_state({data_raw=raw,size=256})
  assert(not s.suppressed[59] and not s.held[59],'physical release must clear missed key_data release')
  events.decker_exclusive_key_press({key=59,down=true})
@@ -970,7 +999,7 @@ test('active native target selection owns arrows and Enter, including held key t
   local e={key=28,down=true}
   if hold then physical_keys({54}) end
   events.decker_custom_set_navigation(e);assert(e.blocked)
-  if hold then action=1 else sub=1 end
+  sub,action=1,1
   events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
   assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
   physical_keys({54})
@@ -981,11 +1010,19 @@ test('active native target selection owns arrows and Enter, including held key t
    assert(#s.navQueue==0 and #s.deferredNav==0)
    if key~=28 then physical_keys({54}) else break end
   end
-  sub,action=0,0
+  sub=0 -- The action flag can outlast the native prompt.
   assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
   physical_keys({54})
   assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
   physical_keys({})
+  if not hold then
+   physical_keys({54});assert(not s.navToggleActive,'Right Shift cannot unlock after the action')
+   physical_keys({});physical_keys({54});assert(s.navToggleActive,'Right Shift cannot relock after the action')
+   physical_keys({})
+  end
+  assert(physical_keys(hold and {54,207} or {207})[207]==0,'row key must return to Decker')
+  physical_keys({})
+  action=0
  end
  AshitaCore.GetMemoryManager=original
  s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false
@@ -1068,6 +1105,157 @@ test('StateBar MDT highlight follows the saved mode instead of the last press',f
  assert(not api.classic.highlight(slot,1,nil,'PLD',false))
 end)
 
+test('StateBar font overrides fit independently and survive reload',function()
+ s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
+ api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
+ assert(s.statebarLabelSize==14 and s.statebarKeySize==16)
+ local text={}
+ local canvas={AddText=function(_,font,size,pos,col,label) text[label]={size=size,y=pos[2]} end}
+ api.drawGlassText(canvas,'MDT',0,0,100,40,'F8',false,true)
+ assert(text.MDT.size==14 and text.F8.size==16 and text.MDT.y+text.MDT.size<text.F8.y)
+ api.drawGlassText(canvas,'Macro',0,0,100,40,'1',false)
+ assert(text.Macro.size==18 and text['1'].size==10)
+end)
+
+test('keypad End has a distinct configurable scan code',function()
+ assert(api.navKeys.NUMPAD1==79 and api.navKeys.END==207)
+end)
+test('first row switch has a visible slot before any macro click',function()
+ s.guideOpen=false;s.navSlot=nil;s.navRow=nil;s.rowSwitchKey='NUMPAD1'
+ api.nav(79,false);assert(s.navSlot==1 and s.navRow=='ALT')
+ api.nav(79,false);assert(s.navSlot==1 and s.navRow=='CTRL')
+end)
+test('stormbar sets four persistent mode commands without macro scans',function()
+ local e={command={args=function()return {'/decker','stormbar'}end}}
+ events.decker_cmd(e)
+ assert(s.classic75==false and s.statebarEnabled and s.statebarHotkeysEnabled)
+ for i,verb in ipairs({'pdt','mdt','accuracy','auto'})do
+  assert(s.statebarHotkeys[i]==64+i and s.statebarSlots[i].command=='/lac fwd tank '..verb)
+ end
+ s.phase=0;s.allowAllClicks=false;s.profileReady=true
+ assert(api.hotkey(65)==1,'Command StateBar must not depend on native macro pointers')
+end)
+
+test('combat analytics HNM requests are counted once and distinguished from casts',function()
+ ready();s.guideOpen=false;s.manualBook=2;s.trackedSet=3
+ local ok,msg=api.analytics.start('hnm','Tiamat')
+ assert(ok and msg:find('Tiamat') and api.analytics.active.profile==s.profileId)
+ assert(not api.analytics.start('exp','New camp'))
+ local before=#requested
+ assert(api.execute('CTRL',1,'mouse'))
+ assert(api.execute('CTRL',1,'direct'))
+ assert(api.execute('ALT',2,'navigation'))
+ assert(#requested==before+3)
+ local a=api.analytics.active;assert(a.attempts==3 and a.requests==3 and a.refused==0)
+ assert(a.sourceCounts.mouse==1 and a.sourceCounts.direct==1 and a.sourceCounts.navigation==1)
+ local report=table.concat(api.analytics.report(),'\n')
+ assert(report:find('Tiamat') and report:find('Book 2 Set 3 CTRL 1',1,true))
+ assert(report:find('NOT a confirmed cast',1,true))
+ assert(api.analytics.stop());assert(not api.analytics.active and api.analytics.last.requests==3)
+ assert(not api.analytics.stop());assert(api.analytics.report()[1]:find('Tiamat'))
+end)
+test('combat analytics separates refused requests and never records guide clicks',function()
+ ready();s.guideOpen=false;s.manualBook=1;s.trackedSet=1
+ assert(api.analytics.start('exp','East Ron'))
+ local a=api.analytics.active
+ s.names[1]='';assert(not api.execute('CTRL',1,'mouse'))
+ assert(a.attempts==1 and a.requests==0 and a.refused==1)
+ s.names[1]='Macro1';s.guideOpen=true;api.execute('CTRL',1,'mouse')
+ assert(a.attempts==1,'guide is non-executing')
+ s.guideOpen=false;assert(api.execute('CTRL',1,'statebar'))
+ assert(a.requests==1 and a.sourceCounts.statebar==1)
+ assert(api.analytics.stop())
+end)
+test('combat analytics explicitly scopes account and ends on profile change',function()
+ ready();s.guideOpen=false;assert(api.analytics.start('practice','Macro Test'))
+ assert(api.execute('ALT',1,'mouse'))
+ local old=api.analytics.active.profile
+ character='Peppa';api.refresh()
+ assert(old~=s.profileId and not api.analytics.active and not api.analytics.last)
+ assert(#api.analytics.report()==1)
+ ready();assert(api.analytics.start('hnm','Tiamat'))
+ assert(api.analytics.active.profile==s.profileId)
+ assert(api.analytics.stop())
+ character='Salts';api.refresh()
+end)
+test('combat analytics counts independent StateBar utility without double counting native macro StateBar',function()
+ ready();s.guideOpen=false;s.classic75=false
+ s.statebarSlots={{row='CTRL',slot=1,source='command',kind='state',label='PDT',command='/lac fwd tank pdt'},
+                    {row='CTRL',slot=2,kind='utility',label='Cure'}}
+ assert(api.analytics.start('hnm','KB'))
+ assert(api.request(1))
+ assert(api.request(2))
+ local a=api.analytics.active
+ assert(a.attempts==2 and a.requests==2,'one record per StateBar button')
+ assert(a.sourceCounts.statebar==2)
+ local report=table.concat(api.analytics.report(),'\\n')
+ assert(report:find('STATEBAR 1 [PDT]',1,true) and report:find('CTRL 2 [Macro2]',1,true))
+ assert(api.analytics.stop())
+end)
+test('combat analytics command accepts named sessions and reports',function()
+ ready();s.guideOpen=false
+ local function cmd(...)
+  local args={...};events.decker_cmd({command={args=function()return args end}})
+ end
+ cmd('/decker','session','start','hnm','King','Behemoth')
+ assert(api.analytics.active and api.analytics.active.label=='King Behemoth')
+ cmd('/decker','session','report')
+ cmd('/decker','session','stop')
+ assert(not api.analytics.active and api.analytics.last)
+ assert(not api.analytics.start('wrong','n/a'))
+end)
+
+test('recast clock labels use remaining recast and final five-second counts',function()
+ assert(api.cooldown.label(0)=='READY')
+ assert(api.cooldown.label(5)=='5s' and api.cooldown.label(4.1)=='5s')
+ assert(api.cooldown.label(1)=='1s' and api.cooldown.label(60)=='60s')
+ assert(api.cooldown.label(nil)==nil)
+ assert(api.cooldown.fraction(10,20)==.5)
+ assert(api.cooldown.fraction(5,20)==.25)
+ assert(api.cooldown.fraction(0,20)==0)
+ assert(api.cooldown.fraction(20,0)==1)
+end)
+test('read-only recast observer never equates recast with a confirmed cast',function()
+ local key='test-recast-spell-112'
+ assert(api.cooldown.observe(key,0)==nil)
+ assert(api.cooldown.observe(key,30)=='recast started (cast result unknown)')
+ assert(api.cooldown.observe(key,12)==nil)
+ assert(api.cooldown.observe(key,0)=='recast ready')
+ local a=api.cooldown.alerts()
+ assert(a[#a].name==key and a[#a].kind=='RECAST READY')
+ assert(api.cooldown.observe(key,0)==nil,'no duplicate ready alerts')
+end)
+test('cooldown bindings are retained as scoped manual assignments',function()
+ ready();s.cooldownEnabled=true
+ s.previousFingerprint=table.concat((function()local t={};for i=1,20 do t[i]='macro'..i end;return t end)(),'\\031')
+ s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil;s.trackedSource='manual'
+ s.manualBook=3;s.trackedSet=4
+ local page,fp=api.cooldown.page();assert(page=='3.4.' and type(fp)=='string')
+ s.cooldownBindings[page..1]={kind='spell',id=112,fingerprint=fp}
+ assert(api.cooldown.binding(page,fp,1).id==112)
+ assert(not api.cooldown.binding('3.5.',fp,1))
+ s.cooldownEnabled=false
+end)
+
+test('recast onset following a mapped native request is evidence, never cast success',function()
+ ready();s.guideOpen=false;s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil
+ s.trackedSource='manual';s.manualBook=1;s.trackedSet=1
+ s.previousFingerprint=table.concat((function()local t={};for i=1,20 do t[i]='macro'..i end;return t end)(),'\\031')
+ local page,fp=api.cooldown.page();assert(page=='1.1.')
+ s.cooldownBindings[page..1]={kind='spell',id=112,fingerprint=fp}
+ assert(api.analytics.start('hnm','Tiamat'))
+ local key=page..'1:spell:112'
+ assert(api.cooldown.observe(key,0)==nil)
+ assert(api.execute('CTRL',1,'mouse'))
+ assert(api.cooldown.observe(key,30)=='recast started after Decker request (cast result unknown)')
+ assert(api.analytics.active.recastEvidence==1)
+ assert(api.cooldown.observe(key,20)==nil and api.analytics.active.recastEvidence==1)
+ assert(api.analytics.report()[2]:find('recast%-start evidence 1'))
+ api.analytics.stop()
+ api.cooldown.reset_observer()
+ assert(#api.cooldown.alerts()==0)
+end)
+
 test('PLD tank profile buttons highlight from actual Aegis mode readback',function()
  ready();s.classic75=false;s.statebarSelected=0
  local saved={enabled=true,locked=false,defence='mdt'}
@@ -1114,17 +1302,7 @@ test('cooldown on and off command is reversible and does not touch macro data',f
  call('off');assert(not s.cooldownEnabled)
  call('on');assert(s.cooldownEnabled and s.names==names)
 end)
-test('StateBar font overrides fit independently and survive reload',function()
- s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
- api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
- assert(s.statebarLabelSize==14 and s.statebarKeySize==16)
- local text={}
- local canvas={AddText=function(_,font,size,pos,col,label) text[label]={size=size,y=pos[2]} end}
- api.drawGlassText(canvas,'MDT',0,0,100,40,'F8',false,true)
- assert(text.MDT.size==14 and text.F8.size==16 and text.MDT.y+text.MDT.size<text.F8.y)
- api.drawGlassText(canvas,'Macro',0,0,100,40,'1',false)
- assert(text.Macro.size==18 and text['1'].size==10)
-end)
 
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
+
