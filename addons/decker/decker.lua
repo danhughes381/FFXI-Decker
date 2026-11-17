@@ -797,7 +797,7 @@ function analytics.report()
     if not a then return {'No Combat Analytics session recorded.'}; end
     local duration=math.max(0,(a.ended or os.time())-a.started);
     local result={('Combat Analytics %s: %s (%ds)'):format(a.kind:upper(),a.label,duration),
-        ('Requests %d / attempts %d / refused %d / recast-start evidence %d. No confirmed casts.'):format(a.requests,a.attempts,a.refused,a.recastEvidence or 0)};
+        ('Requests %d / attempts %d / refused %d / recast-start evidence %d. Native invocation is NOT a confirmed cast.'):format(a.requests,a.attempts,a.refused,a.recastEvidence or 0)};
     local sorted={};for _,entry in pairs(a.slots) do sorted[#sorted+1]=entry;end
     table.sort(sorted,function(x,y)
         if x.attempts~=y.attempts then return x.attempts>y.attempts end
