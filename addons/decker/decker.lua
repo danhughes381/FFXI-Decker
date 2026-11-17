@@ -711,10 +711,14 @@ end
 function analytics.attempt(row,slot,source)
     local a=analytics.active;
     if not a or a.profile~=state.profileId then return nil; end
-    if row~='CTRL' and row~='ALT' then return nil; end
-    if type(slot)~='number' or slot<1 or slot>10 then return nil; end
+    if row~='CTRL' and row~='ALT' and row~='STATEBAR' then return nil; end
+    if type(slot)~='number' or slot<1 or slot>(row=='STATEBAR' and 20 or 10) then return nil; end
     local ix=(row=='ALT' and 10 or 0)+slot;
-    local name=(state.names[ix] or ''):sub(1,32);
+    local name;
+    if row=='STATEBAR' then
+        local b=state.statebarSlots[slot] or {};
+        name=(b.label or b.command or 'StateBar'):sub(1,32);
+    else name=(state.names[ix] or ''):sub(1,32); end
     local key=table.concat({tostring(state.manualBook),tostring(state.trackedSet),row,tostring(slot),name},'|');
     local item=a.slots[key];
     if not item then
@@ -969,7 +973,9 @@ local function request_statebar(i)
     local requested=false;
     if b.source=='command' then
         if not valid_command(b.command) then state.clickSummary='StateBar command blocked: use a supported single command.'; return false; end
+        local metric=analytics.attempt('STATEBAR',i,'statebar');
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
+        analytics.finish(metric,requested);
     else requested=execute_slot(b.row,b.slot,'statebar'); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
     if requested then
