@@ -1678,6 +1678,10 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
+    if game_input_open() or native_target_handoff() then
+        state.suppressed[e.key]=nil; state.held[e.key]=nil;
+        return;
+    end
     if state.suppressed[e.key] then
         e.blocked=true;
         if not e.down then
@@ -1686,7 +1690,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
         end
         return;
     end
-    if game_input_open() or native_target_handoff() or not row or not shortcuts_active() or e.blocked or modifier_down() then return; end
+    if not row or not shortcuts_active() or e.blocked or modifier_down() then return; end
     if e.down then
         if not state.held[e.key] then
             state.held[e.key]=true;
