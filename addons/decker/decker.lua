@@ -1,9 +1,9 @@
--- Decker 1.50.31-dev: preserve navigation, guard chat and yield target input.
+-- Decker 1.50.32-dev: local-only HNM/EXP macro input analytics.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.31-dev';
+addon.version = '1.50.32-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -369,6 +369,7 @@ local function refresh_profile()
     local id=character_id();
     if id==state.profileId then return; end
     if state.profileReady then save_display(); end
+    analytics.discard_on_profile_change();
     state.profileId=id; state.profileReady=false; state.statebarDrag=nil;
     for _,keys in pairs(sectionKeys) do for _,key in ipairs(keys) do state[key]=copy_value(profileDefaults[key]); end end
     state.windowPositions={}; state.layoutDirtyAt=nil;
@@ -677,6 +678,86 @@ end
 -- Native-inspired display: macro name on top, modifier label on its own line.
 -- The native name limit is eight bytes, so no UI truncation is required at the default width.
 -- Use a separate diagnostic window; no game HUD hooks or memory writes are performed.
+-- Combat Analytics v1: deliberately tracks requests, not successful casts.
+-- Memory-only, per-character; no native macro editing, layout remapping or telemetry upload.
+local analytics = {active=nil,last=nil};
+local function analytics_identity()
+    if not state.profileReady or not state.profileId then return nil; end
+    return state.profileId;
+end
+function analytics.start(kind,label)
+    kind=(kind or ''):lower();
+    if kind~='hnm' and kind~='exp' and kind~='practice' then return false,'Use hnm, exp or practice.'; end
+    if not analytics_identity() then return false,'Log into a character first.'; end
+    if analytics.active then return false,'Stop the current session first.'; end
+    label=(label or ''):gsub('[^%w _%-]',''):sub(1,40);
+    if label=='' then label=kind:upper(); end
+    analytics.active={kind=kind,label=label,profile=state.profileId,
+        started=os.time(),attempts=0,requests=0,refused=0,slots={},sourceCounts={}};
+    return true,'Started '..kind:upper()..' session: '..label;
+end
+function analytics.stop()
+    local a=analytics.active;
+    if not a then return false,'No active session.'; end
+    a.ended=os.time();analytics.last=a;analytics.active=nil;
+    return true,'Stopped '..a.kind:upper()..' session: '..a.label;
+end
+function analytics.discard_on_profile_change()
+    if analytics.active then analytics.stop(); end
+    -- A new profile must not display the previous character's results.
+    analytics.last=nil;
+end
+function analytics.attempt(row,slot,source)
+    local a=analytics.active;
+    if not a or a.profile~=state.profileId then return nil; end
+    if row~='CTRL' and row~='ALT' then return nil; end
+    if type(slot)~='number' or slot<1 or slot>10 then return nil; end
+    local ix=(row=='ALT' and 10 or 0)+slot;
+    local name=(state.names[ix] or ''):sub(1,32);
+    local key=table.concat({tostring(state.manualBook),tostring(state.trackedSet),row,tostring(slot),name},'|');
+    local item=a.slots[key];
+    if not item then
+        if a.unique and a.unique>=400 then return nil; end
+        item={book=state.manualBook,set=state.trackedSet,row=row,slot=slot,
+            name=name,attempts=0,requests=0,refused=0};
+        a.slots[key]=item;a.unique=(a.unique or 0)+1;
+    end
+    item.attempts=item.attempts+1;a.attempts=a.attempts+1;
+    source=source or 'unknown';
+    if not ({mouse=true,direct=true,navigation=true,statebar=true})[source] then source='unknown'; end
+    a.sourceCounts[source]=(a.sourceCounts[source] or 0)+1;
+    return item;
+end
+function analytics.finish(item,accepted)
+    if not item then return; end
+    local a=analytics.active;
+    if not a or a.profile~=state.profileId then return; end
+    if accepted then item.requests=item.requests+1;a.requests=a.requests+1;
+    else item.refused=item.refused+1;a.refused=a.refused+1; end
+end
+function analytics.report()
+    local a=analytics.active or analytics.last;
+    if not a then return {'No Combat Analytics session recorded.'}; end
+    local duration=math.max(0,(a.ended or os.time())-a.started);
+    local result={('Combat Analytics %s: %s (%ds)'):format(a.kind:upper(),a.label,duration),
+        ('Requests %d / attempts %d / refused %d. Native invocation is NOT a confirmed cast.'):format(a.requests,a.attempts,a.refused)};
+    local sorted={};for _,entry in pairs(a.slots) do sorted[#sorted+1]=entry;end
+    table.sort(sorted,function(x,y)
+        if x.attempts~=y.attempts then return x.attempts>y.attempts end
+        if x.book~=y.book then return x.book<y.book end
+        if x.set~=y.set then return x.set<y.set end
+        if x.row~=y.row then return x.row<y.row end
+        return x.slot<y.slot;
+    end);
+    for i=1,math.min(#sorted,10) do
+        local e=sorted[i];
+        result[#result+1]=('Book %s Set %s %s %s [%s]: %d attempts, %d native requests'):format(
+            tostring(e.book),tostring(e.set),e.row,tostring(e.slot),e.name,e.attempts,e.requests);
+    end
+    if #sorted>10 then result[#result+1]=('...%d other slots'):format(#sorted-10);end
+    return result;
+end
+
 local function flash_slot(row,slot)
     state.flashRow=row; state.flashSlot=slot; state.flashUntil=os.clock()+0.30;
 end
@@ -687,29 +768,31 @@ local function record_execution(row,slot,source)
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
 local begin_native_target_handoff;
-local function execute_slot(row,slot)
+local function execute_slot(row,slot,source)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
+    local metric=analytics.attempt(row,slot,source);
+    local function refused() analytics.finish(metric,false); return false; end
     if not state.allowAllClicks then
         if row=='CTRL' and slot==1 and state.clickConsent then try_ctrl1();
         else state.clickSummary='BLOCKED: mouse execution not ready; scan, validate and read names first.'; end
-        return;
+        return refused();
     end
-    if state.phase < 4 or #state.names ~= 20 then state.clickSummary='BLOCKED: macro names not loaded'; return; end
+    if state.phase < 4 or #state.names ~= 20 then state.clickSummary='BLOCKED: macro names not loaded'; return refused(); end
     if not validaddr(state.addresses.controller) or not validaddr(state.addresses.run) then
-        state.clickSummary='BLOCKED: native execute signature unavailable'; return;
+        state.clickSummary='BLOCKED: native execute signature unavailable'; return refused();
     end
     local idx=(row=='CTRL' and 0 or 10)+(slot-1);
     local name=state.names[idx+1] or '';
-    if name=='' then state.clickSummary='Empty macro slot: no action'; return; end
+    if name=='' then state.clickSummary='Empty macro slot: no action'; return refused(); end
     local mem=ashita and ashita.memory;
-    if not mem then state.clickSummary='BLOCKED: memory API unavailable'; return; end
+    if not mem then state.clickSummary='BLOCKED: memory API unavailable'; return refused(); end
     local ok,ptr=pcall(function() return mem.read_uint32(state.addresses.controller); end);
     local ok2,controller=false,nil;
     if ok and validaddr(ptr) and ptr%4==0 then
         ok2,controller=pcall(function() return mem.read_uint32(ptr); end);
     end
     if not ok2 or not validaddr(controller) or controller%4~=0 then
-        state.clickSummary='BLOCKED: controller pointer invalid'; state.allowAllClicks=false; return;
+        state.clickSummary='BLOCKED: controller pointer invalid'; state.allowAllClicks=false; return refused();
     end
     -- Per Ashita macro library: CTRL=1, ALT=2, each with zero-based slot 0..9.
     -- Explicit opt-in; neither modifies macros nor patches the original HUD.
@@ -717,6 +800,7 @@ local function execute_slot(row,slot)
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
+    analytics.finish(metric,called);
     if called then
         if begin_native_target_handoff then begin_native_target_handoff(); end
         record_execution(row,slot,'executed');
@@ -885,7 +969,7 @@ local function request_statebar(i)
     if b.source=='command' then
         if not valid_command(b.command) then state.clickSummary='StateBar command blocked: use a supported single command.'; return false; end
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
-    else requested=execute_slot(b.row,b.slot); end
+    else requested=execute_slot(b.row,b.slot,'statebar'); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
     if requested then
         local tracked,axis=classic.tracked_mode(b);
@@ -1188,7 +1272,7 @@ local function draw_row(title,offset)
             if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
         end
         if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name); end
-        if clicked then execute_slot(title,i); end
+        if clicked then execute_slot(title,i,'mouse'); end
     end
 end
 -- Draw the panel behind the two rows without introducing a child window or changing layout.
@@ -1484,7 +1568,7 @@ local function nav_command(key, repeating)
         state.navSlot=((state.navSlot or 1)-1+(key==203 and -1 or 1))%10+1;
         state.navSource='Decker navigation';
     elseif key==28 or key==156 then
-        execute_slot(state.navRow or 'CTRL',state.navSlot or 1);
+        execute_slot(state.navRow or 'CTRL',state.navSlot or 1,'navigation');
         -- Native target-selection handoff begins on successful macro execution.
     end
 end
@@ -1689,7 +1773,7 @@ ashita.events.register('key_data','decker_exclusive_key_press',function(e)
             state.held[e.key]=true;
             state.suppressed[e.key]=true;
             e.blocked=true;
-            execute_slot(row,slot);
+            execute_slot(row,slot,'direct');
         else
             e.blocked=true;
         end
@@ -1775,7 +1859,15 @@ ashita.events.register('command','decker_cmd',function(e)
     end
     e.blocked=true;
     local cmd=(a[2] or 'show'):lower();
-    if cmd=='stormbar' then
+    if cmd=='session' then
+        local sub=(a[3] or ''):lower();
+        if sub=='start' then
+            local kind=(a[4] or ''):lower();local label=table.concat(a,' ',5);
+            local ok,msg=analytics.start(kind,label);say(msg,true);
+        elseif sub=='stop' then local ok,msg=analytics.stop();say(msg,true);
+        elseif sub=='report' then for _,line in ipairs(analytics.report()) do say(line,true);end
+        else say('Usage: /decker session start hnm|exp|practice NAME | stop | report',true);end
+    elseif cmd=='stormbar' then
         state.classic75=false; state.statebarEnabled=true; state.statebarHotkeysEnabled=true;
         state.statebarVisibility='always'; state.statebarAlways=true;
         state.statebarSlots={}; state.statebarHotkeys={65,66,67,68}; state.statebarSelected=0;
@@ -1836,6 +1928,7 @@ ashita.events.register('command','decker_cmd',function(e)
         say('/decker settings - open Settings | /decker closesettings - close Settings | /decker guide - simulated tutorial',true);
         say('/decker show | hide | toggle - macro HUD visibility | /decker connect - connect native macros',true);
         say('/decker keysoff - disable main and StateBar hotkeys | /decker navoff - disable navigation',true);
+        say('/decker session start hnm|exp|practice NAME | stop | report - local session statistics',true);
     elseif cmd=='connect' then connect_macros()
     elseif cmd=='scan' then scan()
     elseif cmd=='pointers' then pointer_check()
@@ -2695,6 +2788,19 @@ ashita.events.register('d3d_present','decker_draw',function()
                 else
                     imgui.TextWrapped('Macro set switching is unavailable until native macros connect.');
                 end
+            end
+            if state.settingsTab=='General' and imgui.CollapsingHeader('Combat Analytics (local only)') then
+                imgui.TextWrapped('Records macro button attempts and native requests; cannot prove a spell actually cast. Never moves buttons.');
+                local a=analytics.active;
+                imgui.TextWrapped(a and ('Recording '..a.kind:upper()..': '..a.label) or 'No active session');
+                if not a then
+                    if imgui.Button('Start HNM session') then analytics.start('hnm','HNM');end
+                    imgui.SameLine();if imgui.Button('Start EXP session') then analytics.start('exp','EXP');end
+                else
+                    if imgui.Button('Stop recording') then analytics.stop();end
+                end
+                if imgui.Button('Print top 10 in chat') then for _,line in ipairs(analytics.report()) do say(line,true);end end
+                imgui.TextWrapped('Named session: /decker session start hnm Tiamat (or exp Camp). Stop: /decker session stop. Report: /decker session report. Statistics are memory-only and reset on character change or client exit.');
             end
             if state.settingsTab=='General' and imgui.CollapsingHeader('Quick Start Guide') then
                 imgui.TextWrapped('Decker - Enhanced In-Game Macro Interface for FFXI')
