@@ -387,7 +387,7 @@ test('StateBar F11 captures both input streams with main shortcuts disabled',fun
  ready();s.keybinds=false;s.acknowledgeKeys=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.held={};s.suppressed={}
  s.statebarSlots={{row='ALT',slot=2,kind='utility'}};s.statebarHotkeys={87};local n=#requested
  local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked and #requested==n+1 and s.lastExecuted.row=='ALT')
- local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1) -- native target has priority
+ local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==0 and #requested==n+1) -- captured StateBar hotkey remains suppressed until key release
  events.decker_exclusive_key_press({key=87,down=false});s.statebarHotkeysEnabled=false;raw[87]=128
  events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1)
 end)
