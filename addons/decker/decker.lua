@@ -686,6 +686,7 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
+local begin_native_target_handoff; -- assigned below after target-state helpers
 local function execute_slot(row,slot)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     if not state.allowAllClicks then
@@ -716,7 +717,10 @@ local function execute_slot(row,slot)
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
-    if called then record_execution(row,slot,'executed'); end
+    if called then
+        if begin_native_target_handoff then begin_native_target_handoff(); end
+        record_execution(row,slot,'executed');
+    end
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
     say(state.clickSummary);
     return called;
@@ -1418,7 +1422,7 @@ end
 -- Target UI may open after the macro call returns. Not every client exposes
 -- the optional selector getters, so yield keyboard navigation briefly.
 state.targetHandoffUntil=0;
-local function begin_native_target_handoff()
+begin_native_target_handoff=function()
     state.targetHandoffUntil=os.time()+5;
     state.navQueue={}; state.deferredNav={}; state.navRepeatAt={};
     state.navToggleActive=false; state.navModifierHeld=false;
@@ -1656,7 +1660,6 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
         e.blocked=true;
         if not state.held[e.key] then
             state.held[e.key]=true; state.suppressed[e.key]=true;
-            begin_native_target_handoff();
             request_statebar(i);
         end
     end
@@ -1719,7 +1722,6 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
             local down=ptr[code]~=0;
             if down and not state.held[code] then
                 state.held[code]=true; state.suppressed[code]=true;
-                begin_native_target_handoff();
                 request_statebar(hotkey);
             elseif not down then
                 state.held[code]=nil; state.suppressed[code]=nil;
