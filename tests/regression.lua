@@ -113,7 +113,16 @@ test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.ma
 test('StateBar collisions and permission gates',function()
  ready();s.held={};s.suppressed={};s.navKeysEnabled=false;s.classic75=false;s.rowSwitchKey='END';s.navModifier='RSHIFT';s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[i+10]=i==10 and 11 or i+1 end;s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.statebarHotkeys={59};s.mappingMode='split'
  assert(not api.hotkey(59),'direct key collision should win')
- s.statebarHotkeys={87};assert(api.hotkey(87)==1,'F11 hotkey expected')
+ s.statebarHotkeys={87};
+ local h=api.hotkey(87);
+ if h~=1 then
+   local row,slot=api.mapped(87)
+   print('DEBUG F11',tostring(h),tostring(s.phase),tostring(s.profileReady),tostring(s.statebarEnabled),tostring(s.statebarHotkeysEnabled),
+      tostring(s.allowAllClicks),tostring(s.classic75),tostring(s.navKeysEnabled),tostring(s.rowSwitchKey),
+      tostring(#s.statebarSlots),tostring(#s.names),tostring(s.statebarHotkeys[1]),tostring(row),tostring(slot),
+      tostring(s.held[29]),tostring(s.held[54]))
+ end
+ assert(h==1,'F11 hotkey expected')
  s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87),'navigation reservation should win')
  s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1,'StateBar independent hotkey expected')
  s.allowAllClicks=false
