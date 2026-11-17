@@ -1,9 +1,9 @@
--- Decker 1.50.37-dev: combat-safe input, StateBar readback and clock-only recasts.
+-- Decker 1.50.38-dev: bounded input diagnostics and live-validation gate.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.37-dev';
+addon.version = '1.50.38-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -480,6 +480,49 @@ local patterns = {
 };
 local function say(s, force)
     if force or state.debugLog then print(chat.header(addon.name) .. tostring(s)); end
+end
+-- Explicitly opt-in, memory-only diagnostic ring. Never store chat contents,
+-- character names, passwords, macro text or raw packet/key buffers.
+local inputDiag={enabled=false,records={},limit=80,sequence=0}
+function inputDiag.record(source,reason,code,edge,blocked,context)
+    if not inputDiag.enabled then return end
+    if type(source)~='string' or type(reason)~='string' then return end
+    local t=os.clock()
+    local rec={at=t,source=source,reason=reason,
+        key=type(code)=='number' and code or -1,
+        edge=edge=='up' and 'up' or edge=='down' and 'down' or 'state',
+        blocked=blocked and true or false,
+        chat=context and context.chat==true or false,
+        prompt=context and context.prompt==true or false,
+        shift=context and context.shift==true or false}
+    local prev=inputDiag.records[#inputDiag.records]
+    -- Consolidate duplicate high-frequency polling for one key/state.
+    if prev and prev.source==rec.source and prev.reason==rec.reason
+        and prev.key==rec.key and prev.edge==rec.edge
+        and prev.blocked==rec.blocked and prev.chat==rec.chat
+        and prev.prompt==rec.prompt and prev.shift==rec.shift
+        and t-prev.at<.5 then
+        prev.repeatCount=(prev.repeatCount or 1)+1;prev.at=t;return
+    end
+    inputDiag.sequence=inputDiag.sequence+1;rec.sequence=inputDiag.sequence
+    inputDiag.records[#inputDiag.records+1]=rec
+    if #inputDiag.records>inputDiag.limit then table.remove(inputDiag.records,1) end
+end
+function inputDiag.clear() inputDiag.records={};inputDiag.sequence=0 end
+function inputDiag.report(limit)
+    local result={}
+    limit=math.max(1,math.min(80,tonumber(limit) or 20))
+    for i=math.max(1,#inputDiag.records-limit+1),#inputDiag.records do
+        local r=inputDiag.records[i]
+        result[#result+1]=('input#%d %.3f %s %s k=%d %s blocked=%s chat=%s prompt=%s shift=%s x%d'):format(
+            r.sequence,r.at,r.source,r.reason,r.key,r.edge,
+            tostring(r.blocked),tostring(r.chat),tostring(r.prompt),
+            tostring(r.shift),r.repeatCount or 1)
+    end
+    return result
+end
+local function trace_input(source,reason,code,edge,blocked,chatOpen,prompt,shift)
+    inputDiag.record(source,reason,code,edge,blocked,{chat=chatOpen,prompt=prompt,shift=shift})
 end
 local function validaddr(v)
     return type(v)=='number' and v >= 0x10000 and v <= 0xFFFFFFFF and v == math.floor(v);
@@ -1632,6 +1675,10 @@ local function game_input_open()
     return not ok or flag==nil or (flag~=false and flag~=0)
 end
 local function yield_chat_input()
+    if inputDiag.enabled and (state.navToggleActive or state.navModifierHeld
+        or next(state.suppressed) or next(state.navCaptured)) then
+        trace_input('chat','release-captured-state',-1,'state',false,true,false,state.navModifierHeld)
+    end
     -- Port the v1.50.34 chat-state reset onto the newer native-target handoff.
     -- Never suppress a physical key while the game owns chat input.
     state.navToggleActive=false;state.navModifierHeld=false
@@ -1722,16 +1769,24 @@ end
 -- key_data only suppresses input. Physical key edges are processed from
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
-    if game_input_open() then yield_chat_input();return end
+    if game_input_open() then
+        trace_input('navigation','yield-chat',e.key,e.down and 'down' or 'up',false,true,false,false)
+        yield_chat_input();return
+    end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
-        if native_target_handoff() then return end
-        e.blocked=true;
-        return;
+        if native_target_handoff() then
+            trace_input('navigation','yield-target',e.key,e.down and 'down' or 'up',false,false,true,false)
+            return
+        end
+        e.blocked=true
+        trace_input('navigation','capture-modifier',e.key,e.down and 'down' or 'up',true,false,false,true)
+        return
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
     if native_target_handoff() or state.nativeNavHeld[e.key] then
+        trace_input('navigation','yield-native-target',e.key,e.down and 'down' or 'up',false,false,true,false)
         selector.yield_navigation();
         if state.navCaptured[e.key] then
             e.blocked=true;
@@ -1742,7 +1797,8 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         return;
     end
     if nav_is_active() or state.navCaptured[e.key] then
-        e.blocked=true;
+        e.blocked=true
+        trace_input('navigation','capture-navigation',e.key,e.down and 'down' or 'up',true,false,false,true)
         -- Some clients deliver the first arrow press through key_data before
         -- key_state has populated its physical-edge cache. Capture that edge
         -- here so navigation works before clicking any macro or focusing HUD.
@@ -1764,11 +1820,19 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
     if game_input_open() then
+        if physicalDown~=state.navPhysicalDown then
+            trace_input('modifier','physical-edge-during-chat',modifier,physicalDown and 'down' or 'up',false,true,false,physicalDown)
+        end
         state.navPhysicalDown=physicalDown
         yield_chat_input()
         return
     end
     local targeting=state.navKeysEnabled and native_target_handoff();
+    if physicalDown~=state.navPhysicalDown then
+        trace_input('modifier',targeting and 'yield-target' or 'physical-edge',
+            modifier,physicalDown and 'down' or 'up',
+            state.navKeysEnabled and not targeting,false,targeting,physicalDown)
+    end
     if state.navKeysEnabled and not targeting and state.stickyNavigation
             and physicalDown and not state.navPhysicalDown and not other_modifier_down() then
         state.navToggleActive=not state.navToggleActive; state.hudLastActivity=os.clock(); state.hudForceReveal=true;
@@ -1874,14 +1938,29 @@ end);
 -- StateBar has its own explicit keyboard switch; native connection is still required.
 -- Only active main shortcuts and enabled navigation reserve keys against it.
 local function statebar_hotkey_slot(code,slots,keys,job,level)
-    if game_input_open() or not statebar_input_ready() or modifier_down() then return nil; end
-    if shortcuts_active() and mapped_key(code) then return nil; end
-    if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
+    if game_input_open() then
+        trace_input('statebar','yield-chat',code,'down',false,true,false,false);return nil
+    end
+    if not statebar_input_ready() then
+        trace_input('statebar','not-ready',code,'down',false,false,false,false);return nil
+    end
+    if modifier_down() then
+        trace_input('statebar','other-modifier-held',code,'down',false,false,false,true);return nil
+    end
+    if shortcuts_active() and mapped_key(code) then
+        trace_input('statebar','macro-key-conflict',code,'down',false,false,false,false);return nil
+    end
+    if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then
+        trace_input('statebar','navigation-key-conflict',code,'down',false,false,false,false);return nil
+    end
     if not keys then slots,keys,job,level=classic.slots(); end
     local found=nil;
     for i,b in ipairs(slots) do
         if keys[i]==code and code~=0 and (not state.classic75 or classic.available(b,job,level)) then
-            if found then return nil; end
+            if found then
+                trace_input('statebar','duplicate-hotkey',code,'down',false,false,false,false)
+                return nil
+            end
             found=i;
         end
     end
@@ -1889,43 +1968,64 @@ local function statebar_hotkey_slot(code,slots,keys,job,level)
 end
 ashita.events.register('key_data','decker_statebar_key_press',function(e)
     local i=statebar_hotkey_slot(e.key);
-    if not i or e.blocked then return; end
+    if not i then return end
+    if e.blocked then
+        trace_input('statebar','blocked-upstream',e.key,e.down and 'down' or 'up',true,false,false,false)
+        return
+    end
     if state.suppressed[e.key] then
-        e.blocked=true;
+        e.blocked=true
+        trace_input('statebar','captured-repeat-or-release',e.key,e.down and 'down' or 'up',true,false,false,false)
         if not e.down then state.suppressed[e.key]=nil; state.held[e.key]=nil; end
         return;
     end
     if e.down then
-        e.blocked=true;
+        e.blocked=true
         if not state.held[e.key] then
             state.held[e.key]=true; state.suppressed[e.key]=true;
+            trace_input('statebar','invoke',e.key,'down',true,false,false,false)
             request_statebar(i);
         end
     end
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
-    if game_input_open() then yield_chat_input();return end
+    if game_input_open() then
+        trace_input('direct','yield-chat',e.key,e.down and 'down' or 'up',false,true,false,false)
+        yield_chat_input();return
+    end
     -- Native target handoff must not disable independent combat action hotkeys.
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
     if state.suppressed[e.key] then
-        e.blocked=true;
+        e.blocked=true
+        trace_input('direct','captured-repeat-or-release',e.key,e.down and 'down' or 'up',true,false,false,false)
         if not e.down then
             state.suppressed[e.key]=nil;
             state.held[e.key]=nil;
         end
         return;
     end
-    if not row or not shortcuts_active() or e.blocked or modifier_down() then return; end
+    if not row then return end
+    if not shortcuts_active() then
+        trace_input('direct','shortcut-not-ready',e.key,e.down and 'down' or 'up',false,false,false,false);return
+    end
+    if e.blocked then
+        trace_input('direct','blocked-upstream',e.key,e.down and 'down' or 'up',true,false,false,false);return
+    end
+    if modifier_down() then
+        trace_input('direct','other-modifier-held',e.key,e.down and 'down' or 'up',false,false,false,true);return
+    end
     if e.down then
         if not state.held[e.key] then
             state.held[e.key]=true;
             state.suppressed[e.key]=true;
-            e.blocked=true;
+            e.blocked=true
+            trace_input('direct','invoke',e.key,'down',true,false,false,false)
             execute_slot(row,slot,'direct');
         else
-            e.blocked=true;
+            e.blocked=true
+            trace_input('direct','repeat-held',e.key,'down',true,false,false,false)
         end
     end
 end);
@@ -1953,6 +2053,7 @@ ashita.events.register('key_state','decker_exclusive_key_state',function(e)
         -- If key_data misses a release, the physical state is authoritative.
         -- Clear captured direct keys as well as StateBar keys before suppression.
         if code<size and state.suppressed[code] and ptr[code]==0 then
+            trace_input('physical','missed-release',code,'up',false,false,false,false)
             state.suppressed[code]=nil; state.held[code]=nil;
         end
         local hotkey=code<size and statebar_hotkey_slot(code,slots,hotkeys,job,level);
@@ -2024,6 +2125,24 @@ ashita.events.register('command','decker_cmd',function(e)
                 command='/lac fwd tank '..item[2],kind='state',trackDefence='auto'};
         end
         save_display(); say('Storm StateBar saved: F7 PDT / F8 MDT / F9 Accuracy / F10 Auto. Commands require a tank LAC profile.');
+    elseif cmd=='inputtrace' then
+        local option=(a[3] or 'status'):lower()
+        if option=='on' then
+            inputDiag.clear(); inputDiag.enabled=true
+            say('Input trace enabled locally in memory for this session; no files or macro contents recorded.',true)
+        elseif option=='off' then
+            inputDiag.enabled=false
+            say('Input trace stopped; use /decker inputtrace report to inspect retained events.',true)
+        elseif option=='clear' then
+            inputDiag.clear();say('Input trace history cleared.',true)
+        elseif option=='report' then
+            local lines=inputDiag.report(tonumber(a[4]) or 20)
+            say(('Input trace: %d recorded events; showing %d.'):format(#inputDiag.records,#lines),true)
+            for _,line in ipairs(lines) do say(line,true) end
+        else
+            say(('Input trace %s, %d buffered events. on|off|report [1-80]|clear'):format(
+                inputDiag.enabled and 'ON' or 'OFF',#inputDiag.records),true)
+        end
     elseif cmd=='debug' then
         local v=(a[3] or ''):lower();
         if v=='on' then state.debugLog=true; say('Debug logging enabled.',true)
@@ -2994,6 +3113,13 @@ ashita.events.register('d3d_present','decker_draw',function()
             if state.settingsTab=='General' and state.showAdvanced then
                 local logging={state.debugLog};
                 if imgui.Checkbox('Developer chat logging',logging) then state.debugLog=logging[1]; end
+                local inputLogging={inputDiag.enabled};
+                if imgui.Checkbox('Input diagnostics (memory only)',inputLogging) then
+                    inputDiag.enabled=inputLogging[1]
+                    if inputDiag.enabled then inputDiag.clear() end
+                end
+                imgui.TextWrapped(('Input diagnostic events: %d / %d. Use /decker inputtrace report 20 in chat.'):format(#inputDiag.records,inputDiag.limit))
+                imgui.TextWrapped('No chat text or macro bodies captured. Disable after reproducing a fault.');
                 imgui.TextWrapped('Native book/set getters remain unverified. Native arrow selection is not highlighted until a reliable getter exists.');
                 imgui.TextWrapped('Read status: '..state.nameSummary);
                 imgui.TextWrapped('Pointers: '..state.pointerSummary);

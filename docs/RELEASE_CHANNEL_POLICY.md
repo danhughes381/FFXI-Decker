@@ -25,3 +25,11 @@ The in-game updater reads `updates/development.txt` or `updates/stable.txt`, dep
 - Stable v1.50.34: `8f08412f391cebd00f7663f1eabd4e82b8c7514e`, SHA-256 `b4ee5d37a1fee84879a41e64b3f323955b1213cbf636952c4e34e480ac4d71e3`. 93 mocked regression groups pass under Lua 5.4 and LuaJIT.
 
 Neither build has been directly installed or live tested on the user's Windows machine by this process.
+
+## Mandatory Windows input acceptance (effective after v1.50.37)
+
+See [Decker live input acceptance](DECKER_LIVE_INPUT_ACCEPTANCE.md). GitHub mocked suites cannot validate actual engaged-combat DirectInput, native subtarget, Windows keyboard focus, Aegis mode-file compatibility or the six-client addon set. Releases modifying input/hotkeys/StateBar must attach an IN-01 to IN-11 live report before they can be called "live verified" or promoted to Stable.
+
+Source and tests must be merged together. Never update the canonical development source while leaving tests/regression.lua on a legacy branch. Diagnostics must remain off by default, bounded, private and removable without affecting game behaviour.
+
+A Development test candidate may be published for Windows acceptance, provided it is explicitly labelled "not live verified" until supported by real game evidence. CI green alone is insufficient.

@@ -22,7 +22,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end,GetActionTargetActive=function() return actionTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,inputDiag=inputDiag,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -1354,6 +1354,64 @@ test('StateBar tracks latest mode request with pending highlight until Aegis con
  local saved={enabled=true,locked=false,defence='pdt'}
  active,mode=api.classic.highlight(s.statebarSlots[1],1,saved,'PLD',false)
  assert(active and mode=='verified')
+end)
+
+test('input trace defaults off and stores only bounded non-sensitive categories',function()
+ local d=api.inputDiag
+ d.clear();d.enabled=false
+ d.record('direct','invoke',59,'down',true,{chat=false,prompt=false,shift=true})
+ assert(#d.records==0,'diagnostics must be opt-in')
+ d.enabled=true
+ for i=1,110 do d.record('direct','reason-'..i,59,'down',true,{chat=false,prompt=false,shift=false}) end
+ assert(#d.records==80 and d.records[1].reason=='reason-31')
+ for _,line in ipairs(d.report(100)) do
+  assert(not line:find('Macro') and not line:find('Salts'),'no macro text or character names')
+ end
+ d.clear();assert(#d.records==0 and d.sequence==0)
+ d.enabled=false
+end)
+test('input trace captures actual rejection causes during chat and stale held keys',function()
+ ready();s.guideOpen=false;s.mappingMode='split';s.directKeys={};s.directKeys[1]=59
+ s.navKeysEnabled=false;s.keybinds=true;s.acknowledgeKeys=true;s.held={};s.suppressed={}
+ local d=api.inputDiag;d.clear();d.enabled=true
+ local before=#requested
+ chatOpen=1;local e={key=59,down=true}
+ events.decker_exclusive_key_press(e);assert(not e.blocked and #requested==before)
+ chatOpen=0
+ s.held={[29]=true}
+ e={key=59,down=true};events.decker_exclusive_key_press(e)
+ assert(not e.blocked and #requested==before)
+ s.held={}
+ e={key=59,down=true};events.decker_exclusive_key_press(e)
+ assert(e.blocked and #requested==before+1)
+ events.decker_exclusive_key_press({key=59,down=false})
+ local reasons={};for _,r in ipairs(d.records) do reasons[r.reason]=true end
+ assert(reasons['yield-chat'] and reasons['other-modifier-held'] and reasons['invoke'] and reasons['captured-repeat-or-release'])
+ d.enabled=false;d.clear();s.keybinds=false
+end)
+test('input trace reports a genuine StateBar rejection but never blocks unrelated keys',function()
+ ready();s.navKeysEnabled=false;s.classic75=false;s.statebarEnabled=true
+ s.statebarHotkeysEnabled=true;s.statebarSlots={{source='command',command='/lac fwd tank pdt',kind='state',row='CTRL',slot=1}}
+ s.statebarHotkeys={87};s.held={};s.suppressed={};s.keybinds=false
+ local d=api.inputDiag;d.clear();d.enabled=true
+ chatOpen=1
+ local e={key=87,down=true};events.decker_statebar_key_press(e)
+ assert(not e.blocked)
+ chatOpen=0
+ e={key=87,down=true};events.decker_statebar_key_press(e)
+ assert(e.blocked)
+ assert(d.report(1)[1]:find('invoke',1,true))
+ d.enabled=false;d.clear();s.statebarHotkeysEnabled=false
+end)
+test('input trace coalesces repeated polling and is cleared when requested',function()
+ local d=api.inputDiag;d.clear();d.enabled=true
+ d.record('modifier','physical-edge',54,'down',true,{shift=true})
+ d.record('modifier','physical-edge',54,'down',true,{shift=true})
+ assert(#d.records==1 and d.records[1].repeatCount==2)
+ local e={command={args=function()return {'/decker','inputtrace','clear'}end}}
+ events.decker_cmd(e)
+ assert(#d.records==0)
+ d.enabled=false
 end)
 
 os.execute('rm -r '..tmp)
