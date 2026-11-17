@@ -684,7 +684,7 @@ test('lost direct-key release is recovered by physical key_state',function()
  assert(press.blocked and s.suppressed[59] and #requested==before+1)
  local raw={};for i=0,255 do raw[i]=0 end
  raw[59]=128;events.decker_exclusive_key_state({data_raw=raw,size=256})
- assert(raw[59]==128 and not s.suppressed[59],'native handoff must release held key')
+ assert(raw[59]==0 and s.suppressed[59],'held direct macro must remain suppressed until physically released')
  s.targetHandoffUntil=0;s.targetGraceUntil=0
  raw[59]=0;events.decker_exclusive_key_state({data_raw=raw,size=256})
  assert(not s.suppressed[59] and not s.held[59],'physical release must clear missed key_data release')
