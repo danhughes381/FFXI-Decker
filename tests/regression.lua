@@ -1,7 +1,7 @@
 -- LuaJIT tests use explicit host mocks: no game process or native calls.
 local root=arg[1] or '.'
 local events={}; local requested={}; local character='Salts'; local styles=0; local vars=0
-local chatOpen=0; local subTarget=0
+local chatOpen=0; local subTarget=0; local actionTarget=0
 addon={}
 package.preload.common=function() return {} end
 package.preload.chat=function() return {header=function() return '' end} end
@@ -20,7 +20,7 @@ package.loaded.ffi=ffi
 ImGuiCol_Button=1; ImGuiCol_ButtonHovered=2; ImGuiCol_ButtonActive=3; ImGuiCol_Text=4; ImGuiStyleVar_Alpha=1; ImGuiCond_FirstUseEver=1
 ashita={events={register=function(_,name,cb) assert(not events[name]);events[name]=cb end},memory={read_uint32=function() return 65536 end}}
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
-AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
+AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end,GetActionTargetActive=function() return actionTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
 local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
@@ -29,7 +29,7 @@ local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose)
 local api=assert(loadfile(path))();local s=api.state
 local passed=0
 local function test(name,fn)
- chatOpen=0;subTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
+ chatOpen=0;subTarget=0;actionTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
  fn();passed=passed+1;print('PASS '..name)
 end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
@@ -143,7 +143,7 @@ test('unified chat handoff clears held Decker keys and leaves game keys untouche
 end)
 test('friendly target prompt yields arrows and Enter',function()
  ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
- subTarget=1;local n=#requested
+ subTarget=1;actionTarget=1;local n=#requested
  for _,key in ipairs({54,200,203,205,28,156}) do
   local e={key=key,down=true};events.decker_custom_set_navigation(e)
   assert(not e.blocked,'swallowed target key '..key)
@@ -151,7 +151,7 @@ test('friendly target prompt yields arrows and Enter',function()
  local arr={};for i=0,255 do arr[i]=0 end;arr[54]=128;arr[203]=128
  events.decker_custom_set_state({data_raw=arr,size=256})
  assert(arr[54]~=0 and arr[203]~=0 and #requested==n)
- subTarget=0;s.navKeysEnabled=false
+ subTarget=0;actionTarget=0;s.navKeysEnabled=false
 end)
 test('StateBar collisions and permission gates',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split';assert(not api.hotkey(59));s.statebarHotkeys={87};assert(api.hotkey(87)==1);s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87));s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1);s.allowAllClicks=false;assert(not api.hotkey(87)) end)
 test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(not e.blocked and not s.suppressed[87], 'native handoff must not capture key release') end)
@@ -1311,7 +1311,7 @@ test('engaged enemy never blocks independent Flash Reprisal or StateBar keys',fu
  s.classic75=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true
  s.statebarSlots={{row='CTRL',slot=1,source='command',kind='state',label='PDT',command='/lac fwd tank pdt'}}
  s.statebarHotkeys={[1]=87}
- local initial=#requested;subTarget=1
+ local initial=#requested;subTarget=1;actionTarget=0 -- engaged flag must not masquerade as target prompt
  s.targetHandoffUntil=os.clock()+30;s.targetGraceUntil=os.clock()+30
  assert(api.hotkey(87)==1,'engaged combat cannot lock StateBar hotkeys')
  for _,key in ipairs({59,60}) do
@@ -1321,7 +1321,7 @@ test('engaged enemy never blocks independent Flash Reprisal or StateBar keys',fu
  end
  local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked)
  assert(#requested==initial+3,'two macros and one Aegis command should execute while engaged')
- subTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0;s.navKeysEnabled=false
+ subTarget=0;actionTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0;s.navKeysEnabled=false
 end)
 test('chat input cannot re-arm a stale modifier and release restores navigation',function()
  ready();s.navKeysEnabled=true;s.navModifier='RSHIFT';s.navPhysicalDown=false
