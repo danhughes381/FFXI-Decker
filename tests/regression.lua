@@ -230,6 +230,10 @@ test('mouse and direct keyboard dispatch update execution only once',function()
  ui.Button=function(label,size) old(label,size);return label=='##decker_ALT3' end
  api.drawrow('ALT',10);ui.Button=old
  assert(#requested==n+1 and s.lastExecuted.row=='ALT' and s.lastExecuted.slot==3 and s.statebarSelected==1)
+ -- FFXI owns the next key during target selection; only resume after it closes.
+ local blockedByHandoff={key=59,down=true};events.decker_exclusive_key_press(blockedByHandoff)
+ assert(not blockedByHandoff.blocked and #requested==n+1)
+ s.targetHandoffUntil=0;s.targetGraceUntil=0
  local e={key=59,down=true};events.decker_exclusive_key_press(e);events.decker_exclusive_key_press({key=59,down=true})
  assert(#requested==n+2 and s.lastExecuted.row=='CTRL' and s.lastExecuted.slot==1)
  events.decker_exclusive_key_press({key=59,down=false});assert(not s.suppressed[59])
