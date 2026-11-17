@@ -1419,16 +1419,16 @@ end
 -- the optional selector getters, so yield keyboard navigation briefly.
 state.targetHandoffUntil=0;
 local function begin_native_target_handoff()
-    state.targetHandoffUntil=os.clock()+5;
+    state.targetHandoffUntil=os.time()+5;
     state.navQueue={}; state.deferredNav={}; state.navRepeatAt={};
     state.navToggleActive=false; state.navModifierHeld=false;
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={};
 end
 local function native_target_handoff()
-    return selector.active() or os.clock()<(state.targetHandoffUntil or 0);
+    return selector.active() or os.time()<(state.targetHandoffUntil or 0);
 end
 local function end_native_target_handoff_soon()
-    state.targetHandoffUntil=math.min(state.targetHandoffUntil or 0,os.clock()+0.30);
+    state.targetHandoffUntil=math.min(state.targetHandoffUntil or 0,os.time()+1);
 end
 function selector.active()
     local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
@@ -1485,6 +1485,7 @@ end
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     if game_input_open() then return; end
+    if e.key==1 and e.down and native_target_handoff() then end_native_target_handoff_soon(); return; end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
         if native_target_handoff() then return; end
