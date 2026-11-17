@@ -1650,18 +1650,31 @@ begin_native_target_handoff=function()
 end
 local function native_target_handoff()
     local now=os.clock();
+    local prompt=selector.active();
+    -- When the host exposes both flags, protect actual native targeting even
+    -- when launched outside Decker. Bare subtarget flags may stay set in combat,
+    -- so do not allow them to hijack navigation forever.
+    if prompt and selector.actionSupported then return true; end
     if now>=(state.targetHandoffUntil or 0) then return false; end
-    if selector.active() then return true; end
-    if selector.supported then return now<(state.targetGraceUntil or 0); end
+    if prompt then return true; end
     return now<(state.targetGraceUntil or 0);
 end
 function selector.active()
-    -- The action-target flag can remain set after the selection prompt closes.
-    local ok,flag=pcall(function()
+    local ok,flag,actionOk,action;
+    ok,flag=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
     end);
-    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number')
-    return selector.supported and (flag==true or (type(flag)=='number' and flag>0));
+    actionOk,action=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetActionTargetActive();
+    end);
+    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number');
+    selector.actionSupported=actionOk and (type(action)=='boolean' or type(action)=='number');
+    if not selector.supported then return false; end
+    local subActive=flag==true or (type(flag)=='number' and flag>0);
+    if selector.actionSupported then
+        return subActive and (action==true or (type(action)=='number' and action>0));
+    end
+    return subActive;
 end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
