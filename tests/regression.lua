@@ -1179,6 +1179,38 @@ test('combat analytics command accepts named sessions and reports',function()
  assert(not api.analytics.start('wrong','n/a'))
 end)
 
+test('recast clock labels use remaining recast and final five-second counts',function()
+ assert(api.cooldown.label(0)=='READY')
+ assert(api.cooldown.label(5)=='5s' and api.cooldown.label(4.1)=='5s')
+ assert(api.cooldown.label(1)=='1s' and api.cooldown.label(60)=='60s')
+ assert(api.cooldown.label(nil)==nil)
+ assert(api.cooldown.fraction(10,20)==.5)
+ assert(api.cooldown.fraction(5,20)==.25)
+ assert(api.cooldown.fraction(0,20)==0)
+ assert(api.cooldown.fraction(20,0)==1)
+end)
+test('read-only recast observer never equates recast with a confirmed cast',function()
+ local key='test-recast-spell-112'
+ assert(api.cooldown.observe(key,0)==nil)
+ assert(api.cooldown.observe(key,30)=='recast started (cast result unknown)')
+ assert(api.cooldown.observe(key,12)==nil)
+ assert(api.cooldown.observe(key,0)=='recast ready')
+ local a=api.cooldown.alerts()
+ assert(a[#a].name==key and a[#a].kind=='RECAST READY')
+ assert(api.cooldown.observe(key,0)==nil,'no duplicate ready alerts')
+end)
+test('cooldown bindings are retained as scoped manual assignments',function()
+ ready();s.cooldownEnabled=true
+ s.previousFingerprint=table.concat((function()local t={};for i=1,20 do t[i]='macro'..i end;return t end)(),'\\031')
+ s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil;s.trackedSource='manual'
+ s.manualBook=3;s.trackedSet=4
+ local page,fp=api.cooldown.page();assert(page=='3.4.' and type(fp)=='string')
+ s.cooldownBindings[page..1]={kind='spell',id=112,fingerprint=fp}
+ assert(api.cooldown.binding(page,fp,1).id==112)
+ assert(not api.cooldown.binding('3.5.',fp,1))
+ s.cooldownEnabled=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 
