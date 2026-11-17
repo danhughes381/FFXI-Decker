@@ -1422,24 +1422,34 @@ end
 -- Target UI may open after the macro call returns. Not every client exposes
 -- the optional selector getters, so yield keyboard navigation briefly.
 state.targetHandoffUntil=0;
+state.targetGraceUntil=0;
 begin_native_target_handoff=function()
     state.targetHandoffUntil=os.time()+5;
+    state.targetGraceUntil=os.time()+1;
     state.navQueue={}; state.deferredNav={}; state.navRepeatAt={};
     state.navToggleActive=false; state.navModifierHeld=false;
     state.navCaptured={}; state.navPressed={}; state.navPhysicalKeys={};
 end
 local function native_target_handoff()
-    return selector.active() or os.time()<(state.targetHandoffUntil or 0);
+    if selector.active() then return true; end
+    -- With supported getters, re-enable Decker promptly for non-target
+    -- macros; retain fallback timeout only for builds without these getters.
+    if selector.supported then return os.time()<(state.targetGraceUntil or 0); end
+    return os.time()<(state.targetHandoffUntil or 0);
 end
 local function end_native_target_handoff_soon()
     state.targetHandoffUntil=math.min(state.targetHandoffUntil or 0,os.time()+1);
 end
 function selector.active()
+    selector.supported=false;
     local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
     if not ok or not target then return false; end
     for _,method in ipairs(selector.methods) do
         local read,flag=pcall(function() return target[method](target); end);
-        if read and (flag==true or (type(flag)=='number' and flag>0)) then return true; end
+        if read and (type(flag)=='boolean' or type(flag)=='number') then
+            selector.supported=true;
+            if flag==true or (type(flag)=='number' and flag>0) then return true; end
+        end
     end
     return false;
 end
