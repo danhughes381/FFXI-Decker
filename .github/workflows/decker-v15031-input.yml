@@ -16,6 +16,6 @@ jobs:
         run: |
           luajit -b addons/decker/decker.lua /tmp/decker.ljbc
           python3 tests/run_lua54.py
-          python3 tests/run_luajit.py
+          luajit tests/regression.lua .
       - name: Print immutable source checksum
         run: sha256sum addons/decker/decker.lua
