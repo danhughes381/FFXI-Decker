@@ -1,9 +1,9 @@
--- Decker 1.50.26-dev: independent StateBar action and key label sizes.
+-- Decker 1.50.27-dev: restore keyboard navigation after actions.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.26-dev';
+addon.version = '1.50.34';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -686,7 +686,18 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
+local function native_selector_active()
+    local ok,flag=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
+    end);
+    return ok and (flag==true or (type(flag)=='number' and flag>0));
+end
+local function hud_navigation_flags()
+    -- Decker owns its explicit key handlers; ImGui must not activate a focused macro with Enter.
+    return (ImGuiWindowFlags_NoNavInputs or 0)+(ImGuiWindowFlags_NoNavFocus or 0);
+end
 local function execute_slot(row,slot)
+    if native_selector_active() then return false; end -- Native selector owns Enter, arrows and confirmation.
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     if not state.allowAllClicks then
         if row=='CTRL' and slot==1 and state.clickConsent then try_ctrl1();
@@ -1160,6 +1171,7 @@ local function draw_row(title,offset)
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
         local label=custom and '' or (name..'\n'..shortcut);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
+        if clicked and type(imgui.IsMouseReleased)=='function' then clicked=imgui.IsMouseReleased(0); end
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
         if custom then
@@ -1409,16 +1421,18 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
-local selector={methods={'GetIsSubTargetActive','GetActionTargetActive'}};
-function selector.active()
-    local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
-    if not ok or not target then return false; end
-    for _,method in ipairs(selector.methods) do
-        local read,flag=pcall(function() return target[method](target); end);
-        if read and (flag==true or (type(flag)=='number' and flag>0)) then return true; end
-    end
-    return false;
+local selector={};
+function selector.chat_active()
+    local ok,active=pcall(function() return AshitaCore:GetChatManager():IsInputOpen(); end);
+    return ok and (active==true or (type(active)=='number' and active>0));
 end
+function selector.yield_chat()
+    state.navToggleActive=false; state.navModifierHeld=false;
+    state.navQueue={}; state.deferredNav={}; state.navRepeatAt={};
+    state.navCaptured={}; state.suppressed={}; state.held={}; state.nativeNavHeld={};
+end
+
+function selector.active() return native_selector_active(); end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
     state.navRepeatAt={}; state.navPhysicalKeys={};
@@ -1463,6 +1477,7 @@ end
 -- key_data only suppresses input. Physical key edges are processed from
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
         e.blocked=true;
@@ -1470,8 +1485,10 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
-    if selector.active() or state.nativeNavHeld[e.key] then
-        selector.yield_navigation();
+    local selecting=selector.active();
+    if selecting or state.nativeNavHeld[e.key] then
+        -- Completing an old native key must not erase a new Decker arrow.
+        if selecting then selector.yield_navigation(); end
         if state.navCaptured[e.key] then
             e.blocked=true;
             if not e.down then state.navCaptured[e.key]=nil; end
@@ -1502,6 +1519,13 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
+    if selector.chat_active() then
+        selector.yield_chat();
+        -- Track real keys without swallowing text, Shift, Enter or arrows.
+        state.navPhysicalDown=physicalDown;
+        for key,_ in pairs(NAV_ACTIONS) do state.navPhysicalKeys[key]=ptr[key]~=0; end
+        return;
+    end
     local targeting=state.navKeysEnabled and selector.active();
     if state.navKeysEnabled and not targeting and state.stickyNavigation
             and physicalDown and not state.navPhysicalDown and not other_modifier_down() then
@@ -1566,6 +1590,7 @@ end);
 -- Use native ALT/CTRL + up/down for set selection, refresh the on-screen names
 -- after the game's own input handler has processed the press. No arrow blocking.
 ashita.events.register('key_data','decker_native_arrow_watch',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     if e.key==29 or e.key==157 or e.key==56 or e.key==184 or e.key==42 or e.key==54 then
         state.held[e.key]=e.down and true or nil;
     end
@@ -1588,6 +1613,7 @@ end);
 -- Native left/right may repeat more quickly than Lua input notifications.
 -- Do not claim an authoritative selection cursor without a verified game getter.
 ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     if e.key~=203 and e.key~=205 then return; end
     if e.down and modifier_down() and state.phase>=4 and not selector.active()
         and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive)) then
@@ -1613,6 +1639,7 @@ local function statebar_hotkey_slot(code,slots,keys,job,level)
     return found;
 end
 ashita.events.register('key_data','decker_statebar_key_press',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     local i=statebar_hotkey_slot(e.key);
     if not i or e.blocked then return; end
     if state.suppressed[e.key] then
@@ -1629,6 +1656,7 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
     end
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
@@ -1655,6 +1683,7 @@ end);
 -- Ashita separates initial DirectInput press (key_data) and held state
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
+    if selector.chat_active() then selector.yield_chat(); return; end
     if not e.data_raw then return; end
     if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
@@ -1984,6 +2013,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
+    if selector.chat_active() then selector.yield_chat(); end
     if (#state.navQueue>0 or (state.deferredNav and #state.deferredNav>0)) and selector.active() then
         selector.yield_navigation();
     end
@@ -2137,7 +2167,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     if state.visible and idleHidden and state.autoHideMode=='collapse' then
         size_window('collapsed',88,40);
         pin_window('collapsed',state.positionLocked);
-        if imgui.Begin('###DeckerCollapsed',{true},(ImGuiWindowFlags_NoTitleBar or 1)+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
+        if imgui.Begin('###DeckerCollapsed',{true},(ImGuiWindowFlags_NoTitleBar or 1)+hud_navigation_flags()+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
             remember_window('collapsed',state.positionLocked);
             if imgui.Button('Decker##recovery') then state.showTests=true; end
         end
@@ -2151,7 +2181,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     -- Hidden IDs preserve window identity; the single content heading is drawn below.
     -- Apply to the HUD only; Settings stays fully opaque.
     local hudColours,hudVars=push_glass_background(state.outerOpacity);
-    if imgui.Begin('###DeckerMain',{true},(ImGuiWindowFlags_NoTitleBar or 1)+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
+    if imgui.Begin('###DeckerMain',{true},(ImGuiWindowFlags_NoTitleBar or 1)+hud_navigation_flags()+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
         remember_window('hud',state.positionLocked);
         -- VanaCore ImGui positions may be math-backed vectors, not Lua arrays.
         -- Avoid numeric indexing of GetWindowPos results until its ABI is verified.
@@ -2688,3 +2718,4 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.
 end);
+

@@ -951,7 +951,7 @@ test('active native target selection owns arrows and Enter, including held key t
   local e={key=28,down=true}
   if hold then physical_keys({54}) end
   events.decker_custom_set_navigation(e);assert(e.blocked)
-  if hold then action=1 else sub=1 end
+  sub,action=1,1
   events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0)
   assert(physical_keys({54,28})[28]==0,'opening Enter must stay owned until released')
   physical_keys({54})
@@ -962,11 +962,19 @@ test('active native target selection owns arrows and Enter, including held key t
    assert(#s.navQueue==0 and #s.deferredNav==0)
    if key~=28 then physical_keys({54}) else break end
   end
-  sub,action=0,0
+  sub=0 -- The action flag can outlast the native prompt.
   assert(physical_keys({54,28})[28]==128,'confirmation was recaptured after prompt closed')
   physical_keys({54})
   assert(physical_keys({54,205})[205]==0,'Decker should resume on a new key')
   physical_keys({})
+  if not hold then
+   physical_keys({54});assert(not s.navToggleActive,'Right Shift cannot unlock after the action')
+   physical_keys({});physical_keys({54});assert(s.navToggleActive,'Right Shift cannot relock after the action')
+   physical_keys({})
+  end
+  assert(physical_keys(hold and {54,207} or {207})[207]==0,'row key must return to Decker')
+  physical_keys({})
+  action=0
  end
  AshitaCore.GetMemoryManager=original
  s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={};s.visible=false
@@ -1061,5 +1069,86 @@ test('StateBar font overrides fit independently and survive reload',function()
  assert(text.Macro.size==18 and text['1'].size==10)
 end)
 
+
+test('native confirmation release preserves a freshly queued page arrow',function()
+ local original=AshitaCore.GetMemoryManager
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetTarget=function()return {GetIsSubTargetActive=function()return 0 end,GetActionTargetActive=function()return 0 end}end;return mm
+ end
+ repeat_setup();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.nativeNavHeld={[28]=true};s.navQueue={};s.navCaptured={}
+ local arrow={key=200,down=true};events.decker_custom_set_navigation(arrow)
+ assert(arrow.blocked and #s.navQueue==1)
+ events.decker_custom_set_navigation({key=28,down=false})
+ assert(#s.navQueue==1,'late native Enter release erased page navigation')
+ AshitaCore.GetMemoryManager=original
+ s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={}
+end)
+
+test('ally selector blocks macro execution even outside navigation handlers',function()
+ ready();local original=AshitaCore.GetMemoryManager
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetTarget=function()return {GetIsSubTargetActive=function()return 1 end}end;return mm
+ end
+ local n=#requested
+ assert(api.execute('CTRL',1)==false and #requested==n,'active selector reran macro')
+ api.nav(28,false);api.nav(156,false)
+ assert(#requested==n,'Enter bypassed execution guard')
+ AshitaCore.GetMemoryManager=original
+end)
+
+test('macro buttons reject keyboard activation but retain mouse clicks',function()
+ ready();s.navKeysEnabled=false;s.guideOpen=false
+ local button,released=ui.Button,ui.IsMouseReleased
+ ui.Button=function(label)return label:match('##decker_CTRL1$')~=nil end
+ ui.IsMouseReleased=function(key)assert(key==0);return false end
+ local n=#requested;api.drawrow('CTRL',0)
+ assert(#requested==n,'focused button Enter reran macro after selector closed')
+ ui.IsMouseReleased=function()return true end
+ api.drawrow('CTRL',0);assert(#requested==n+1,'mouse macro click stopped working')
+ ui.Button=button;ui.IsMouseReleased=released
+end)
+
+test('main HUD disables ImGui navigation without disabling settings',function()
+ ready();s.visible=true;s.showTests=true;s.autoHide=false;s.navKeysEnabled=false;s.statebarEnabled=false
+ local begin=ui.Begin;local seen={}
+ ImGuiWindowFlags_NoNavInputs=262144;ImGuiWindowFlags_NoNavFocus=524288
+ ui.Begin=function(title,opened,flags)seen[title]=flags;return true end
+ events.decker_draw()
+ assert(seen['###DeckerMain'] and seen['###DeckerMain']>=786432,'HUD keyboard activation still enabled')
+ local settings=seen['Decker v'..addon.version..' - Settings'];assert(settings and settings<262144,'settings navigation disabled')
+ ui.Begin=begin;s.showTests=false
+end)
+
+test('chat editor owns modifier arrows Enter direct and StateBar keys',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true
+ s.statebarHotkeys={65};s.statebarSlots={{source='command',command='/lac fwd tank pdt',row='CTRL',slot=1,kind='state'}}
+ local original=AshitaCore.GetChatManager
+ AshitaCore.GetChatManager=function()return {IsInputOpen=function()return true end}end
+ local n=#requested
+ for _,key in ipairs({54,28,156,200,208,57,65,2}) do
+  for _,name in ipairs({'decker_custom_set_navigation','decker_native_arrow_watch','decker_native_horizontal_watch','decker_statebar_key_press','decker_exclusive_key_press'}) do
+   local e={key=key,down=true};events[name](e);assert(not e.blocked,'chat key swallowed by '..name)
+  end
+ end
+ physical_keys({54,28,200,65,2})
+ assert(#requested==n and #s.navQueue==0 and not s.navToggleActive,'typing triggered Decker')
+ AshitaCore.GetChatManager=original;s.navKeysEnabled=false;s.statebarEnabled=false
+end)
+
+test('opening empty chat cancels pending macros and held-modifier sticky toggle',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ local original=AshitaCore.GetChatManager;local open=1
+ AshitaCore.GetChatManager=function()return {IsInputOpen=function()return open end}end
+ s.navQueue={28};s.deferredNav={{key=200,frames=1}};local n=#requested
+ events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0 and #requested==n)
+ physical_keys({54});open=0;physical_keys({54})
+ assert(not s.navToggleActive,'Shift held while typing armed sticky macros')
+ physical_keys({});physical_keys({54});assert(s.navToggleActive,'fresh modifier press failed after chat closed')
+ physical_keys({});AshitaCore.GetChatManager=original;s.navKeysEnabled=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
+

@@ -88,3 +88,7 @@ Keep native action rows and custom StateBars as saved. The opt-in preset supplie
 ## StateBar v1.50.26-dev
 
 Store slot order and label sizes in the character CFG. Move hotkeys with their slots, keep Classic 75 order separate from custom order and use the saved Aegis state for supported mode highlights. The owner requested both updater channels carry the same tested source and version.
+
+## Native target navigation handoff, 8 November 2026
+
+Use the SDK subtarget-active flag for Decker's keyboard handoff. A positive action-target flag alone is insufficient to infer an open input prompt. Preserve ownership of a held confirmation key until release. The test build needs live party-list `<stal>` verification before promotion.
