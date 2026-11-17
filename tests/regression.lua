@@ -1085,5 +1085,41 @@ test('native confirmation release preserves a freshly queued page arrow',functio
  s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={}
 end)
 
+test('ally selector blocks macro execution even outside navigation handlers',function()
+ ready();local original=AshitaCore.GetMemoryManager
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetTarget=function()return {GetIsSubTargetActive=function()return 1 end}end;return mm
+ end
+ local n=#requested
+ assert(api.execute('CTRL',1)==false and #requested==n,'active selector reran macro')
+ api.nav(28,false);api.nav(156,false)
+ assert(#requested==n,'Enter bypassed execution guard')
+ AshitaCore.GetMemoryManager=original
+end)
+
+test('macro buttons reject keyboard activation but retain mouse clicks',function()
+ ready();s.navKeysEnabled=false;s.guideOpen=false
+ local button,released=ui.Button,ui.IsMouseReleased
+ ui.Button=function(label)return label:match('##decker_CTRL1$')~=nil end
+ ui.IsMouseReleased=function(key)assert(key==0);return false end
+ local n=#requested;api.drawrow('CTRL',0)
+ assert(#requested==n,'focused button Enter reran macro after selector closed')
+ ui.IsMouseReleased=function()return true end
+ api.drawrow('CTRL',0);assert(#requested==n+1,'mouse macro click stopped working')
+ ui.Button=button;ui.IsMouseReleased=released
+end)
+
+test('main HUD disables ImGui navigation without disabling settings',function()
+ ready();s.visible=true;s.showTests=true;s.autoHide=false;s.navKeysEnabled=false;s.statebarEnabled=false
+ local begin=ui.Begin;local seen={}
+ ImGuiWindowFlags_NoNavInputs=262144;ImGuiWindowFlags_NoNavFocus=524288
+ ui.Begin=function(title,opened,flags)seen[title]=flags;return true end
+ events.decker_draw()
+ assert(seen['###DeckerMain'] and seen['###DeckerMain']>=786432,'HUD keyboard activation still enabled')
+ local settings=seen['Decker v'..addon.version..' - Settings'];assert(settings and settings<262144,'settings navigation disabled')
+ ui.Begin=begin;s.showTests=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
+
