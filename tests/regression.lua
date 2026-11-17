@@ -1166,6 +1166,20 @@ test('combat analytics explicitly scopes account and ends on profile change',fun
  assert(api.analytics.stop())
  character='Salts';api.refresh()
 end)
+test('combat analytics counts independent StateBar utility without double counting native macro StateBar',function()
+ ready();s.guideOpen=false;s.classic75=false
+ s.statebarSlots={{row='CTRL',slot=1,source='command',kind='state',label='PDT',command='/lac fwd tank pdt'},
+                    {row='CTRL',slot=2,kind='utility',label='Cure'}}
+ assert(api.analytics.start('hnm','KB'))
+ assert(api.request(1))
+ assert(api.request(2))
+ local a=api.analytics.active
+ assert(a.attempts==2 and a.requests==2,'one record per StateBar button')
+ assert(a.sourceCounts.statebar==2)
+ local report=table.concat(api.analytics.report(),'\\n')
+ assert(report:find('STATEBAR 1 [PDT]',1,true) and report:find('CTRL 2 [Macro2]',1,true))
+ assert(api.analytics.stop())
+end)
 test('combat analytics command accepts named sessions and reports',function()
  ready();s.guideOpen=false
  local function cmd(...)
