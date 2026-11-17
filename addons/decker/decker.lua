@@ -58,6 +58,7 @@ state.hudImmediateHide=false; -- Session-only: 0s hides after an action or after
 state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guideDemoSlot=2; state.guideDemoMode='Hold'; state.guideDemoAt=0; -- Session-only, never saved.
 state.windowPositions={}; state.layoutDirtyAt=nil;
 state.autoConnect=false; state.autoConnectPending=false; state.autoConnectAt=0; state.autoConnectAttempted=false;
+local analytics; -- forward-declared for character lifecycle cleanup
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
@@ -680,7 +681,7 @@ end
 -- Use a separate diagnostic window; no game HUD hooks or memory writes are performed.
 -- Combat Analytics v1: deliberately tracks requests, not successful casts.
 -- Memory-only, per-character; no native macro editing, layout remapping or telemetry upload.
-local analytics = {active=nil,last=nil};
+analytics = {active=nil,last=nil};
 local function analytics_identity()
     if not state.profileReady or not state.profileId then return nil; end
     return state.profileId;
