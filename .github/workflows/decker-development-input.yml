@@ -23,7 +23,7 @@ jobs:
         run: |
           lua5.4 -e "assert(loadfile('addons/decker/decker.lua'))"
           luajit -b addons/decker/decker.lua /tmp/decker-development.ljbc
-          lua5.4 tests/regression.lua .
+          python3 tests/run_lua54.py
           luajit tests/regression.lua .
       - name: Report source checksum
         run: sha256sum addons/decker/decker.lua
