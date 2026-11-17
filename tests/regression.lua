@@ -110,7 +110,17 @@ test('cooldowns follow book, set and refreshed macro names through save and relo
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
-test('StateBar collisions and permission gates',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split';assert(not api.hotkey(59));s.statebarHotkeys={87};assert(api.hotkey(87)==1);s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87));s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1);s.allowAllClicks=false;assert(not api.hotkey(87)) end)
+test('StateBar collisions and permission gates',function()
+ ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split'
+ assert(not api.hotkey(59),'direct key collision should win')
+ s.statebarHotkeys={87};assert(api.hotkey(87)==1,'F11 hotkey expected')
+ s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87),'navigation reservation should win')
+ s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1,'StateBar independent hotkey expected')
+ s.allowAllClicks=false
+ local commandsOnly=#s.statebarSlots>0
+ for _,b in ipairs(s.statebarSlots) do if b.source~='command' then commandsOnly=false end end
+ if not commandsOnly then assert(not api.hotkey(87),'disabled native macro execution must disable StateBar') end
+end)
 test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(e.blocked and not s.suppressed[87]) end)
 test('Settings sections render with balanced style stacks',function()
  ready();s.showTests=true;s.visible=true;s.statebarEnabled=true;s.statebarSelected=1;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.lastProfileCheck=os.clock();s.autoRefresh=false;s.pendingRefreshFrames=0
