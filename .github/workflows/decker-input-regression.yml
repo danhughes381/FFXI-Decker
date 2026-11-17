@@ -1,0 +1,28 @@
+name: Decker chat and targeting input compile
+on:
+  pull_request:
+    paths:
+      - 'addons/decker/decker.lua'
+      - '.github/workflows/decker-input-regression.yml'
+  workflow_dispatch:
+jobs:
+  luajit-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Compile Decker source for LuaJIT 2.x
+        run: luajit -b addons/decker/decker.lua /tmp/decker.ljbc
+      - name: Assert native input protection
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('addons/decker/decker.lua').read_text()
+          assert "IsInputOpen()" in s
+          assert "begin_native_target_handoff" in s
+          assert "if game_input_open() then" in s
+          assert "native_target_handoff()" in s
+          assert "state.navToggleActive=false" in s
+          print("Decker input guards present. Live Ashita validation still required.")
+          PY
