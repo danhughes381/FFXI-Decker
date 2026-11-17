@@ -1,9 +1,9 @@
--- Decker 1.50.35-dev: unified Development chat ownership, recasts and analytics.
+-- Decker 1.50.36-dev: repair tank mode highlighting and recast visibility.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.35-dev';
+addon.version = '1.50.36-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -984,7 +984,7 @@ function classic.highlight(button,index,saved,job,unavailable)
         if button.kind=='utility' then return false; end
         local tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
         if not tracked then return state.statebarSelected==index; end
-        if owner and owner~=job and not (owner=='TANK' and (job=='NIN' or job=='RDM')) then return false; end
+        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false; end
         axis,value=modeAxis,modeValue;
     end
     return axis~=nil and saved~=nil and saved.enabled and not saved.locked and saved[axis]==value;
@@ -2003,6 +2003,11 @@ ashita.events.register('command','decker_cmd',function(e)
     elseif cmd=='navon' then state.navKeysEnabled=true; state.savedNavEnabled=true; save_display(); say('Custom set navigation enabled.',true)
     elseif cmd=='navoff' then state.navKeysEnabled=false; state.savedNavEnabled=false; nav_clear(); save_display(); say('Custom set navigation disabled.',true)
     elseif cmd=='cooldown' then
+        if (a[3] or ''):lower()=='status' then
+            local page,fp=cooldown.page();local total=0;
+            if page then for slot=1,20 do if cooldown.binding(page,fp,slot) then total=total+1;end end end
+            say('Cooldowns '..(state.cooldownEnabled and 'ON' or 'OFF')..' | mapped '..total..'/20 | current book/set '..(page or 'not verified'),true);
+            if total==0 then say('Clock requires at least one mapped action. Set /decker cooldown ctrl 1 spell SPELL_INDEX (or map an ability timer).',true); end
         local row=(a[3] or ''):lower(); local slot=tonumber(a[4]);
         local kind=(a[5] or ''):lower(); local id=tonumber(a[6]);
         if (row=='ctrl' or row=='alt') and slot and slot>=1 and slot<=10 and slot==math.floor(slot) then
@@ -2803,11 +2808,16 @@ ashita.events.register('d3d_present','decker_draw',function()
                         end
                     end
                     if not state.keyAssignmentPage and imgui.CollapsingHeader('Cooldown text colours') then
-            imgui.Text('Cooldown text colours (experimental)');
+            imgui.Text('Recast clocks and countdowns (manual mappings)');
             local cool={state.cooldownEnabled};
-            if imgui.Checkbox('Red macro text when ability/spell is recasting',cool) then state.cooldownEnabled=cool[1]; save_display(); end
-            imgui.TextWrapped('Only explicitly mapped actions are checked. Unmapped buttons stay their normal colour. Red buttons remain clickable. Spell IDs and ability recast timer IDs are different; do not use ability IDs as timer IDs.');
+            if imgui.Checkbox('Show clocks and cooldown countdowns',cool) then state.cooldownEnabled=cool[1]; save_display(); end
+            imgui.TextWrapped('Clocks use confirmed manual per-button mappings only; game macro labels are not enough to prove the action. The timer value comes from Ashita recast memory. Missing/unknown timers are not shown as READY.');
             local page,fingerprint=cooldown.page();
+            local mapped=0;
+            if page then for n=1,20 do if cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
+            imgui.Text(('Mapped actions on current page: %d / 20'):format(mapped));
+            if not state.cooldownEnabled then imgui.TextWrapped('Clocks are OFF. Tick Show clocks and cooldown countdowns above.'); end
+            if mapped==0 then imgui.TextWrapped('No buttons mapped on this book/set: no recast clocks will appear. Use /decker cooldown ctrl 1 spell INDEX for Flash (using its spell Index, not an item ID), or an ability TIMER_ID. Decker cannot identify macro bodies from their short labels.'); end
             for i=1,20 do
                 local b=cooldown.binding(page,fingerprint,i);
                 local label=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);
