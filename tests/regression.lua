@@ -1120,6 +1120,35 @@ test('main HUD disables ImGui navigation without disabling settings',function()
  ui.Begin=begin;s.showTests=false
 end)
 
+test('chat editor owns modifier arrows Enter direct and StateBar keys',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true
+ s.statebarHotkeys={65};s.statebarSlots={{source='command',command='/lac fwd tank pdt',row='CTRL',slot=1,kind='state'}}
+ local original=AshitaCore.GetChatManager
+ AshitaCore.GetChatManager=function()return {IsInputOpen=function()return true end}end
+ local n=#requested
+ for _,key in ipairs({54,28,156,200,208,57,65,2}) do
+  for _,name in ipairs({'decker_custom_set_navigation','decker_native_arrow_watch','decker_native_horizontal_watch','decker_statebar_key_press','decker_exclusive_key_press'}) do
+   local e={key=key,down=true};events[name](e);assert(not e.blocked,'chat key swallowed by '..name)
+  end
+ end
+ physical_keys({54,28,200,65,2})
+ assert(#requested==n and #s.navQueue==0 and not s.navToggleActive,'typing triggered Decker')
+ AshitaCore.GetChatManager=original;s.navKeysEnabled=false;s.statebarEnabled=false
+end)
+
+test('opening empty chat cancels pending macros and held-modifier sticky toggle',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ local original=AshitaCore.GetChatManager;local open=1
+ AshitaCore.GetChatManager=function()return {IsInputOpen=function()return open end}end
+ s.navQueue={28};s.deferredNav={{key=200,frames=1}};local n=#requested
+ events.decker_draw();assert(#s.navQueue==0 and #s.deferredNav==0 and #requested==n)
+ physical_keys({54});open=0;physical_keys({54})
+ assert(not s.navToggleActive,'Shift held while typing armed sticky macros')
+ physical_keys({});physical_keys({54});assert(s.navToggleActive,'fresh modifier press failed after chat closed')
+ physical_keys({});AshitaCore.GetChatManager=original;s.navKeysEnabled=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 
