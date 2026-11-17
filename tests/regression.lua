@@ -1075,6 +1075,26 @@ test('cooldown status explains inactive or unmapped clocks without changing game
  assert(table.concat(words,' '):find('OFF',1,true))
  assert(table.concat(words,' '):find('mapped 0/20',1,true))
 end)
+test('unmapped exact spell and ability names receive read-only clock hints',function()
+ local original=AshitaCore.GetResourceManager
+ AshitaCore.GetResourceManager=function() return {
+  GetSpellByName=function(_,name,lang) if name=='Flash' and lang==0 then return {Index=112} end end,
+  GetAbilityByName=function(_,name,lang) if name=='Sentinel' and lang==0 then return {RecastTimerId=19} end end
+ } end
+ s.cooldownAutoNames=true
+ local flash=api.cooldown.infer('Flash');assert(flash and flash.kind=='spell' and flash.id==112 and flash.inferred)
+ local sentinel=api.cooldown.infer('Sentinel');assert(sentinel and sentinel.kind=='ability' and sentinel.id==19)
+ assert(not api.cooldown.infer('Cure3'),'nicknames must not be guessed')
+ s.cooldownAutoNames=false;assert(not api.cooldown.infer('Flash'))
+ s.cooldownAutoNames=true;AshitaCore.GetResourceManager=original
+end)
+test('cooldown on and off command is reversible and does not touch macro data',function()
+ ready()
+ local names=s.names
+ local function call(arg) events.decker_cmd({command={args=function() return {'/decker','cooldown',arg} end}}) end
+ call('off');assert(not s.cooldownEnabled)
+ call('on');assert(s.cooldownEnabled and s.names==names)
+end)
 test('StateBar font overrides fit independently and survive reload',function()
  s.macroFontSize=18;s.statebarScale=1;s.statebarLabelSize=14;s.statebarKeySize=16
  api.save();s.statebarLabelSize=0;s.statebarKeySize=10;api.load()
