@@ -1,7 +1,7 @@
 -- LuaJIT tests use explicit host mocks: no game process or native calls.
 local root=arg[1] or '.'
 local events={}; local requested={}; local character='Salts'; local styles=0; local vars=0
-local chatOpen=0; local subTarget=0
+local chatOpen=0; local subTarget=0; local actionTarget=0
 addon={}
 package.preload.common=function() return {} end
 package.preload.chat=function() return {header=function() return '' end} end
@@ -20,7 +20,7 @@ package.loaded.ffi=ffi
 ImGuiCol_Button=1; ImGuiCol_ButtonHovered=2; ImGuiCol_ButtonActive=3; ImGuiCol_Text=4; ImGuiStyleVar_Alpha=1; ImGuiCond_FirstUseEver=1
 ashita={events={register=function(_,name,cb) assert(not events[name]);events[name]=cb end},memory={read_uint32=function() return 65536 end}}
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
-AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
+AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end,GetActionTargetActive=function() return actionTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
 local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
@@ -29,7 +29,7 @@ local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose)
 local api=assert(loadfile(path))();local s=api.state
 local passed=0
 local function test(name,fn)
- chatOpen=0;subTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
+ chatOpen=0;subTarget=0;actionTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
  fn();passed=passed+1;print('PASS '..name)
 end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
@@ -143,7 +143,7 @@ test('unified chat handoff clears held Decker keys and leaves game keys untouche
 end)
 test('friendly target prompt yields arrows and Enter',function()
  ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
- subTarget=1;local n=#requested
+ subTarget=1;actionTarget=1;local n=#requested
  for _,key in ipairs({54,200,203,205,28,156}) do
   local e={key=key,down=true};events.decker_custom_set_navigation(e)
   assert(not e.blocked,'swallowed target key '..key)
@@ -151,10 +151,10 @@ test('friendly target prompt yields arrows and Enter',function()
  local arr={};for i=0,255 do arr[i]=0 end;arr[54]=128;arr[203]=128
  events.decker_custom_set_state({data_raw=arr,size=256})
  assert(arr[54]~=0 and arr[203]~=0 and #requested==n)
- subTarget=0;s.navKeysEnabled=false
+ subTarget=0;actionTarget=0;s.navKeysEnabled=false
 end)
 test('StateBar collisions and permission gates',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split';assert(not api.hotkey(59));s.statebarHotkeys={87};assert(api.hotkey(87)==1);s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87));s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1);s.allowAllClicks=false;assert(not api.hotkey(87)) end)
-test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(not e.blocked and not s.suppressed[87], 'native handoff must not capture key release') end)
+test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(e.blocked and not s.suppressed[87], 'captured hotkey release must clear suppression without reaching the game') end)
 test('Settings sections render with balanced style stacks',function()
  ready();s.showTests=true;s.visible=true;s.statebarEnabled=true;s.statebarSelected=1;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.lastProfileCheck=os.clock();s.autoRefresh=false;s.pendingRefreshFrames=0
  for _,tab in ipairs({'Controls','Appearance','StateBar','General','Profiles','Updates'}) do s.settingsTab=tab;events.decker_draw();assert(styles==0 and vars==0,tab) end
@@ -242,12 +242,14 @@ test('mouse and direct keyboard dispatch update execution only once',function()
  ui.Button=function(label,size) old(label,size);return label=='##decker_ALT3' end
  api.drawrow('ALT',10);ui.Button=old
  assert(#requested==n+1 and s.lastExecuted.row=='ALT' and s.lastExecuted.slot==3 and s.statebarSelected==1)
- -- FFXI owns the next key during target selection; only resume after it closes.
- local blockedByHandoff={key=59,down=true};events.decker_exclusive_key_press(blockedByHandoff)
- assert(not blockedByHandoff.blocked and #requested==n+1)
- s.targetHandoffUntil=0;s.targetGraceUntil=0
- local e={key=59,down=true};events.decker_exclusive_key_press(e);events.decker_exclusive_key_press({key=59,down=true})
- assert(#requested==n+2 and s.lastExecuted.row=='CTRL' and s.lastExecuted.slot==1)
+ -- Mouse macro execution must not silence a following Flash / combat hotkey.
+ local immediate={key=59,down=true};events.decker_exclusive_key_press(immediate)
+ assert(immediate.blocked and #requested==n+2,'mouse invocation must not block next action')
+ events.decker_exclusive_key_press({key=59,down=true})
+ assert(#requested==n+2,'key auto-repeat must not double execute')
+ events.decker_exclusive_key_press({key=59,down=false});assert(not s.suppressed[59])
+ local e={key=59,down=true};events.decker_exclusive_key_press(e)
+ assert(e.blocked and #requested==n+3 and s.lastExecuted.row=='CTRL' and s.lastExecuted.slot==1)
  events.decker_exclusive_key_press({key=59,down=false});assert(not s.suppressed[59])
 end)
 test('long labels stay within button width and preserve full source',function()
@@ -385,7 +387,7 @@ test('StateBar F11 captures both input streams with main shortcuts disabled',fun
  ready();s.keybinds=false;s.acknowledgeKeys=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.navKeysEnabled=false;s.held={};s.suppressed={}
  s.statebarSlots={{row='ALT',slot=2,kind='utility'}};s.statebarHotkeys={87};local n=#requested
  local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked and #requested==n+1 and s.lastExecuted.row=='ALT')
- local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1) -- native target has priority
+ local raw={};for i=0,255 do raw[i]=0 end;raw[87]=128;events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==0 and #requested==n+1) -- captured StateBar hotkey remains suppressed until key release
  events.decker_exclusive_key_press({key=87,down=false});s.statebarHotkeysEnabled=false;raw[87]=128
  events.decker_exclusive_key_state({data_raw=raw,size=256});assert(raw[87]==128 and #requested==n+1)
 end)
@@ -682,7 +684,7 @@ test('lost direct-key release is recovered by physical key_state',function()
  assert(press.blocked and s.suppressed[59] and #requested==before+1)
  local raw={};for i=0,255 do raw[i]=0 end
  raw[59]=128;events.decker_exclusive_key_state({data_raw=raw,size=256})
- assert(raw[59]==128 and not s.suppressed[59],'native handoff must release held key')
+ assert(raw[59]==0 and s.suppressed[59],'held direct macro must remain suppressed until physically released')
  s.targetHandoffUntil=0;s.targetGraceUntil=0
  raw[59]=0;events.decker_exclusive_key_state({data_raw=raw,size=256})
  assert(not s.suppressed[59] and not s.held[59],'physical release must clear missed key_data release')
@@ -1101,8 +1103,9 @@ test('StateBar MDT highlight follows the saved mode instead of the last press',f
  assert(not api.classic.highlight(slot,1,saved,'NIN',false))
  saved.defence='none';assert(not api.classic.highlight(slot,1,saved,'PLD',false))
  saved.defence='mdt';saved.enabled=false;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
- saved.enabled=true;saved.locked=true;assert(not api.classic.highlight(slot,1,saved,'PLD',false))
- assert(not api.classic.highlight(slot,1,nil,'PLD',false))
+ saved.enabled=true;saved.locked=true;assert(api.classic.highlight(slot,1,saved,'PLD',false),'lock does not erase selected mode')
+ local pending,origin=api.classic.highlight(slot,1,nil,'PLD',false)
+ assert(pending and origin=='pending','unreadable readback should show requested/amber')
 end)
 
 test('StateBar font overrides fit independently and survive reload',function()
@@ -1266,7 +1269,7 @@ test('PLD tank profile buttons highlight from actual Aegis mode readback',functi
  assert(api.classic.highlight(b,1,saved,'RDM',false),'RDM tank mode remains supported')
  assert(not api.classic.highlight(b,1,saved,'BLM',false),'unrelated job cannot highlight')
  saved.defence='pdt';assert(not api.classic.highlight(b,1,saved,'PLD',false))
- saved.defence='mdt';saved.locked=true;assert(not api.classic.highlight(b,1,saved,'PLD',false))
+ saved.defence='mdt';saved.locked=true;assert(api.classic.highlight(b,1,saved,'PLD',false),'verified mode remains active when gear swaps locked')
  saved.locked=false;saved.enabled=false;assert(not api.classic.highlight(b,1,saved,'PLD',false))
 end)
 test('cooldown status explains inactive or unmapped clocks without changing gameplay',function()
@@ -1301,6 +1304,56 @@ test('cooldown on and off command is reversible and does not touch macro data',f
  local function call(arg) events.decker_cmd({command={args=function() return {'/decker','cooldown',arg} end}}) end
  call('off');assert(not s.cooldownEnabled)
  call('on');assert(s.cooldownEnabled and s.names==names)
+end)
+
+test('engaged enemy never blocks independent Flash Reprisal or StateBar keys',function()
+ ready();s.guideOpen=false;s.mappingMode='split';s.directKeys={};s.directKeys[1]=59;s.directKeys[2]=60
+ s.keybinds=true;s.acknowledgeKeys=true;s.navKeysEnabled=true;s.navModifier='RSHIFT'
+ s.held={};s.suppressed={};s.navPhysicalDown=false;s.navToggleActive=false
+ s.classic75=false;s.statebarEnabled=true;s.statebarHotkeysEnabled=true
+ s.statebarSlots={{row='CTRL',slot=1,source='command',kind='state',label='PDT',command='/lac fwd tank pdt'}}
+ s.statebarHotkeys={[1]=87}
+ local initial=#requested;subTarget=1;actionTarget=0 -- engaged flag must not masquerade as target prompt
+ s.targetHandoffUntil=os.clock()+30;s.targetGraceUntil=os.clock()+30
+ assert(api.hotkey(87)==1,'engaged combat cannot lock StateBar hotkeys')
+ for _,key in ipairs({59,60}) do
+  local e={key=key,down=true};events.decker_exclusive_key_press(e)
+  assert(e.blocked,'combat macro hotkey should reach Decker')
+  local rel={key=key,down=false};events.decker_exclusive_key_press(rel)
+ end
+ local e={key=87,down=true};events.decker_statebar_key_press(e);assert(e.blocked)
+ assert(#requested==initial+3,'two macros and one Aegis command should execute while engaged')
+ subTarget=0;actionTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0;s.navKeysEnabled=false
+end)
+test('chat input cannot re-arm a stale modifier and release restores navigation',function()
+ ready();s.navKeysEnabled=true;s.navModifier='RSHIFT';s.navPhysicalDown=false
+ s.held={[54]=true};s.navToggleActive=true;chatOpen=0x11
+ events.decker_native_arrow_watch({key=54,down=true})
+ assert(not s.held[54],'chat cannot re-queue modifier held state')
+ local raw={};for i=0,255 do raw[i]=0 end;raw[54]=128
+ events.decker_custom_set_state({data_raw=raw,size=256})
+ assert(not s.navToggleActive and raw[54]==128)
+ chatOpen=0;raw[54]=0;events.decker_custom_set_state({data_raw=raw,size=256})
+ s.stickyNavigation=true;raw[54]=128;events.decker_custom_set_state({data_raw=raw,size=256})
+ assert(s.navToggleActive,'new modifier press must work after chat closes')
+ raw[54]=0;events.decker_custom_set_state({data_raw=raw,size=256})
+ s.navToggleActive=false;s.navKeysEnabled=false
+end)
+test('recast rendering keeps clock and red colour but no numerical overlay',function()
+ assert(source:find('local frac=cooldown.fraction',1,true),'segmented clock was removed')
+ assert(source:find('cooling and {1,.30,.30,1}',1,true),'red recast text was removed')
+ assert(not source:find('cooling and cooldown.label(remaining)',1,true),'numerical timer is still drawn')
+end)
+test('StateBar tracks latest mode request with pending highlight until Aegis confirms',function()
+ ready();s.classic75=false;s.statebarSelected=0
+ s.statebarSlots={{row='CTRL',slot=1,label='PDT',source='command',kind='state',command='/lac fwd tank pdt'}}
+ assert(api.request(1))
+ assert(s.statebarSelected==1)
+ local active,mode=api.classic.highlight(s.statebarSlots[1],1,nil,'PLD',false)
+ assert(active and mode=='pending','pending request must be visibly marked')
+ local saved={enabled=true,locked=false,defence='pdt'}
+ active,mode=api.classic.highlight(s.statebarSlots[1],1,saved,'PLD',false)
+ assert(active and mode=='verified')
 end)
 
 os.execute('rm -r '..tmp)

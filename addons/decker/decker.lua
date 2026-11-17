@@ -1,9 +1,9 @@
--- Decker 1.50.36-dev: repair tank mode highlighting and recast visibility.
+-- Decker 1.50.37-dev: combat-safe input, StateBar readback and clock-only recasts.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.36-dev';
+addon.version = '1.50.37-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -881,7 +881,9 @@ local function execute_slot(row,slot,source)
     end);
     analytics.finish(metric,called);
     if called then
-        if begin_native_target_handoff then begin_native_target_handoff(); end
+        -- Only Decker navigation needs a temporary native subtarget handoff. An
+        -- ordinary mouse/direct macro request must never disable subsequent combat hotkeys.
+        if source=='navigation' and begin_native_target_handoff then begin_native_target_handoff(); end
         record_execution(row,slot,'executed');
         cooldown.note_request(row,slot);
     end
@@ -1000,16 +1002,28 @@ function classic.tracked_mode(button)
     return false;
 end
 function classic.highlight(button,index,saved,job,unavailable)
-    if unavailable then return false; end
+    if unavailable then return false,nil; end
     local axis,value=button.axis,button.value;
+    local tracked,owner;
     if not state.classic75 then
-        if button.kind=='utility' then return false; end
-        local tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
-        if not tracked then return state.statebarSelected==index; end
-        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false; end
+        local modeAxis,modeValue;
+        tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
+        if not tracked then
+            return button.kind~='utility' and state.statebarSelected==index or false,
+                state.statebarSelected==index and 'manual' or nil;
+        end
+        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false,nil; end
         axis,value=modeAxis,modeValue;
     end
-    return axis~=nil and saved~=nil and saved.enabled and not saved.locked and saved[axis]==value;
+    -- Green means current saved Aegis mode is verified. 'locked' is not a
+    -- different mode; it must not hide which defence mode is selected.
+    if axis and saved then
+        return saved.enabled and saved[axis]==value, 'verified';
+    end
+    -- If no Aegis readback is available, give amber feedback for a queued
+    -- command instead of incorrectly claiming the gear has changed (green).
+    if tracked and axis and state.statebarSelected==index then return true,'pending'; end
+    return false,nil;
 end
 
 -- Single validated command only: no Lua, script runners, command chaining or chat.
@@ -1060,8 +1074,12 @@ local function request_statebar(i)
             state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
         elseif tracked and not axis then
             state.statebarSelected=0;
+        elseif tracked then
+            -- Aegis readback takes precedence. Until it is available, retain
+            -- an amber requested-mode indicator instead of blanking the StateBar.
+            state.statebarSelected=i;
         elseif b.kind~='utility' then
-            if tracked or state.statebarSelected==i then state.statebarSelected=0;
+            if state.statebarSelected==i then state.statebarSelected=0;
             else state.statebarSelected=i; end
         end
     end
@@ -1272,11 +1290,6 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recas
         local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-footer-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
-        if recastLabel and not isStateBar then
-            local indicatorSize=math.min(13,math.max(9,h*.28));
-            dl:AddText(font,indicatorSize,{x+5,y+2},
-                imgui.GetColorU32({1,.78,.39,1}),recastLabel);
-        end
         if shortcut~='' then
             local ks=keySize;
             if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
@@ -1337,7 +1350,7 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local label=custom and '' or (name..'\n'..(cooling and (cooldown.label(remaining)..' ') or '')..shortcut);
+        local label=custom and '' or (name..'\n'..shortcut);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
@@ -1358,7 +1371,7 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,cooling and cooldown.label(remaining) or nil);
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,nil);
                 if cooling and type(dl.AddLine)=='function' then
                     local totalKey='max:'..recastKey;
                     local high=recastObserver.observed[totalKey] or remaining;
@@ -1628,23 +1641,40 @@ local function yield_chat_input()
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
 begin_native_target_handoff=function()
-    state.targetHandoffUntil=os.time()+5;state.targetGraceUntil=os.time()+1
+    -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
+    -- ability keys or StateBar gear commands during engaged combat.
+    state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
     state.navToggleActive=false;state.navModifierHeld=false
     state.navQueue={};state.deferredNav={};state.navCaptured={}
     state.navRepeatAt={};state.navPhysicalKeys={}
 end
 local function native_target_handoff()
-    if selector.active() then return true end
-    if selector.supported then return os.time()<(state.targetGraceUntil or 0) end
-    return os.time()<(state.targetHandoffUntil or 0)
+    local now=os.clock();
+    local prompt=selector.active();
+    -- When the host exposes both flags, protect actual native targeting even
+    -- when launched outside Decker. Bare subtarget flags may stay set in combat,
+    -- so do not allow them to hijack navigation forever.
+    if prompt and selector.actionSupported then return true; end
+    if now>=(state.targetHandoffUntil or 0) then return false; end
+    if prompt then return true; end
+    return now<(state.targetGraceUntil or 0);
 end
 function selector.active()
-    -- The action-target flag can remain set after the selection prompt closes.
-    local ok,flag=pcall(function()
+    local ok,flag,actionOk,action;
+    ok,flag=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
     end);
-    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number')
-    return selector.supported and (flag==true or (type(flag)=='number' and flag>0));
+    actionOk,action=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetActionTargetActive();
+    end);
+    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number');
+    selector.actionSupported=actionOk and (type(action)=='boolean' or type(action)=='number');
+    if not selector.supported then return false; end
+    local subActive=flag==true or (type(flag)=='number' and flag>0);
+    if selector.actionSupported then
+        return subActive and (action==true or (type(action)=='number' and action>0));
+    end
+    return subActive;
 end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
@@ -1806,6 +1836,11 @@ end);
 -- Use native ALT/CTRL + up/down for set selection, refresh the on-screen names
 -- after the game's own input handler has processed the press. No arrow blocking.
 ashita.events.register('key_data','decker_native_arrow_watch',function(e)
+    if game_input_open() then
+        -- Chat must never repopulate the held modifiers just cleared by yield_chat_input.
+        state.held[29]=nil;state.held[157]=nil;state.held[56]=nil;state.held[184]=nil;
+        state.held[42]=nil;state.held[54]=nil;return;
+    end
     if e.key==29 or e.key==157 or e.key==56 or e.key==184 or e.key==42 or e.key==54 then
         state.held[e.key]=e.down and true or nil;
     end
@@ -1839,7 +1874,7 @@ end);
 -- StateBar has its own explicit keyboard switch; native connection is still required.
 -- Only active main shortcuts and enabled navigation reserve keys against it.
 local function statebar_hotkey_slot(code,slots,keys,job,level)
-    if game_input_open() or native_target_handoff() or not statebar_input_ready() or modifier_down() then return nil; end
+    if game_input_open() or not statebar_input_ready() or modifier_down() then return nil; end
     if shortcuts_active() and mapped_key(code) then return nil; end
     if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
     if not keys then slots,keys,job,level=classic.slots(); end
@@ -1870,9 +1905,7 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
     if game_input_open() then yield_chat_input();return end
-    if native_target_handoff() then
-        state.suppressed[e.key]=nil;state.held[e.key]=nil;return
-    end
+    -- Native target handoff must not disable independent combat action hotkeys.
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
@@ -1901,10 +1934,7 @@ end);
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
     if game_input_open() then yield_chat_input();return end
-    if native_target_handoff() then
-        for code,_ in pairs(state.suppressed) do state.held[code]=nil end
-        state.suppressed={};return
-    end
+    -- A native subtarget prompt only owns navigation arrows/Enter, not every macro key.
     if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
@@ -2349,9 +2379,10 @@ ashita.events.register('d3d_present','decker_draw',function()
                     -- StateBar selection is independent from the main macro HUD's press highlight.
                     -- Keep the actual macro name legible; never prefix it with SELECTED.
                     local unavailable=state.classic75 and not classic.available(b,job,level);
-                    local sbSelected=classic.highlight(b,i,saved,job,unavailable);
+                    local sbSelected,sbSource=classic.highlight(b,i,saved,job,unavailable);
                     local opacity=state.buttonOpacity;
-                    local base=sbSelected and {accent[1]*.30,accent[2]*.36,accent[3]*.43,opacity} or {.012,.015,.021,opacity};
+                    local sbAccent=sbSource=='pending' and {.94,.63,.18,1} or accent;
+                    local base=sbSelected and {sbAccent[1]*.30,sbAccent[2]*.36,sbAccent[3]*.43,opacity} or {.012,.015,.021,opacity};
                     local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
                     if unavailable and imgui.BeginDisabled and imgui.EndDisabled then imgui.BeginDisabled(); end
                     if sbColours then
@@ -2365,7 +2396,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if custom then
                         local ok,err=pcall(function()
                             local dl=imgui.GetWindowDrawList();
-                            draw_glass_face(dl,x,y,sw,sh,opacity,sbSelected and accent or nil);
+                            draw_glass_face(dl,x,y,sw,sh,opacity,sbSelected and sbAccent or nil);
                             draw_glass_text(dl,name,x,y,sw,sh,key~='None' and key or '',false,true);
                         end);
                         if not ok then glass.custom=false; glass.diagnostic='StateBar draw fallback: '..tostring(err); end
@@ -2373,10 +2404,11 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() then
                         local action=b.source=='command' and (b.command or '') or ('Current book/set: '..b.row..' '..tostring(b.slot==10 and 0 or b.slot));
                         local behaviour=b.kind=='utility' and 'Utility: one-off action.' or 'Manual highlight: press again to clear.';
-                        if state.classic75 or (b.kind~='utility' and classic.tracked_mode(b)) then
+                        if state.classic75 or classic.tracked_mode(b) then
                             action=unavailable and 'Unavailable for this job or level' or action;
-                            behaviour=saved and ('Saved Aegis mode: '..(saved.locked and 'locked' or not saved.enabled and 'disabled' or sbSelected and 'active' or 'inactive')..'.')
-                                or 'Saved Aegis mode unknown.';
+                            behaviour=sbSource=='pending' and 'Mode requested; awaiting Aegis readback (amber, not confirmed).'
+                                or saved and ('Saved Aegis mode: '..(not saved.enabled and 'disabled' or sbSelected and 'active' or 'inactive')..(saved.locked and ', gear swaps locked' or '')..'.')
+                                or 'Aegis saved mode unreadable; active status unknown.';
                         end
                         imgui.SetTooltip(name..'\n'..action..'\nKey: '..(key or 'None')..'\n'..behaviour);
                     end
