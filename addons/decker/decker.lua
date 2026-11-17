@@ -1,9 +1,9 @@
--- Decker 1.50.32-dev: local-only HNM/EXP macro input analytics.
+-- Decker 1.50.33-dev: circular recasts, safe observer alerts and analytics.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.32-dev';
+addon.version = '1.50.33-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -110,8 +110,10 @@ function cooldown.decode(value)
     if separators~=19 then return nil; end
     return {kind=kind,id=tonumber(id),fingerprint=fingerprint};
 end
+-- Recasts are display observations, not proof that the macro executed a cast.
+local recastObserver={observed={},events={}};
 local function cooldown_recast(binding)
-    if not binding or not state.cooldownEnabled then return false; end
+    if not binding or not state.cooldownEnabled then return nil; end
     local ok,remaining=pcall(function()
         local memory=AshitaCore:GetMemoryManager();
         local recast=memory and memory:GetRecast();
@@ -127,8 +129,32 @@ local function cooldown_recast(binding)
         end
         return nil;
     end);
-    return ok and type(remaining)=='number' and remaining>0;
+    if not ok or type(remaining)~='number' or remaining<0 then return nil; end
+    return remaining;
 end
+function cooldown.label(seconds)
+    if type(seconds)~='number' then return nil; end
+    if seconds<=0 then return 'READY'; end
+    return tostring(math.ceil(seconds))..'s';
+end
+function cooldown.fraction(seconds,highest)
+    if type(seconds)~='number' or seconds<=0 then return 0; end
+    if type(highest)~='number' or highest<=0 then return 1; end
+    return math.max(0,math.min(1,seconds/highest));
+end
+function cooldown.observe(key,seconds)
+    if type(key)~='string' or type(seconds)~='number' then return nil; end
+    local old=recastObserver.observed[key];
+    recastObserver.observed[key]=seconds;
+    if old and old>0 and seconds==0 then
+        recastObserver.events[#recastObserver.events+1]={name=key,kind='RECAST READY'};
+        if #recastObserver.events>8 then table.remove(recastObserver.events,1); end
+        return 'recast ready';
+    end
+    if old and old==0 and seconds>0 then return 'recast started (cast result unknown)'; end
+    return nil;
+end
+function cooldown.alerts() return recastObserver.events; end
 -- Persist deliberate key preferences, not execution gates temporarily cleared by Connect/reload.
 local function save_display()
     if not state.profileReady then return; end
@@ -1163,7 +1189,7 @@ local function glass_available()
     end
     return glass.custom;
 end
-local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar)
+local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recastLabel)
     local textScale=isStateBar and state.statebarScale or state.scale;
     local preferredLabel=isStateBar and state.statebarLabelSize>0 and state.statebarLabelSize or state.macroFontSize;
     local keySize=isStateBar and math.min(state.statebarKeySize*textScale,h*.45)
@@ -1197,6 +1223,11 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar)
         local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-footer-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
+        if recastLabel and not isStateBar then
+            local indicatorSize=math.min(13,math.max(9,h*.28));
+            dl:AddText(font,indicatorSize,{x+5,y+2},
+                imgui.GetColorU32({1,.78,.39,1}),recastLabel);
+        end
         if shortcut~='' then
             local ks=keySize;
             if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
@@ -1236,7 +1267,11 @@ local function draw_row(title,offset)
         local e=state.lastExecuted;
         local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=state.navRow==title and state.navSlot==i;
-        local cooling=cooldown_recast(cooldown.binding(page,fingerprint,offset+i));
+        local binding=cooldown.binding(page,fingerprint,offset+i);
+        local remaining=cooldown_recast(binding);
+        local cooling=remaining~=nil and remaining>0;
+        local recastKey=binding and ((page or '')..(offset+i)..':'..binding.kind..':'..binding.id);
+        if recastKey and remaining then cooldown.observe(recastKey,remaining); end
         local a=state.buttonOpacity;
         local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
         local base=flashing and {.45,.34,.13,a} or remembered and (accents[state.theme] or accents[1]) or {.025,.028,.035,a};
@@ -1253,7 +1288,7 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local label=custom and '' or (name..'\n'..shortcut);
+        local label=custom and '' or (name..'\n'..(cooling and (cooldown.label(remaining)..' ') or '')..shortcut);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
@@ -1274,7 +1309,25 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling);
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,cooling and cooldown.label(remaining) or nil);
+                if cooling and type(dl.AddLine)=='function' then
+                    local totalKey='max:'..recastKey;
+                    local high=recastObserver.observed[totalKey] or remaining;
+                    if remaining>high then high=remaining; end
+                    recastObserver.observed[totalKey]=high;
+                    local frac=cooldown.fraction(remaining,high);
+                    local cx,cy=x+w-13,y+13;
+                    local rad=math.max(6,math.min(10,h*.25));
+                    for seg=1,12 do
+                        if seg<=math.ceil(frac*12) then
+                            local aa=(seg-1)*math.pi/6-math.pi/2;
+                            local bb=seg*math.pi/6-math.pi/2;
+                            dl:AddLine({cx+math.cos(aa)*rad,cy+math.sin(aa)*rad},
+                                {cx+math.cos(bb)*rad,cy+math.sin(bb)*rad},
+                                imgui.GetColorU32({.95,.73,.32,.95}),2);
+                        end
+                    end
+                end
             end);
             if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
         end
@@ -2795,6 +2848,10 @@ ashita.events.register('d3d_present','decker_draw',function()
                 else
                     imgui.TextWrapped('Macro set switching is unavailable until native macros connect.');
                 end
+            end
+            if state.settingsTab=='General' and imgui.CollapsingHeader('Combat Alerts (read-only)') then
+                imgui.TextWrapped('Recast ready alerts only; a new recast does NOT prove a spell succeeded. No enemy-action automation.');
+                for _,alert in ipairs(cooldown.alerts()) do imgui.TextWrapped(alert.kind..': '..alert.name); end
             end
             if state.settingsTab=='General' and imgui.CollapsingHeader('Combat Analytics (local only)') then
                 imgui.TextWrapped('Records macro button attempts and native requests; cannot prove a spell actually cast. Never moves buttons.');
