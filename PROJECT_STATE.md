@@ -1,3 +1,7 @@
+## Ally confirmation release race — 17 November 2026
+
+Minimal source follow-up to fix/action-navigation-recovery at f755cbc8f83d301c0b96e60ceddfc0dd230f916c. A native confirmation key release after selection closes could clear a newly queued Decker up/down press. Whole-queue yielding now requires an actual selector; the old native key still owns its release. 88 host-mocked regression groups pass under Windows x64 LuaJIT 2.1, including the new input-order reproduction. This does not establish that every live post-target lock-up has the same cause. No manifest, version, release or running client change in this source-only patch. Verify ally selection, confirmation/cancel, then up/down in Hold and Toggle modes in the actual client.
+
 # Decker — project state
 
 Updated 21 October 2026. Owner selected **v1.50.12-dev as the latest main, Stable and Development baseline**.

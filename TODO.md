@@ -1,3 +1,5 @@
+- [ ] Verify ally-confirmation release race fix in game after 88 LuaJIT mocked groups pass (17 November 2026).
+
 # Decker — remaining validation
 
 Current development baseline: 1.50.12-dev. Owner requested main promotion; stable acceptance is separate. Detailed current controls: docs/CONTROLS_1.50.12.md. Readiness issue: #3.

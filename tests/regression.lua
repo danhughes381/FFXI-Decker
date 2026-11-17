@@ -1069,5 +1069,21 @@ test('StateBar font overrides fit independently and survive reload',function()
  assert(text.Macro.size==18 and text['1'].size==10)
 end)
 
+
+test('native confirmation release preserves a freshly queued page arrow',function()
+ local original=AshitaCore.GetMemoryManager
+ AshitaCore.GetMemoryManager=function()
+  local mm=original();mm.GetTarget=function()return {GetIsSubTargetActive=function()return 0 end,GetActionTargetActive=function()return 0 end}end;return mm
+ end
+ repeat_setup();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.nativeNavHeld={[28]=true};s.navQueue={};s.navCaptured={}
+ local arrow={key=200,down=true};events.decker_custom_set_navigation(arrow)
+ assert(arrow.blocked and #s.navQueue==1)
+ events.decker_custom_set_navigation({key=28,down=false})
+ assert(#s.navQueue==1,'late native Enter release erased page navigation')
+ AshitaCore.GetMemoryManager=original
+ s.navKeysEnabled=false;s.navQueue={};s.deferredNav={};s.nativeNavHeld={}
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')

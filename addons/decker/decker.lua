@@ -1468,8 +1468,10 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
-    if selector.active() or state.nativeNavHeld[e.key] then
-        selector.yield_navigation();
+    local selecting=selector.active();
+    if selecting or state.nativeNavHeld[e.key] then
+        -- Completing an old native key must not erase a new Decker arrow.
+        if selecting then selector.yield_navigation(); end
         if state.navCaptured[e.key] then
             e.blocked=true;
             if not e.down then state.navCaptured[e.key]=nil; end
