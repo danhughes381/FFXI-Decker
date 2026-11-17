@@ -1211,6 +1211,25 @@ test('cooldown bindings are retained as scoped manual assignments',function()
  s.cooldownEnabled=false
 end)
 
+test('recast onset following a mapped native request is evidence, never cast success',function()
+ ready();s.guideOpen=false;s.nameCount=20;s.pendingRefreshFrames=0;s.awaitingPageFingerprint=nil
+ s.trackedSource='manual';s.manualBook=1;s.trackedSet=1
+ s.previousFingerprint=table.concat((function()local t={};for i=1,20 do t[i]='macro'..i end;return t end)(),'\\031')
+ local page,fp=api.cooldown.page();assert(page=='1.1.')
+ s.cooldownBindings[page..1]={kind='spell',id=112,fingerprint=fp}
+ assert(api.analytics.start('hnm','Tiamat'))
+ local key=page..'1:spell:112'
+ assert(api.cooldown.observe(key,0)==nil)
+ assert(api.execute('CTRL',1,'mouse'))
+ assert(api.cooldown.observe(key,30)=='recast started after Decker request (cast result unknown)')
+ assert(api.analytics.active.recastEvidence==1)
+ assert(api.cooldown.observe(key,20)==nil and api.analytics.active.recastEvidence==1)
+ assert(api.analytics.report()[2]:find('recast%-start evidence 1'))
+ api.analytics.stop()
+ api.cooldown.reset_observer()
+ assert(#api.cooldown.alerts()==0)
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 
