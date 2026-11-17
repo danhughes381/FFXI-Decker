@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.27-dev';
+addon.version = '1.50.33-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -686,7 +686,18 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
+local function native_selector_active()
+    local ok,flag=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
+    end);
+    return ok and (flag==true or (type(flag)=='number' and flag>0));
+end
+local function hud_navigation_flags()
+    -- Decker owns its explicit key handlers; ImGui must not activate a focused macro with Enter.
+    return (ImGuiWindowFlags_NoNavInputs or 0)+(ImGuiWindowFlags_NoNavFocus or 0);
+end
 local function execute_slot(row,slot)
+    if native_selector_active() then return false; end -- Native selector owns Enter, arrows and confirmation.
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     if not state.allowAllClicks then
         if row=='CTRL' and slot==1 and state.clickConsent then try_ctrl1();
@@ -1160,6 +1171,7 @@ local function draw_row(title,offset)
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
         local label=custom and '' or (name..'\n'..shortcut);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
+        if clicked and type(imgui.IsMouseReleased)=='function' then clicked=imgui.IsMouseReleased(0); end
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
         if custom then
@@ -1410,13 +1422,7 @@ local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return k
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
 local selector={};
-function selector.active()
-    -- The action-target flag can remain set after the selection prompt closes.
-    local ok,flag=pcall(function()
-        return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
-    end);
-    return ok and (flag==true or (type(flag)=='number' and flag>0));
-end
+function selector.active() return native_selector_active(); end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
     state.navRepeatAt={}; state.navPhysicalKeys={};
@@ -2137,7 +2143,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     if state.visible and idleHidden and state.autoHideMode=='collapse' then
         size_window('collapsed',88,40);
         pin_window('collapsed',state.positionLocked);
-        if imgui.Begin('###DeckerCollapsed',{true},(ImGuiWindowFlags_NoTitleBar or 1)+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
+        if imgui.Begin('###DeckerCollapsed',{true},(ImGuiWindowFlags_NoTitleBar or 1)+hud_navigation_flags()+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
             remember_window('collapsed',state.positionLocked);
             if imgui.Button('Decker##recovery') then state.showTests=true; end
         end
@@ -2151,7 +2157,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     -- Hidden IDs preserve window identity; the single content heading is drawn below.
     -- Apply to the HUD only; Settings stays fully opaque.
     local hudColours,hudVars=push_glass_background(state.outerOpacity);
-    if imgui.Begin('###DeckerMain',{true},(ImGuiWindowFlags_NoTitleBar or 1)+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
+    if imgui.Begin('###DeckerMain',{true},(ImGuiWindowFlags_NoTitleBar or 1)+hud_navigation_flags()+(state.positionLocked and (ImGuiWindowFlags_NoMove or 4) or 0)+scrollbar_flags()) then
         remember_window('hud',state.positionLocked);
         -- VanaCore ImGui positions may be math-backed vectors, not Lua arrays.
         -- Avoid numeric indexing of GetWindowPos results until its ABI is verified.
@@ -2688,3 +2694,4 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.
 end);
+
