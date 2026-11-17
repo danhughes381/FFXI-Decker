@@ -22,7 +22,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -1122,6 +1122,61 @@ test('stormbar sets four persistent mode commands without macro scans',function(
  end
  s.phase=0;s.allowAllClicks=false;s.profileReady=true
  assert(api.hotkey(65)==1,'Command StateBar must not depend on native macro pointers')
+end)
+
+test('combat analytics HNM requests are counted once and distinguished from casts',function()
+ ready();s.guideOpen=false;s.manualBook=2;s.trackedSet=3
+ local ok,msg=api.analytics.start('hnm','Tiamat')
+ assert(ok and msg:find('Tiamat') and api.analytics.active.profile==s.profileId)
+ assert(not api.analytics.start('exp','New camp'))
+ local before=#requested
+ assert(api.execute('CTRL',1,'mouse'))
+ assert(api.execute('CTRL',1,'direct'))
+ assert(api.execute('ALT',2,'navigation'))
+ assert(#requested==before+3)
+ local a=api.analytics.active;assert(a.attempts==3 and a.requests==3 and a.refused==0)
+ assert(a.sourceCounts.mouse==1 and a.sourceCounts.direct==1 and a.sourceCounts.navigation==1)
+ local report=table.concat(api.analytics.report(),'\n')
+ assert(report:find('Tiamat') and report:find('Book 2 Set 3 CTRL 1',1,true))
+ assert(report:find('NOT a confirmed cast',1,true))
+ assert(api.analytics.stop());assert(not api.analytics.active and api.analytics.last.requests==3)
+ assert(not api.analytics.stop());assert(api.analytics.report()[1]:find('Tiamat'))
+end)
+test('combat analytics separates refused requests and never records guide clicks',function()
+ ready();s.guideOpen=false;s.manualBook=1;s.trackedSet=1
+ assert(api.analytics.start('exp','East Ron'))
+ local a=api.analytics.active
+ s.names[1]='';assert(not api.execute('CTRL',1,'mouse'))
+ assert(a.attempts==1 and a.requests==0 and a.refused==1)
+ s.names[1]='Macro1';s.guideOpen=true;api.execute('CTRL',1,'mouse')
+ assert(a.attempts==1,'guide is non-executing')
+ s.guideOpen=false;assert(api.execute('CTRL',1,'statebar'))
+ assert(a.requests==1 and a.sourceCounts.statebar==1)
+ assert(api.analytics.stop())
+end)
+test('combat analytics explicitly scopes account and ends on profile change',function()
+ ready();s.guideOpen=false;assert(api.analytics.start('practice','Macro Test'))
+ assert(api.execute('ALT',1,'mouse'))
+ local old=api.analytics.active.profile
+ character='Peppa';api.refresh()
+ assert(old~=s.profileId and not api.analytics.active and not api.analytics.last)
+ assert(#api.analytics.report()==1)
+ ready();assert(api.analytics.start('hnm','Tiamat'))
+ assert(api.analytics.active.profile==s.profileId)
+ assert(api.analytics.stop())
+ character='Salts';api.refresh()
+end)
+test('combat analytics command accepts named sessions and reports',function()
+ ready();s.guideOpen=false
+ local function cmd(...)
+  local args={...};events.decker_cmd({command={args=function()return args end}})
+ end
+ cmd('/decker','session','start','hnm','King','Behemoth')
+ assert(api.analytics.active and api.analytics.active.label=='King Behemoth')
+ cmd('/decker','session','report')
+ cmd('/decker','session','stop')
+ assert(not api.analytics.active and api.analytics.last)
+ assert(not api.analytics.start('wrong','n/a'))
 end)
 
 os.execute('rm -r '..tmp)
