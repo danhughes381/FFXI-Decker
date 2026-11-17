@@ -1700,6 +1700,7 @@ end);
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
     if game_input_open() or native_target_handoff() then
+        for code,_ in pairs(state.suppressed) do state.held[code]=nil end
         state.suppressed={};return
     end
     if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
