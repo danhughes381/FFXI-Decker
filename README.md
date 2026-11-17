@@ -10,9 +10,9 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 
 Open `/decker settings` → **More** → **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. Both channels serve the same build. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
 
-## Development v1.50.36 recovery
+## Development v1.50.37 combat input and visuals
 
-This version repairs PLD generic `/lac fwd tank pdt|mdt` StateBar colour readback, restores input-aware regression testing and adds read-only recast hints for short macro labels exactly matching Ashita spell/ability resources (for example, `Flash` or `Sentinel`). It does **not** inspect native macro commands, infer nicknames like `Cure3`, or claim a recast change proves a successful action.
+This build removes blanket native-target handoff from ordinary combat macro keys, stops stale chat modifiers, keeps the circular cooldown indicator and red recasting text without numerical digits, and shows a separate amber pending StateBar mode when Aegis has not confirmed the selected mode. It also repairs PLD generic `/lac fwd tank pdt|mdt` StateBar colour readback, restores input-aware regression testing and adds read-only recast hints for short macro labels exactly matching Ashita spell/ability resources (for example, `Flash` or `Sentinel`). It does **not** inspect native macro commands, infer nicknames like `Cure3`, or claim a recast change proves a successful action.
 
 After using the in-game updater (**Development**, Check, Install and reload), run `/decker cooldown on` to enable clocks for an existing profile that saved them as disabled. Run `/decker cooldown status` to see whether clocks are enabled and how many buttons have manual mappings. For aliases/combined macros, map the correct spell Index or ability recast timer ID manually under Controls > Cooldown clocks. These are display-only changes. Mode highlighting still requires readable Aegis mode files and live validation.
 
