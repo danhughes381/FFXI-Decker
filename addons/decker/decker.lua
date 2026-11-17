@@ -1002,16 +1002,28 @@ function classic.tracked_mode(button)
     return false;
 end
 function classic.highlight(button,index,saved,job,unavailable)
-    if unavailable then return false; end
+    if unavailable then return false,nil; end
     local axis,value=button.axis,button.value;
+    local tracked,owner;
     if not state.classic75 then
-        if button.kind=='utility' then return false; end
-        local tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
-        if not tracked then return state.statebarSelected==index; end
-        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false; end
+        local modeAxis,modeValue;
+        tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
+        if not tracked then
+            return button.kind~='utility' and state.statebarSelected==index or false,
+                state.statebarSelected==index and 'manual' or nil;
+        end
+        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false,nil; end
         axis,value=modeAxis,modeValue;
     end
-    return axis~=nil and saved~=nil and saved.enabled and not saved.locked and saved[axis]==value;
+    -- Green means current saved Aegis mode is verified. 'locked' is not a
+    -- different mode; it must not hide which defence mode is selected.
+    if axis and saved then
+        return saved.enabled and saved[axis]==value, 'verified';
+    end
+    -- If no Aegis readback is available, give amber feedback for a queued
+    -- command instead of incorrectly claiming the gear has changed (green).
+    if tracked and axis and state.statebarSelected==index then return true,'pending'; end
+    return false,nil;
 end
 
 -- Single validated command only: no Lua, script runners, command chaining or chat.
@@ -1062,8 +1074,12 @@ local function request_statebar(i)
             state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
         elseif tracked and not axis then
             state.statebarSelected=0;
+        elseif tracked then
+            -- Aegis readback takes precedence. Until it is available, retain
+            -- an amber requested-mode indicator instead of blanking the StateBar.
+            state.statebarSelected=i;
         elseif b.kind~='utility' then
-            if tracked or state.statebarSelected==i then state.statebarSelected=0;
+            if state.statebarSelected==i then state.statebarSelected=0;
             else state.statebarSelected=i; end
         end
     end
@@ -2350,9 +2366,10 @@ ashita.events.register('d3d_present','decker_draw',function()
                     -- StateBar selection is independent from the main macro HUD's press highlight.
                     -- Keep the actual macro name legible; never prefix it with SELECTED.
                     local unavailable=state.classic75 and not classic.available(b,job,level);
-                    local sbSelected=classic.highlight(b,i,saved,job,unavailable);
+                    local sbSelected,sbSource=classic.highlight(b,i,saved,job,unavailable);
                     local opacity=state.buttonOpacity;
-                    local base=sbSelected and {accent[1]*.30,accent[2]*.36,accent[3]*.43,opacity} or {.012,.015,.021,opacity};
+                    local sbAccent=sbSource=='pending' and {.94,.63,.18,1} or accent;
+                    local base=sbSelected and {sbAccent[1]*.30,sbAccent[2]*.36,sbAccent[3]*.43,opacity} or {.012,.015,.021,opacity};
                     local sbColours=type(imgui.PushStyleColor)=='function' and type(imgui.PopStyleColor)=='function' and type(ImGuiCol_Button)=='number' and type(ImGuiCol_ButtonHovered)=='number' and type(ImGuiCol_ButtonActive)=='number';
                     if unavailable and imgui.BeginDisabled and imgui.EndDisabled then imgui.BeginDisabled(); end
                     if sbColours then
@@ -2366,7 +2383,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if custom then
                         local ok,err=pcall(function()
                             local dl=imgui.GetWindowDrawList();
-                            draw_glass_face(dl,x,y,sw,sh,opacity,sbSelected and accent or nil);
+                            draw_glass_face(dl,x,y,sw,sh,opacity,sbSelected and sbAccent or nil);
                             draw_glass_text(dl,name,x,y,sw,sh,key~='None' and key or '',false,true);
                         end);
                         if not ok then glass.custom=false; glass.diagnostic='StateBar draw fallback: '..tostring(err); end
@@ -2374,10 +2391,11 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() then
                         local action=b.source=='command' and (b.command or '') or ('Current book/set: '..b.row..' '..tostring(b.slot==10 and 0 or b.slot));
                         local behaviour=b.kind=='utility' and 'Utility: one-off action.' or 'Manual highlight: press again to clear.';
-                        if state.classic75 or (b.kind~='utility' and classic.tracked_mode(b)) then
+                        if state.classic75 or classic.tracked_mode(b) then
                             action=unavailable and 'Unavailable for this job or level' or action;
-                            behaviour=saved and ('Saved Aegis mode: '..(saved.locked and 'locked' or not saved.enabled and 'disabled' or sbSelected and 'active' or 'inactive')..'.')
-                                or 'Saved Aegis mode unknown.';
+                            behaviour=sbSource=='pending' and 'Mode requested; awaiting Aegis readback (amber, not confirmed).'
+                                or saved and ('Saved Aegis mode: '..(not saved.enabled and 'disabled' or sbSelected and 'active' or 'inactive')..(saved.locked and ', gear swaps locked' or '')..'.')
+                                or 'Aegis saved mode unreadable; active status unknown.';
                         end
                         imgui.SetTooltip(name..'\n'..action..'\nKey: '..(key or 'None')..'\n'..behaviour);
                     end
