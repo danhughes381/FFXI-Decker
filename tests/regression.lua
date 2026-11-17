@@ -111,7 +111,7 @@ end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
 test('StateBar collisions and permission gates',function()
- ready();s.held={};s.suppressed={};s.navKeysEnabled=false;s.classic75=false;s.rowSwitchKey='END';s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.statebarHotkeys={59};s.mappingMode='split'
+ ready();s.held={};s.suppressed={};s.navKeysEnabled=false;s.classic75=false;s.rowSwitchKey='END';s.navModifier='RSHIFT';s.directKeys={};for i=1,10 do s.directKeys[i]=58+i;s.directKeys[i+10]=i==10 and 11 or i+1 end;s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarSlots={{row='CTRL',slot=1,kind='state'}};s.statebarHotkeys={59};s.mappingMode='split'
  assert(not api.hotkey(59),'direct key collision should win')
  s.statebarHotkeys={87};assert(api.hotkey(87)==1,'F11 hotkey expected')
  s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87),'navigation reservation should win')
