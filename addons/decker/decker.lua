@@ -1,9 +1,9 @@
--- Decker 1.50.36-dev: repair tank mode highlighting and recast visibility.
+-- Decker 1.50.37-dev: combat-safe input, StateBar readback and clock-only recasts.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.36-dev';
+addon.version = '1.50.37-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -881,7 +881,9 @@ local function execute_slot(row,slot,source)
     end);
     analytics.finish(metric,called);
     if called then
-        if begin_native_target_handoff then begin_native_target_handoff(); end
+        -- Only Decker navigation needs a temporary native subtarget handoff. An
+        -- ordinary mouse/direct macro request must never disable subsequent combat hotkeys.
+        if source=='navigation' and begin_native_target_handoff then begin_native_target_handoff(); end
         record_execution(row,slot,'executed');
         cooldown.note_request(row,slot);
     end
@@ -1272,11 +1274,6 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recas
         local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-footer-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
-        if recastLabel and not isStateBar then
-            local indicatorSize=math.min(13,math.max(9,h*.28));
-            dl:AddText(font,indicatorSize,{x+5,y+2},
-                imgui.GetColorU32({1,.78,.39,1}),recastLabel);
-        end
         if shortcut~='' then
             local ks=keySize;
             if width(shortcut,ks)>w-10 then ks=ks*(w-10)/math.max(1,width(shortcut,ks)); end
@@ -1337,7 +1334,7 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local label=custom and '' or (name..'\n'..(cooling and (cooldown.label(remaining)..' ') or '')..shortcut);
+        local label=custom and '' or (name..'\n'..shortcut);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
@@ -1358,7 +1355,7 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,cooling and cooldown.label(remaining) or nil);
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,nil);
                 if cooling and type(dl.AddLine)=='function' then
                     local totalKey='max:'..recastKey;
                     local high=recastObserver.observed[totalKey] or remaining;
@@ -1628,15 +1625,19 @@ local function yield_chat_input()
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
 begin_native_target_handoff=function()
-    state.targetHandoffUntil=os.time()+5;state.targetGraceUntil=os.time()+1
+    -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
+    -- ability keys or StateBar gear commands during engaged combat.
+    state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
     state.navToggleActive=false;state.navModifierHeld=false
     state.navQueue={};state.deferredNav={};state.navCaptured={}
     state.navRepeatAt={};state.navPhysicalKeys={}
 end
 local function native_target_handoff()
-    if selector.active() then return true end
-    if selector.supported then return os.time()<(state.targetGraceUntil or 0) end
-    return os.time()<(state.targetHandoffUntil or 0)
+    local now=os.clock();
+    if now>=(state.targetHandoffUntil or 0) then return false; end
+    if selector.active() then return true; end
+    if selector.supported then return now<(state.targetGraceUntil or 0); end
+    return now<(state.targetGraceUntil or 0);
 end
 function selector.active()
     -- The action-target flag can remain set after the selection prompt closes.
@@ -1806,6 +1807,11 @@ end);
 -- Use native ALT/CTRL + up/down for set selection, refresh the on-screen names
 -- after the game's own input handler has processed the press. No arrow blocking.
 ashita.events.register('key_data','decker_native_arrow_watch',function(e)
+    if game_input_open() then
+        -- Chat must never repopulate the held modifiers just cleared by yield_chat_input.
+        state.held[29]=nil;state.held[157]=nil;state.held[56]=nil;state.held[184]=nil;
+        state.held[42]=nil;state.held[54]=nil;return;
+    end
     if e.key==29 or e.key==157 or e.key==56 or e.key==184 or e.key==42 or e.key==54 then
         state.held[e.key]=e.down and true or nil;
     end
@@ -1839,7 +1845,7 @@ end);
 -- StateBar has its own explicit keyboard switch; native connection is still required.
 -- Only active main shortcuts and enabled navigation reserve keys against it.
 local function statebar_hotkey_slot(code,slots,keys,job,level)
-    if game_input_open() or native_target_handoff() or not statebar_input_ready() or modifier_down() then return nil; end
+    if game_input_open() or not statebar_input_ready() or modifier_down() then return nil; end
     if shortcuts_active() and mapped_key(code) then return nil; end
     if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
     if not keys then slots,keys,job,level=classic.slots(); end
@@ -1870,9 +1876,7 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
     if game_input_open() then yield_chat_input();return end
-    if native_target_handoff() then
-        state.suppressed[e.key]=nil;state.held[e.key]=nil;return
-    end
+    -- Native target handoff must not disable independent combat action hotkeys.
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
@@ -1901,10 +1905,7 @@ end);
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
     if game_input_open() then yield_chat_input();return end
-    if native_target_handoff() then
-        for code,_ in pairs(state.suppressed) do state.held[code]=nil end
-        state.suppressed={};return
-    end
+    -- A native subtarget prompt only owns navigation arrows/Enter, not every macro key.
     if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
