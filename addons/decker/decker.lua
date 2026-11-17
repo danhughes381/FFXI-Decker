@@ -1,9 +1,9 @@
--- Decker 1.50.33-dev: circular recasts, safe observer alerts and analytics.
+-- Decker 1.50.35-dev: unified Development chat ownership, recasts and analytics.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.33-dev';
+addon.version = '1.50.35-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1593,8 +1593,16 @@ local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
 local selector={};
 local function game_input_open()
     local ok,flag=pcall(function() return AshitaCore:GetChatManager():IsInputOpen(); end)
-    -- Unknown focus is not safe to intercept.
+    -- Chat input is safety-critical; unknown state must fail closed.
     return not ok or flag==nil or (flag~=false and flag~=0)
+end
+local function yield_chat_input()
+    -- Port the v1.50.34 chat-state reset onto the newer native-target handoff.
+    -- Never suppress a physical key while the game owns chat input.
+    state.navToggleActive=false;state.navModifierHeld=false
+    state.navQueue={};state.deferredNav={};state.navCaptured={}
+    state.navRepeatAt={};state.navPhysicalKeys={}
+    state.suppressed={};state.held={};state.nativeNavHeld={}
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
 begin_native_target_handoff=function()
@@ -1662,7 +1670,7 @@ end
 -- key_data only suppresses input. Physical key edges are processed from
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
-    if game_input_open() then return end
+    if game_input_open() then yield_chat_input();return end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
         if native_target_handoff() then return end
@@ -1704,9 +1712,8 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
     if game_input_open() then
-        state.navPhysicalDown=physicalDown;state.navModifierHeld=false
-        state.navToggleActive=false;state.navQueue={};state.deferredNav={}
-        state.navCaptured={};state.navRepeatAt={};state.navPhysicalKeys={}
+        state.navPhysicalDown=physicalDown
+        yield_chat_input()
         return
     end
     local targeting=state.navKeysEnabled and native_target_handoff();
@@ -1840,7 +1847,8 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
     end
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
-    if game_input_open() or native_target_handoff() then
+    if game_input_open() then yield_chat_input();return end
+    if native_target_handoff() then
         state.suppressed[e.key]=nil;state.held[e.key]=nil;return
     end
     local row,slot=mapped_key(e.key);
@@ -1870,7 +1878,8 @@ end);
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
-    if game_input_open() or native_target_handoff() then
+    if game_input_open() then yield_chat_input();return end
+    if native_target_handoff() then
         for code,_ in pairs(state.suppressed) do state.held[code]=nil end
         state.suppressed={};return
     end
