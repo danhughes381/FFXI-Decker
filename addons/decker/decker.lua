@@ -1,9 +1,9 @@
--- Decker 1.50.26-dev: independent StateBar action and key label sizes.
+-- Decker 1.50.31-dev: preserve navigation, guard chat and yield target input.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.26-dev';
+addon.version = '1.50.31-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -28,8 +28,8 @@ local DIRECT_KEY_OPTIONS={
     {'Semicolon',39},{'Apostrophe',40},{'Backslash',43},{'Comma',51},{'Period',52},{'Slash',53}
 };
 -- Shared choices keep UI, saved settings, capture and conflict checks consistent.
-local NAV_KEY_OPTIONS={'RSHIFT','LSHIFT','RCTRL','LCTRL','RALT','LALT','END','HOME','INSERT','DELETE','PAGEUP','PAGEDOWN','CAPSLOCK','SCROLLLOCK','PAUSE','N','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'};
-local NAV_KEYS={RSHIFT=54,LSHIFT=42,RCTRL=157,LCTRL=29,RALT=184,LALT=56,END=207,HOME=199,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,CAPSLOCK=58,SCROLLLOCK=70,PAUSE=197,N=49,F1=59,F2=60,F3=61,F4=62,F5=63,F6=64,F7=65,F8=66,F9=67,F10=68,F11=87,F12=88};
+local NAV_KEY_OPTIONS={'RSHIFT','LSHIFT','RCTRL','LCTRL','RALT','LALT','NUMPAD1','END','HOME','INSERT','DELETE','PAGEUP','PAGEDOWN','CAPSLOCK','SCROLLLOCK','PAUSE','N','F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'};
+local NAV_KEYS={RSHIFT=54,LSHIFT=42,RCTRL=157,LCTRL=29,RALT=184,LALT=56,NUMPAD1=79,END=207,HOME=199,INSERT=210,DELETE=211,PAGEUP=201,PAGEDOWN=209,CAPSLOCK=58,SCROLLLOCK=70,PAUSE=197,N=49,F1=59,F2=60,F3=61,F4=62,F5=63,F6=64,F7=65,F8=66,F9=67,F10=68,F11=87,F12=88};
 local ROW_KEYS=NAV_KEYS;
 local DIRECT_NAMES={}; local DIRECT_CODES={};
 for _,item in ipairs(DIRECT_KEY_OPTIONS) do DIRECT_NAMES[item[2]]=item[1]; DIRECT_CODES[item[1]]=item[2]; end
@@ -686,6 +686,7 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
+local begin_native_target_handoff;
 local function execute_slot(row,slot)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     if not state.allowAllClicks then
@@ -716,7 +717,10 @@ local function execute_slot(row,slot)
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
-    if called then record_execution(row,slot,'executed'); end
+    if called then
+        if begin_native_target_handoff then begin_native_target_handoff(); end
+        record_execution(row,slot,'executed');
+    end
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
     say(state.clickSummary);
     return called;
@@ -879,7 +883,7 @@ local function request_statebar(i)
     if state.classic75 and not classic.available(b,job,level) then return false; end
     local requested=false;
     if b.source=='command' then
-        if not state.allowAllClicks or not valid_command(b.command) then state.clickSummary='StateBar command blocked: connect and use a supported single command.'; return false; end
+        if not valid_command(b.command) then state.clickSummary='StateBar command blocked: use a supported single command.'; return false; end
         local ok,result=pcall(function() return AshitaCore:GetChatManager():QueueCommand(-1,b.command); end); requested=ok and result~=false;
     else requested=execute_slot(b.row,b.slot); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
@@ -1355,8 +1359,7 @@ local function guide_draw()
 end
 
 -- DirectInput scancodes: 1..0 (2..11) and F1..F10 (59..68).
--- Keyboard overrides remain OFF until explicit activation. Native FFXI chat/edit focus
--- cannot yet be identified reliably in VanaCore. Warn in UI before enabling.
+-- Keyboard overrides remain opt-in. Ashita IsInputOpen() protects chat.
 local function mapped_key(key)
     if type(key)~='number' then return nil,nil; end
     if state.mappingMode=='numbers' or state.mappingMode=='functions' then
@@ -1377,8 +1380,15 @@ local function shortcuts_active()
         and state.phase>=4 and #state.names==20;
 end
 local function statebar_input_ready()
-    return state.statebarEnabled and state.statebarHotkeysEnabled and state.allowAllClicks
-        and state.profileReady and state.phase>=4 and #state.names==20;
+    if not state.statebarEnabled or not state.statebarHotkeysEnabled or not state.profileReady then return false; end
+    if not state.classic75 then
+        local commandsOnly=#state.statebarSlots>0;
+        for _,b in ipairs(state.statebarSlots) do
+            if b.source~='command' or not valid_command(b.command) then commandsOnly=false; break; end
+        end
+        if commandsOnly then return true; end
+    end
+    return state.allowAllClicks and state.phase>=4 and #state.names==20;
 end
 -- Keep keyboard macro routing and FFXI's native modifier combinations separate.
 local function modifier_down()
@@ -1409,15 +1419,31 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
-local selector={methods={'GetIsSubTargetActive','GetActionTargetActive'}};
+local selector={};
+local function game_input_open()
+    local ok,flag=pcall(function() return AshitaCore:GetChatManager():IsInputOpen(); end)
+    -- Unknown focus is not safe to intercept.
+    return not ok or flag==nil or (flag~=false and flag~=0)
+end
+state.targetHandoffUntil=0;state.targetGraceUntil=0
+begin_native_target_handoff=function()
+    state.targetHandoffUntil=os.time()+5;state.targetGraceUntil=os.time()+1
+    state.navToggleActive=false;state.navModifierHeld=false
+    state.navQueue={};state.deferredNav={};state.navCaptured={}
+    state.navRepeatAt={};state.navPhysicalKeys={}
+end
+local function native_target_handoff()
+    if selector.active() then return true end
+    if selector.supported then return os.time()<(state.targetGraceUntil or 0) end
+    return os.time()<(state.targetHandoffUntil or 0)
+end
 function selector.active()
-    local ok,target=pcall(function() return AshitaCore:GetMemoryManager():GetTarget(); end);
-    if not ok or not target then return false; end
-    for _,method in ipairs(selector.methods) do
-        local read,flag=pcall(function() return target[method](target); end);
-        if read and (flag==true or (type(flag)=='number' and flag>0)) then return true; end
-    end
-    return false;
+    -- The action-target flag can remain set after the selection prompt closes.
+    local ok,flag=pcall(function()
+        return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
+    end);
+    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number')
+    return selector.supported and (flag==true or (type(flag)=='number' and flag>0));
 end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
@@ -1450,27 +1476,31 @@ local function nav_command(key, repeating)
         state.deferredNav=state.deferredNav or {};
         state.deferredNav[#state.deferredNav+1]={key=key,frames=4,repeating=repeating};
     elseif key==57 or key==row_key() then
-        state.navRow=(state.navRow=='CTRL') and 'ALT' or 'CTRL';
+        state.navSlot=state.navSlot or 1;
+        local row=state.navRow or 'CTRL';
+        state.navRow=(row=='CTRL') and 'ALT' or 'CTRL';
         state.navSource='Decker navigation';
     elseif key==203 or key==205 then
         state.navSlot=((state.navSlot or 1)-1+(key==203 and -1 or 1))%10+1;
         state.navSource='Decker navigation';
     elseif key==28 or key==156 then
         execute_slot(state.navRow or 'CTRL',state.navSlot or 1);
-        -- Navigation ends only by modifier toggle or physical modifier release.
+        -- Native target-selection handoff begins on successful macro execution.
     end
 end
 -- key_data only suppresses input. Physical key edges are processed from
 -- key_state once, preventing inconsistent arrow events on VanaCore.
 ashita.events.register('key_data','decker_custom_set_navigation',function(e)
+    if game_input_open() then return end
     if not state.navKeysEnabled then return; end
     if e.key==nav_scan() then
+        if native_target_handoff() then return end
         e.blocked=true;
         return;
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
-    if selector.active() or state.nativeNavHeld[e.key] then
+    if native_target_handoff() or state.nativeNavHeld[e.key] then
         selector.yield_navigation();
         if state.navCaptured[e.key] then
             e.blocked=true;
@@ -1502,7 +1532,13 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
-    local targeting=state.navKeysEnabled and selector.active();
+    if game_input_open() then
+        state.navPhysicalDown=physicalDown;state.navModifierHeld=false
+        state.navToggleActive=false;state.navQueue={};state.deferredNav={}
+        state.navCaptured={};state.navRepeatAt={};state.navPhysicalKeys={}
+        return
+    end
+    local targeting=state.navKeysEnabled and native_target_handoff();
     if state.navKeysEnabled and not targeting and state.stickyNavigation
             and physicalDown and not state.navPhysicalDown and not other_modifier_down() then
         state.navToggleActive=not state.navToggleActive; state.hudLastActivity=os.clock(); state.hudForceReveal=true;
@@ -1512,7 +1548,11 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
             print(chat.header(addon.name)..'Macros '..word);
         end
     end
-    if state.navKeysEnabled and physicalDown and not state.navPhysicalDown then
+    if state.navKeysEnabled and not targeting and physicalDown and not state.navPhysicalDown then
+        -- Establish a visible navigation cursor without requiring a macro click.
+        state.navSlot=state.navSlot or 1;
+        state.navRow=state.navRow or 'CTRL';
+        state.navSource='Decker navigation';
         -- A modifier press must always be able to wake the HUD, even before macro pointers connect.
         state.hudLastActivity=os.clock(); state.hudHasInteracted=true; state.hudForceReveal=true;
     end
@@ -1522,7 +1562,7 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
         and (state.stickyNavigation and state.navToggleActive or
              (not state.stickyNavigation and physicalDown))
         and not other_modifier_down();
-    if state.navKeysEnabled then ptr[modifier]=0; end
+    if state.navKeysEnabled and not targeting then ptr[modifier]=0; end
     if targeting then selector.yield_navigation(); end
     state.nativeNavHeld=state.nativeNavHeld or {};
     local activeKeys={}; for key,_ in pairs(NAV_ACTIONS) do activeKeys[key]=true; end; activeKeys[row_key()]=true;
@@ -1569,7 +1609,7 @@ ashita.events.register('key_data','decker_native_arrow_watch',function(e)
     if e.key==29 or e.key==157 or e.key==56 or e.key==184 or e.key==42 or e.key==54 then
         state.held[e.key]=e.down and true or nil;
     end
-    if not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
+    if not game_input_open() and not native_target_handoff() and not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
         and state.phase>=4 and #state.names==20 and not selector.active() then
         state.pendingRefreshFrames=3;
         state.awaitingPageFingerprint=state.previousFingerprint;
@@ -1589,7 +1629,7 @@ end);
 -- Do not claim an authoritative selection cursor without a verified game getter.
 ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
     if e.key~=203 and e.key~=205 then return; end
-    if e.down and modifier_down() and state.phase>=4 and not selector.active()
+    if not game_input_open() and not native_target_handoff() and e.down and modifier_down() and state.phase>=4 and not selector.active()
         and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive)) then
         state.navSlot=nil;
         state.navRow=nil;
@@ -1599,7 +1639,7 @@ end);
 -- StateBar has its own explicit keyboard switch; native connection is still required.
 -- Only active main shortcuts and enabled navigation reserve keys against it.
 local function statebar_hotkey_slot(code,slots,keys,job,level)
-    if not statebar_input_ready() or modifier_down() then return nil; end
+    if game_input_open() or native_target_handoff() or not statebar_input_ready() or modifier_down() then return nil; end
     if shortcuts_active() and mapped_key(code) then return nil; end
     if state.navKeysEnabled and (code==nav_scan() or code==row_key() or NAV_ACTIONS[code]) then return nil; end
     if not keys then slots,keys,job,level=classic.slots(); end
@@ -1629,6 +1669,9 @@ ashita.events.register('key_data','decker_statebar_key_press',function(e)
     end
 end);
 ashita.events.register('key_data','decker_exclusive_key_press',function(e)
+    if game_input_open() or native_target_handoff() then
+        state.suppressed[e.key]=nil;state.held[e.key]=nil;return
+    end
     local row,slot=mapped_key(e.key);
     if not row and not state.suppressed[e.key] then return; end
     -- Always finish suppressing a key-release corresponding to a captured press.
@@ -1656,6 +1699,10 @@ end);
 -- (key_state). Both must be suppressed to avoid native double execution.
 ashita.events.register('key_state','decker_exclusive_key_state',function(e)
     if not e.data_raw then return; end
+    if game_input_open() or native_target_handoff() then
+        for code,_ in pairs(state.suppressed) do state.held[code]=nil end
+        state.suppressed={};return
+    end
     if not shortcuts_active() and not statebar_input_ready() and next(state.suppressed)==nil then return; end
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local size=type(e.size)=='number' and e.size or 256;
@@ -1728,7 +1775,16 @@ ashita.events.register('command','decker_cmd',function(e)
     end
     e.blocked=true;
     local cmd=(a[2] or 'show'):lower();
-    if cmd=='debug' then
+    if cmd=='stormbar' then
+        state.classic75=false; state.statebarEnabled=true; state.statebarHotkeysEnabled=true;
+        state.statebarVisibility='always'; state.statebarAlways=true;
+        state.statebarSlots={}; state.statebarHotkeys={65,66,67,68}; state.statebarSelected=0;
+        for i,item in ipairs({{'PDT','pdt'},{'MDT','mdt'},{'Accuracy','accuracy'},{'Auto','auto'}}) do
+            state.statebarSlots[i]={row='CTRL',slot=i,label=item[1],source='command',
+                command='/lac fwd tank '..item[2],kind='state',trackDefence='auto'};
+        end
+        save_display(); say('Storm StateBar saved: F7 PDT / F8 MDT / F9 Accuracy / F10 Auto. Commands require a tank LAC profile.');
+    elseif cmd=='debug' then
         local v=(a[3] or ''):lower();
         if v=='on' then state.debugLog=true; say('Debug logging enabled.',true)
         elseif v=='off' then state.debugLog=false; say('Debug logging disabled.',true)
@@ -2543,7 +2599,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                                 end
                                 imgui.EndCombo();
                             end
-                            imgui.TextWrapped('While the mod is active, this key or Space switches between upper and lower rows.');
+                            imgui.TextWrapped('While the mod is active, this key or Space switches between upper and lower rows. Laptop keypad 1/End: choose NUMPAD1; END is the dedicated End key.');
                             if imgui.BeginCombo('Macro mod behaviour',state.stickyNavigation and 'Press key once (Toggle)' or 'Hold key pressed down') then
                                 if imgui.Selectable('Press key once (Toggle)',state.stickyNavigation) then state.stickyNavigation=true; nav_clear(); save_display(); end
                                 if imgui.Selectable('Hold key pressed down',not state.stickyNavigation) then state.stickyNavigation=false; nav_clear(); save_display(); end
@@ -2688,3 +2744,4 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.
 end);
+

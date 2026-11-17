@@ -1,4 +1,4 @@
-# Decker — remaining validation
+# Decker â€” remaining validation
 
 Current development baseline: 1.50.12-dev. Owner requested main promotion; stable acceptance is separate. Detailed current controls: docs/CONTROLS_1.50.12.md. Readiness issue: #3.
 
@@ -9,3 +9,5 @@ Current development baseline: 1.50.12-dev. Owner requested main promotion; stabl
 - [ ] Run the mocked suite under LuaJIT as well as Lua 5.4.
 - [ ] Validate Windows updater transport/install/reload/rollback on the owner-promoted Stable and Development baseline.
 - [ ] Keep issue #3 open until relevant live checks have evidence.
+
+- [ ] **DECKER-INPUT-030** Development UI fixes implemented and offline checked; complete live persistence/update cycle pending. See PROJECT_STATE.md.
