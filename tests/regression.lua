@@ -1,6 +1,7 @@
 -- LuaJIT tests use explicit host mocks: no game process or native calls.
 local root=arg[1] or '.'
 local events={}; local requested={}; local character='Salts'; local styles=0; local vars=0
+local chatInput=0; local subTarget=0; local actionTarget=0
 addon={}
 package.preload.common=function() return {} end
 package.preload.chat=function() return {header=function() return '' end} end
@@ -19,7 +20,7 @@ package.loaded.ffi=ffi
 ImGuiCol_Button=1; ImGuiCol_ButtonHovered=2; ImGuiCol_ButtonActive=3; ImGuiCol_Text=4; ImGuiStyleVar_Alpha=1; ImGuiCond_FirstUseEver=1
 ashita={events={register=function(_,name,cb) assert(not events[name]);events[name]=cb end},memory={read_uint32=function() return 65536 end}}
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
-AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end} end,GetChatManager=function() return {QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
+AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end,GetActionTargetActive=function() return actionTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatInput end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
 local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
@@ -27,7 +28,10 @@ local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
 local api=assert(loadfile(path))();local s=api.state
 local passed=0
-local function test(name,fn) fn();passed=passed+1;print('PASS '..name) end
+local function test(name,fn)
+ chatInput=0;subTarget=0;actionTarget=0;s.targetHandoffUntil=0;s.targetGraceUntil=0
+ fn();passed=passed+1;print('PASS '..name)
+end
 local function ready() s.phase=4;s.allowAllClicks=true;s.profileReady=true;s.names={};for i=1,20 do s.names[i]='Macro'..i end;s.addresses.controller=65536;s.addresses.run=65536 end
 api.refresh()
 test('native macro command updates Decker book and set display only',function()
@@ -110,6 +114,33 @@ test('cooldowns follow book, set and refreshed macro names through save and relo
 end)
 test('section reset only affects selected preferences',function() s.theme=4;s.mappingMode='numbers';api.reset('StateBar');assert(s.theme==4 and s.mappingMode=='numbers' and not s.statebarEnabled);api.reset('Controls');assert(s.theme==4 and s.mappingMode=='numbers' and not s.keybinds) end)
 test('all three layouts and N row switch',function() s.navKeysEnabled=false;s.mappingMode='split';local r,k=api.mapped(59);assert(r=='CTRL' and k==1);r,k=api.mapped(2);assert(r=='ALT' and k==1);s.navRow='ALT';s.mappingMode='numbers';r,k=api.mapped(2);assert(r=='ALT' and k==1);s.mappingMode='functions';r,k=api.mapped(68);assert(r=='ALT' and k==10);s.rowSwitchKey='N';api.save();s.rowSwitchKey='END';api.load();assert(s.rowSwitchKey=='N') end)
+test('chat editor yields all Decker navigation and direct input',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.keybinds=true;s.acknowledgeKeys=true;s.mappingMode='numbers'
+ local eventsBefore=#requested;chatInput=0x11
+ local key={key=54,down=true};events.decker_custom_set_navigation(key);assert(not key.blocked)
+ local k={key=203,down=true};events.decker_custom_set_navigation(k);assert(not k.blocked)
+ local direct={key=2,down=true};events.decker_exclusive_key_press(direct);assert(not direct.blocked)
+ local arr={};for i=0,255 do arr[i]=0 end;arr[54]=128;arr[203]=128
+ events.decker_custom_set_state({data_raw=arr,size=256})
+ assert(arr[54]~=0 and arr[203]~=0 and not s.navToggleActive)
+ assert(#requested==eventsBefore)
+ chatInput=0; s.navKeysEnabled=false;s.keybinds=false
+end)
+test('native friendly target selection gets arrows Enter and Escape',function()
+ ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ subTarget=1
+ local count=#requested
+ for _,scan in ipairs({54,200,203,205,28,156,1}) do
+  local e={key=scan,down=true};events.decker_custom_set_navigation(e)
+  assert(not e.blocked,'target selector swallowed key '..scan)
+ end
+ local arr={};for i=0,255 do arr[i]=0 end;arr[203]=128;arr[54]=128
+ events.decker_custom_set_state({data_raw=arr,size=256})
+ assert(arr[203]~=0 and arr[54]~=0)
+ assert(#requested==count)
+ subTarget=0;s.navKeysEnabled=false
+end)
 test('StateBar collisions and permission gates',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={59};s.mappingMode='split';assert(not api.hotkey(59));s.statebarHotkeys={87};assert(api.hotkey(87)==1);s.navKeysEnabled=true;s.rowSwitchKey='F11';assert(not api.hotkey(87));s.navKeysEnabled=false;s.acknowledgeKeys=false;s.keybinds=false;assert(api.hotkey(87)==1);s.allowAllClicks=false;assert(not api.hotkey(87)) end)
 test('single hotkey execution and key release after disable',function() ready();s.keybinds=true;s.acknowledgeKeys=true;s.statebarEnabled=true;s.statebarHotkeysEnabled=true;s.statebarHotkeys={87};s.held={};s.suppressed={};local n=#requested;local e={key=87,down=true};events.decker_statebar_key_press(e);events.decker_statebar_key_press(e);assert(#requested==n+1);s.keybinds=false;s.statebarHotkeysEnabled=false;e={key=87,down=false};events.decker_exclusive_key_press(e);assert(e.blocked and not s.suppressed[87]) end)
 test('Settings sections render with balanced style stacks',function()
