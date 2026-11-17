@@ -1,9 +1,9 @@
--- Decker 1.50.35-dev: unified Development chat ownership, recasts and analytics.
+-- Decker 1.50.36-dev: repair tank mode highlighting and recast visibility.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.35-dev';
+addon.version = '1.50.36-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -59,16 +59,17 @@ state.guideOpen=false; state.guideStep=1; state.guideDemoRow='CTRL'; state.guide
 state.windowPositions={}; state.layoutDirtyAt=nil;
 state.autoConnect=false; state.autoConnectPending=false; state.autoConnectAt=0; state.autoConnectAttempted=false;
 local analytics; -- forward-declared for character lifecycle cleanup
+state.cooldownAutoNames=true;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
     Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled'},
     StateBar={'classic75','classicOrder','statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarLabelSize','statebarKeySize','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
-    General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','autoConnect'},
+    General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','cooldownAutoNames','autoConnect'},
 };
 -- First-install defaults also form the profile-isolation boundary.
 profileDefaults.autoHide=false; profileDefaults.autoHideMode='hide';
-profileDefaults.cooldownEnabled=false; profileDefaults.cooldownBindings={};
+profileDefaults.cooldownEnabled=true; profileDefaults.cooldownBindings={};
 local function direct_conflict(code,index)
     if code==0 then return false; end
     if state.mappingMode=='split' or state.mappingMode=='custom' or index>0 then for i,k in ipairs(state.directKeys) do if i~=index and k==code then return true; end end end
@@ -86,7 +87,7 @@ local function settings_path()
     return directory..(state.profileId and ('decker_profile_'..state.profileId..'.cfg') or 'decker_display.cfg');
 end
 -- Cooldown bindings are optional per button; never infer actions from user-defined labels.
-state.cooldownEnabled=false;
+state.cooldownEnabled=true;
 state.cooldownBindings={};
 local cooldown = {};
 function cooldown.page()
@@ -112,6 +113,26 @@ function cooldown.decode(value)
 end
 -- Recasts are display observations, not proof that the macro executed a cast.
 local recastObserver={observed={},events={},pending={}};
+-- Read-only exact-name lookup. Native macro labels are not verified actions.
+local inferredCooldown={};
+function cooldown.infer(name)
+    if not state.cooldownAutoNames or type(name)~='string'
+        or #name<2 or #name>8 or name:find('[^%w %-%._]') then return nil; end
+    if inferredCooldown[name] then return inferredCooldown[name]; end
+    local ok,binding=pcall(function()
+        local res=AshitaCore:GetResourceManager();
+        if not res then return nil; end
+        local spell=res:GetSpellByName(name,0);
+        if spell and type(spell.Index)=='number' and spell.Index>=0 then
+            return {kind='spell',id=spell.Index,inferred=true};
+        end
+        local ability=res:GetAbilityByName(name,0);
+        if ability and type(ability.RecastTimerId)=='number' and ability.RecastTimerId>=0 then
+            return {kind='ability',id=ability.RecastTimerId,inferred=true};
+        end
+    end);
+    if ok and binding then inferredCooldown[name]=binding;return binding; end
+end
 local function cooldown_recast(binding)
     if not binding or not state.cooldownEnabled then return nil; end
     local ok,remaining=pcall(function()
@@ -204,7 +225,7 @@ local function save_display()
             if value and value~='' then f:write(field:lower(),i,'=',value:gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
         end
     end
-    f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n');
+    f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n','cooldownautonames=',state.cooldownAutoNames and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for key,binding in pairs(state.cooldownBindings) do
         if type(key)=='string' then
@@ -286,6 +307,7 @@ local function load_display()
         if key=='posx' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[1]=n; end
         if key=='posy' and n and n>=0 and n<=20000 then state.hudPos=state.hudPos or {0,0}; state.hudPos[2]=n; end
         if key=='cooldownenabled' then state.cooldownEnabled=value=='1'; end
+        if key=='cooldownautonames' then state.cooldownAutoNames=value=='1'; end
         local book,page,slot;
         if key then book,page,slot=key:match('^cooldownpage%.(%d+)%.(%d+)%.(%d+)$'); end
         book,page,slot=tonumber(book),tonumber(page),tonumber(slot);
@@ -984,7 +1006,7 @@ function classic.highlight(button,index,saved,job,unavailable)
         if button.kind=='utility' then return false; end
         local tracked,modeAxis,modeValue,owner=classic.tracked_mode(button);
         if not tracked then return state.statebarSelected==index; end
-        if owner and owner~=job and not (owner=='TANK' and (job=='NIN' or job=='RDM')) then return false; end
+        if owner and owner~=job and not (owner=='TANK' and (job=='PLD' or job=='NIN' or job=='RDM')) then return false; end
         axis,value=modeAxis,modeValue;
     end
     return axis~=nil and saved~=nil and saved.enabled and not saved.locked and saved[axis]==value;
@@ -1294,10 +1316,10 @@ local function draw_row(title,offset)
         local e=state.lastExecuted;
         local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=state.navRow==title and state.navSlot==i;
-        local binding=cooldown.binding(page,fingerprint,offset+i);
+        local binding=cooldown.binding(page,fingerprint,offset+i) or cooldown.infer(name);
         local remaining=cooldown_recast(binding);
         local cooling=remaining~=nil and remaining>0;
-        local recastKey=binding and ((page or '')..(offset+i)..':'..binding.kind..':'..binding.id);
+        local recastKey=binding and ((page or 'inferred.')..(offset+i)..':'..binding.kind..':'..binding.id);
         if recastKey and remaining then cooldown.observe(recastKey,remaining); end
         local a=state.buttonOpacity;
         local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
@@ -2003,6 +2025,16 @@ ashita.events.register('command','decker_cmd',function(e)
     elseif cmd=='navon' then state.navKeysEnabled=true; state.savedNavEnabled=true; save_display(); say('Custom set navigation enabled.',true)
     elseif cmd=='navoff' then state.navKeysEnabled=false; state.savedNavEnabled=false; nav_clear(); save_display(); say('Custom set navigation disabled.',true)
     elseif cmd=='cooldown' then
+        if (a[3] or ''):lower()=='on' then
+            state.cooldownEnabled=true;save_display();say('Recast clocks enabled.',true);
+        elseif (a[3] or ''):lower()=='off' then
+            state.cooldownEnabled=false;save_display();say('Recast clocks disabled.',true);
+        elseif (a[3] or ''):lower()=='status' then
+            local page,fp=cooldown.page();local total=0;
+            if page then for slot=1,20 do if cooldown.binding(page,fp,slot) then total=total+1;end end end
+            say('Cooldowns '..(state.cooldownEnabled and 'ON' or 'OFF')..' | mapped '..total..'/20 | current book/set '..(page or 'not verified'),true);
+            if total==0 then say('Clock requires at least one mapped action. Set /decker cooldown ctrl 1 spell SPELL_INDEX (or map an ability timer).',true); end
+        else
         local row=(a[3] or ''):lower(); local slot=tonumber(a[4]);
         local kind=(a[5] or ''):lower(); local id=tonumber(a[6]);
         if (row=='ctrl' or row=='alt') and slot and slot>=1 and slot<=10 and slot==math.floor(slot) then
@@ -2016,7 +2048,8 @@ ashita.events.register('command','decker_cmd',function(e)
                 state.cooldownBindings[page..index]={kind=kind,id=id,fingerprint=fingerprint};
                 save_display(); say('Cooldown mapping saved for this book/set and '..row..' '..slot,true);
             else say('Usage: /decker cooldown ctrl 1 spell 123 | ability TIMER_ID | clear',true); end
-        else say('Usage: /decker cooldown ctrl|alt SLOT spell|ability ID',true); end
+        else say('Usage: /decker cooldown on|off|status | ctrl|alt SLOT spell|ability ID',true); end
+        end
     elseif cmd=='guide' then open_guide()
     elseif cmd=='settings' then state.showTests=true
     elseif cmd=='closesettings' then state.showTests=false
@@ -2803,11 +2836,19 @@ ashita.events.register('d3d_present','decker_draw',function()
                         end
                     end
                     if not state.keyAssignmentPage and imgui.CollapsingHeader('Cooldown text colours') then
-            imgui.Text('Cooldown text colours (experimental)');
+            imgui.Text('Recast clocks and countdowns (manual mappings)');
             local cool={state.cooldownEnabled};
-            if imgui.Checkbox('Red macro text when ability/spell is recasting',cool) then state.cooldownEnabled=cool[1]; save_display(); end
-            imgui.TextWrapped('Only explicitly mapped actions are checked. Unmapped buttons stay their normal colour. Red buttons remain clickable. Spell IDs and ability recast timer IDs are different; do not use ability IDs as timer IDs.');
+            if imgui.Checkbox('Show clocks and cooldown countdowns',cool) then state.cooldownEnabled=cool[1]; save_display(); end
+            local auto={state.cooldownAutoNames};
+            if imgui.Checkbox('Guess recast from exact macro label (display only)',auto) then state.cooldownAutoNames=auto[1]; save_display(); end
+            imgui.TextWrapped('Only exact spell/ability names (e.g. Flash) can be guessed from short button labels. These cosmetic guesses do NOT verify native macro contents. Manual mappings override guesses.');
+            imgui.TextWrapped('Clocks use confirmed manual per-button mappings only; game macro labels are not enough to prove the action. The timer value comes from Ashita recast memory. Missing/unknown timers are not shown as READY.');
             local page,fingerprint=cooldown.page();
+            local mapped=0;
+            if page then for n=1,20 do if cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
+            imgui.Text(('Mapped actions on current page: %d / 20'):format(mapped));
+            if not state.cooldownEnabled then imgui.TextWrapped('Clocks are OFF. Tick Show clocks and cooldown countdowns above.'); end
+            if mapped==0 then imgui.TextWrapped('No manual mappings on this book/set. Exact short labels may still show inferred timers. Other buttons need verified spell Index or ability TIMER_ID mappings.'); end
             for i=1,20 do
                 local b=cooldown.binding(page,fingerprint,i);
                 local label=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);

@@ -1,0 +1,29 @@
+name: Decker canonical Development input and recast regression
+on:
+  pull_request:
+    branches: [development]
+    paths:
+      - 'addons/decker/decker.lua'
+      - 'tests/regression.lua'
+      - '.github/workflows/decker-development-input.yml'
+  push:
+    branches: [development]
+    paths:
+      - 'addons/decker/decker.lua'
+      - 'tests/regression.lua'
+      - '.github/workflows/decker-development-input.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.4 and LuaJIT
+        run: sudo apt-get update -qq && sudo apt-get install -y lua5.4 luajit
+      - name: Check syntax and full regression suite on both runtimes
+        run: |
+          lua5.4 -e "assert(loadfile('addons/decker/decker.lua'))"
+          luajit -b addons/decker/decker.lua /tmp/decker-development.ljbc
+          python3 tests/run_lua54.py
+          luajit tests/regression.lua .
+      - name: Report source checksum
+        run: sha256sum addons/decker/decker.lua
