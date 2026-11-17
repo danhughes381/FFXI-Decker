@@ -129,6 +129,18 @@ test('chat entry never consumes mod keys or target navigation',function()
  assert(not e.blocked and #requested==n)
  chatOpen=0;s.navKeysEnabled=false;s.keybinds=false
 end)
+test('unified chat handoff clears held Decker keys and leaves game keys untouched',function()
+ ready();s.navKeysEnabled=true;s.navModifierHeld=true;s.navToggleActive=true
+ s.held={[2]=true,[54]=true};s.suppressed={[2]=true};s.navCaptured={[203]=true};s.nativeNavHeld={[200]=true}
+ chatOpen=1
+ local e={key=2,down=true};events.decker_exclusive_key_press(e)
+ assert(not e.blocked and not next(s.held) and not next(s.suppressed))
+ assert(not s.navToggleActive and not s.navModifierHeld and not next(s.navCaptured))
+ local raw={};for i=0,255 do raw[i]=0 end;raw[2]=128;raw[54]=128
+ events.decker_exclusive_key_state({data_raw=raw,size=256})
+ assert(raw[2]==128 and raw[54]==128)
+ chatOpen=0;s.navKeysEnabled=false;s.keybinds=false
+end)
 test('friendly target prompt yields arrows and Enter',function()
  ready();s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
  subTarget=1;local n=#requested
