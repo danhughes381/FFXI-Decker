@@ -111,7 +111,7 @@ function cooldown.decode(value)
     return {kind=kind,id=tonumber(id),fingerprint=fingerprint};
 end
 -- Recasts are display observations, not proof that the macro executed a cast.
-local recastObserver={observed={},events={}};
+local recastObserver={observed={},events={},pending={}};
 local function cooldown_recast(binding)
     if not binding or not state.cooldownEnabled then return nil; end
     local ok,remaining=pcall(function()
@@ -142,6 +142,18 @@ function cooldown.fraction(seconds,highest)
     if type(highest)~='number' or highest<=0 then return 1; end
     return math.max(0,math.min(1,seconds/highest));
 end
+function cooldown.reset_observer()
+    recastObserver.observed={};recastObserver.events={};recastObserver.pending={};
+end
+function cooldown.note_request(row,slot)
+    local page,fp=cooldown.page();
+    local ix=(row=='ALT' and 10 or 0)+slot;
+    local b=cooldown.binding(page,fp,ix);
+    if not b then return nil; end
+    local key=(page or '')..ix..':'..b.kind..':'..b.id;
+    recastObserver.pending[key]={at=os.time(),profile=state.profileId,row=row,slot=slot};
+    return key;
+end
 function cooldown.observe(key,seconds)
     if type(key)~='string' or type(seconds)~='number' then return nil; end
     local old=recastObserver.observed[key];
@@ -151,7 +163,15 @@ function cooldown.observe(key,seconds)
         if #recastObserver.events>8 then table.remove(recastObserver.events,1); end
         return 'recast ready';
     end
-    if old and old==0 and seconds>0 then return 'recast started (cast result unknown)'; end
+    if old and old==0 and seconds>0 then
+        local pending=recastObserver.pending[key];recastObserver.pending[key]=nil;
+        if pending and pending.profile==state.profileId
+          and os.time()-pending.at>=0 and os.time()-pending.at<=10 then
+            if analytics and analytics.note_recast then analytics.note_recast(pending.row,pending.slot); end
+            return 'recast started after Decker request (cast result unknown)';
+        end
+        return 'recast started (cast result unknown)';
+    end
     return nil;
 end
 function cooldown.alerts() return recastObserver.events; end
@@ -397,6 +417,7 @@ local function refresh_profile()
     if id==state.profileId then return; end
     if state.profileReady then save_display(); end
     analytics.discard_on_profile_change();
+    cooldown.reset_observer();
     state.profileId=id; state.profileReady=false; state.statebarDrag=nil;
     for _,keys in pairs(sectionKeys) do for _,key in ipairs(keys) do state[key]=copy_value(profileDefaults[key]); end end
     state.windowPositions={}; state.layoutDirtyAt=nil;
@@ -766,12 +787,17 @@ function analytics.finish(item,accepted)
     if accepted then item.requests=item.requests+1;a.requests=a.requests+1;
     else item.refused=item.refused+1;a.refused=a.refused+1; end
 end
+function analytics.note_recast(row,slot)
+    local a=analytics.active;
+    if not a or a.profile~=state.profileId then return; end
+    a.recastEvidence=(a.recastEvidence or 0)+1;
+end
 function analytics.report()
     local a=analytics.active or analytics.last;
     if not a then return {'No Combat Analytics session recorded.'}; end
     local duration=math.max(0,(a.ended or os.time())-a.started);
     local result={('Combat Analytics %s: %s (%ds)'):format(a.kind:upper(),a.label,duration),
-        ('Requests %d / attempts %d / refused %d. Native invocation is NOT a confirmed cast.'):format(a.requests,a.attempts,a.refused)};
+        ('Requests %d / attempts %d / refused %d / recast-start evidence %d. No confirmed casts.'):format(a.requests,a.attempts,a.refused,a.recastEvidence or 0)};
     local sorted={};for _,entry in pairs(a.slots) do sorted[#sorted+1]=entry;end
     table.sort(sorted,function(x,y)
         if x.attempts~=y.attempts then return x.attempts>y.attempts end
@@ -835,6 +861,7 @@ local function execute_slot(row,slot,source)
     if called then
         if begin_native_target_handoff then begin_native_target_handoff(); end
         record_execution(row,slot,'executed');
+        cooldown.note_request(row,slot);
     end
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
     say(state.clickSummary);
