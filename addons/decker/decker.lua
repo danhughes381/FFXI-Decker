@@ -1,9 +1,9 @@
--- Decker 1.50.42-dev: highlight unavailable macro actions.
+-- Decker 1.50.43-dev: check Ninja job access for Ninjutsu macros.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.42-dev';
+addon.version = '1.50.43-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -954,8 +954,12 @@ function selector.weapon_family(memory,resources,slot)
 end
 function selector.action_unavailable(kind,name,memory,resources)
     local player=memory:GetPlayer();
-    if kind=='ma' or kind=='magic' then
+    if kind=='ma' or kind=='magic' or kind=='nin' or kind=='ninjutsu' then
         local resource=resources:GetSpellByName(name,0);
+        if resource and tonumber(resource.Skill)==39 then
+            local main,sub=tonumber(player:GetMainJob()),tonumber(player:GetSubJob());
+            if main and main>0 and sub and sub>=0 and main~=13 and sub~=13 then return true; end
+        end
         return resource and player:HasSpellData() and player:HasSpell(resource.Index)==false;
     end
     local resource=resources:GetAbilityByName(name,0);
