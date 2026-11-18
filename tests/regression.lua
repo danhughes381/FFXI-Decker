@@ -1466,6 +1466,40 @@ test('clicked Cure yields a fresh native selector even if the action flag stays 
  s.navKeysEnabled=false;s.navToggleActive=false
 end)
 
+test('Cure confirmation reaches FFXI when both target flags stay false',function()
+ ready();s.visible=false;s.guideOpen=false;s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.bookPath=tmp;s.manualBook=1;s.trackedSet=1;s.names[1]='Cure4'
+ s.held={};s.navCaptured={};s.nativeNavHeld={};s.navPhysicalKeys={};s.navQueue={};s.deferredNav={}
+ local function saveMacro(target)
+  local file=assert(io.open(tmp..'/mcr.dat','wb'))
+  file:write(string.rep('\0',24))
+  for i,name in ipairs(s.names) do
+   local cmd=i==1 and ('/ma "Cure IV" '..target) or ''
+   file:write(string.rep('\0',4),cmd,string.rep('\0',366-#cmd),name,string.rep('\0',10-#name))
+  end
+  file:close()
+ end
+ saveMacro('<stal>')
+ local n=#requested
+ assert(api.execute('CTRL',1,'mouse'))
+ s.targetGraceUntil=0;s.targetHandoffUntil=0
+ for _,key in ipairs({200,208,28}) do
+  local e={key=key,down=true};events.decker_custom_set_navigation(e);assert(not e.blocked)
+  events.decker_custom_set_navigation({key=key,down=false})
+ end
+ events.decker_draw();assert(#requested==n+1)
+ local e={key=28,down=true};events.decker_custom_set_navigation(e);assert(e.blocked)
+ events.decker_custom_set_navigation({key=28,down=false})
+ s.navQueue={}
+ saveMacro('<me>')
+ assert(api.execute('CTRL',1,'mouse'))
+ s.targetGraceUntil=0;s.targetHandoffUntil=0
+ e={key=28,down=true};events.decker_custom_set_navigation(e)
+ assert(e.blocked,'saved self-only Cure does not arm targeting')
+ events.decker_custom_set_navigation({key=28,down=false})
+ s.navQueue={};s.navKeysEnabled=false;s.bookPath=''
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 

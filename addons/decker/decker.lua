@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.39-dev';
+addon.version = '1.50.40-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -890,6 +890,35 @@ local function record_execution(row,slot,source)
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
 local selector={};
+function selector.saved_target(index,name)
+    local path=(state.bookPath or ''):gsub('[\\/]+$','');
+    local page=(state.manualBook-1)*10+state.trackedSet-1;
+    if path~='' then
+        local file=io.open(path..'/mcr'..(page==0 and '' or tostring(page))..'.dat','rb');
+        if file then
+            local bytes=file:read(7625); file:close();
+            if bytes and #bytes==7624 then
+                local matches=true;
+                for slot=1,20 do
+                    local label=bytes:sub(395+(slot-1)*380,404+(slot-1)*380):match('^[^%z]*');
+                    if label~=(state.names[slot] or '') then matches=false; break; end
+                end
+                if matches then
+                    local offset=29+(index-1)*380;
+                    for line=0,5 do
+                        local start=offset+line*61;
+                        local command=bytes:sub(start,start+60):match('^[^%z]*'):lower();
+                        if command:match('^%s*/[%a]+%s+.*<st%a*>%s*$') then return true; end
+                    end
+                    return false;
+                end
+            end
+        end
+    end
+    -- The shared Storm XI PLD books label the alliance macros Cure3 and Cure4.
+    -- Saved commands take precedence, including a Cure changed to <me>.
+    return name=='Cure3' or name=='Cure4';
+end
 local function execute_slot(row,slot,source)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     local metric=analytics.attempt(row,slot,source);
@@ -920,13 +949,14 @@ local function execute_slot(row,slot,source)
     -- Explicit opt-in; neither modifies macros nor patches the original HUD.
     local modifier=(row=='CTRL' and 1 or 2);
     local subtargetBefore=selector.read_subtarget();
+    local expectsTarget=selector.saved_target(idx+1,name);
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
     analytics.finish(metric,called);
     if called then
         -- Any macro launch path can open native targeting. Only navigation keys yield.
-        selector.begin_handoff(subtargetBefore);
+        selector.begin_handoff(subtargetBefore,expectsTarget);
         record_execution(row,slot,'executed');
         cooldown.note_request(row,slot);
     end
@@ -1686,18 +1716,25 @@ local function yield_chat_input()
     state.suppressed={};state.held={};state.nativeNavHeld={}
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
-function selector.begin_handoff(subtargetBefore)
+function selector.end_explicit()
+    selector.explicitUntil=nil;
+    state.targetHandoffUntil=0; state.targetGraceUntil=0;
+    selector.macroPrompt=false;
+end
+function selector.begin_handoff(subtargetBefore,expectsTarget)
     -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
     -- ability keys or StateBar gear commands during engaged combat.
     state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
     selector.subtargetBefore=subtargetBefore;
     selector.macroPrompt=false;
+    selector.explicitUntil=expectsTarget and (os.clock()+30) or nil;
     -- Keep the user's toggle and the owner of any key still held.
     state.navQueue={};state.deferredNav={};
     state.navRepeatAt={};
 end
 function selector.handoff_active()
     local now=os.clock();
+    if selector.explicitUntil and now<selector.explicitUntil then return true; end
     local prompt=selector.active();
     -- When the host exposes both flags, protect actual native targeting even
     -- when launched outside Decker. Bare subtarget flags may stay set in combat,
@@ -1792,8 +1829,7 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     end
     if not state.navKeysEnabled then return; end
     if e.key==1 and not e.down then
-        selector.macroPrompt=false;
-        state.targetHandoffUntil=0;state.targetGraceUntil=0;
+        selector.end_explicit();
     end
     if e.key==nav_scan() then
         if selector.handoff_active() then
@@ -1813,6 +1849,9 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
             e.blocked=true;
             if not e.down then state.navCaptured[e.key]=nil; end
         else
+            if not e.down and state.nativeNavHeld[e.key] and (e.key==28 or e.key==156) and selector.explicitUntil then
+                selector.end_explicit();
+            end
             state.nativeNavHeld[e.key]=e.down and true or nil;
         end
         return;
@@ -1893,6 +1932,9 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
             if state.navCaptured[key] then
                 if nowDown then ptr[key]=0; else state.navCaptured[key]=nil; end
             else
+                if not nowDown and state.nativeNavHeld[key] and (key==28 or key==156) and selector.explicitUntil then
+                    selector.end_explicit();
+                end
                 state.nativeNavHeld[key]=nowDown and true or nil;
             end
         else
