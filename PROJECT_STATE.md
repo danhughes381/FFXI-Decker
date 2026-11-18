@@ -1,3 +1,7 @@
+## 18 November 2026 — Shield Bash recast clock fix candidate
+
+Exact-label automatic recast lookup now allows names up to 20 characters so Ashita can resolve the “Shield Bash” ability resource and its recast timer ID. It remains display-only and does not inspect native macro contents. Added a mocked regression assertion for the full label. The candidate is on `fix/shield-bash-recast-20261118`; CI and live Ashita/VanaCore confirmation are pending. Stable updater manifests are unchanged.
+
 # Decker — project state
 
 Updated 21 October 2026. Owner selected **v1.50.12-dev as the latest main, Stable and Development baseline**.
