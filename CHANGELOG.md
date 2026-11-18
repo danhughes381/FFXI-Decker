@@ -2,7 +2,7 @@
 
 - Permit exact macro labels up to 20 characters in the read-only resource lookup, so “Shield Bash” can resolve to its Ashita ability recast timer ID.
 - Keep manual mappings, the existing exact-name setting, and display-only behavior unchanged. No macro contents are read and no game actions are issued.
-- Added a mocked regression case for Shield Bash inference; live Ashita/VanaCore recast display still needs in-game confirmation.
+- The mocked suite passed 119 regression groups under Lua 5.4 and LuaJIT; live Ashita/VanaCore recast display still needs in-game confirmation.
 
 ## 1.50.19-dev — navigation and saved-title test candidate
 
