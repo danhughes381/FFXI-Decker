@@ -1,9 +1,9 @@
--- Decker 1.50.38-dev: bounded input diagnostics and live-validation gate.
+-- Decker 1.50.39-dev: native macro target handoff and navigation recovery.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.38-dev';
+addon.version = '1.50.39-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
