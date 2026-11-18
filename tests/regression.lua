@@ -22,7 +22,7 @@ ashita={events={register=function(_,name,cb) assert(not events[name]);events[nam
 local player={GetName=function() return character end,GetServerId=function() return 1 end}
 AshitaCore={GetMemoryManager=function() return {GetPlayer=function() return player end,GetTarget=function() return {GetIsSubTargetActive=function() return subTarget end,GetActionTargetActive=function() return actionTarget end} end} end,GetChatManager=function() return {IsInputOpen=function() return chatOpen end,QueueCommand=function(_,mode,c) assert(mode==-1);requested[#requested+1]=c end} end}
 local f=assert(io.open(root..'/addons/decker/decker.lua'));local source=f:read('*a');f:close()
-local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,inputDiag=inputDiag,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
+local expose='\nreturn {state=state,classic=classic,glass=glass,connect=connect_macros,book=select_native_book,parseBooks=parse_book_titles,importBooks=import_book_titles,refreshBooks=refresh_book_titles,navOptions=NAV_KEY_OPTIONS,navKeys=NAV_KEYS,conflict=direct_conflict,bookLabel=book_label,drawrow=draw_row,drawGlassText=draw_glass_text,pair=pair,pin=pin_window,geometry=geometry,guide=open_guide,guideDraw=guide_draw,nav=nav_command,refresh=refresh_profile,save=save_display,load=load_display,request=request_statebar,valid=valid_command,cooldown=cooldown,reset=restore_section,mapped=mapped_key,hotkey=statebar_hotkey_slot,execute=execute_slot,analytics=analytics,inputDiag=inputDiag,selector=selector,updater=updater,manifest=update_manifest,newer=update_newer,promote=update_promote,rollback=update_rollback,start=update_start,poll=update_poll,updateScript=update_script,setKernel=function(k) update_kernel=k end}'
 -- Profile IO goes into an isolated directory, preserving real user settings.
 local tmp=os.tmpname();os.remove(tmp);assert((function(v) return v==0 or v==true end)(os.execute('mkdir -p '..tmp)))
 local path=tmp..'/decker.lua';f=assert(io.open(path,'w'));f:write(source,expose);f:close()
@@ -1505,6 +1505,26 @@ test('Cure confirmation reaches FFXI when both target flags stay false',function
  assert(e.blocked,'saved self-only Cure does not arm targeting')
  events.decker_custom_set_navigation({key=28,down=false})
  s.navQueue={};s.navKeysEnabled=false;s.bookPath=''
+end)
+
+test('macro access distinguishes an unequipped weapon and unavailable jobs from known actions',function()
+ local sel=api.selector
+ local weapon,known=3,true
+ local player={HasAbilityData=function()return true end,HasSpellData=function()return true end,
+   HasWeaponSkill=function(_,id)assert(id==45);return known end,
+   HasAbility=function(_,id)assert(id==600);return known end,
+   HasSpell=function(_,id)assert(id==112);return known end}
+ local memory={GetPlayer=function()return player end,GetInventory=function()return {
+   GetEquippedItem=function(_,slot)assert(slot==0);return {Index=1} end,
+   GetContainerItem=function()return {Id=77}end}end}
+ local resources={GetAbilityByName=function(_,name)return {Id=name=='Atonement' and 45 or 600}end,
+   GetSpellByName=function()return {Index=112}end,GetItemById=function()return {Skill=weapon}end}
+ assert(not sel.action_unavailable('ws','Atonement',memory,resources))
+ weapon=4;assert(sel.action_unavailable('ws','Atonement',memory,resources))
+ weapon=3;known=false;assert(sel.action_unavailable('ws','Atonement',memory,resources))
+ assert(sel.action_unavailable('ja','Sentinel',memory,resources))
+ assert(sel.action_unavailable('ma','Flash',memory,resources))
+ known=true;assert(not sel.action_unavailable('ma','Flash',memory,resources))
 end)
 
 os.execute('rm -r '..tmp)
