@@ -33,3 +33,7 @@ See [Decker live input acceptance](DECKER_LIVE_INPUT_ACCEPTANCE.md). GitHub mock
 Source and tests must be merged together. Never update the canonical development source while leaving tests/regression.lua on a legacy branch. Diagnostics must remain off by default, bounded, private and removable without affecting game behaviour.
 
 A Development test candidate may be published for Windows acceptance, provided it is explicitly labelled "not live verified" until supported by real game evidence. CI green alone is insufficient.
+
+## Stable promotion — 18 November 2026
+
+The current Stable and Development manifests both serve the exact `1.50.40-dev` source at `6cec02fe504bf6e0334efcb61bfa705624266322`. The version string is unchanged to preserve the verified build byte for byte. Dan confirmed the reported Cure targeting problem was resolved in game and requested Stable promotion. The full Windows acceptance checklist has not been independently completed.
