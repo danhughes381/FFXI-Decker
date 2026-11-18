@@ -1527,6 +1527,19 @@ test('macro access distinguishes an unequipped weapon and unavailable jobs from 
  known=true;assert(not sel.action_unavailable('ma','Flash',memory,resources))
 end)
 
+test('learned Ninjutsu is unavailable without Ninja main or subjob',function()
+ local main,sub=7,1
+ local player={GetMainJob=function()return main end,GetSubJob=function()return sub end,
+   HasSpellData=function()return true end,HasSpell=function()return true end}
+ local memory={GetPlayer=function()return player end}
+ local resources={GetSpellByName=function()return {Index=338,Skill=39}end}
+ local check=api.selector.action_unavailable
+ assert(check('ma','Utsusemi: Ichi',memory,resources))
+ assert(check('ninjutsu','Utsusemi: Ichi',memory,resources))
+ sub=13;assert(not check('ma','Utsusemi: Ichi',memory,resources))
+ main,sub=13,1;assert(not check('ma','Utsusemi: Ichi',memory,resources))
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 
