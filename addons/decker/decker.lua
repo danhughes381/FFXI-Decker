@@ -1,9 +1,9 @@
--- Decker 1.50.39-dev: native macro target handoff and navigation recovery.
+-- Decker 1.50.41-dev: clear pending StateBar highlights on toggle-off.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.40-dev';
+addon.version = '1.50.41-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1141,7 +1141,7 @@ local function request_statebar(i)
     else requested=execute_slot(b.row,b.slot,'statebar'); end
     if requested and state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
     if requested then
-        local tracked,axis=classic.tracked_mode(b);
+        local tracked,axis,value=classic.tracked_mode(b);
         classic.readAt=0;
         if state.classic75 then
             state.clickSummary='Requested '..b.label..'; check saved mode or /lac fwd '..b.job:lower()..' status.';
@@ -1150,7 +1150,9 @@ local function request_statebar(i)
         elseif tracked then
             -- Aegis readback takes precedence. Until it is available, retain
             -- an amber requested-mode indicator instead of blanking the StateBar.
-            state.statebarSelected=i;
+            local defenceToggle=axis=='defence' and (value=='pdt' or value=='mdt');
+            if defenceToggle and state.statebarSelected==i then state.statebarSelected=0;
+            else state.statebarSelected=i; end
         elseif b.kind~='utility' then
             if state.statebarSelected==i then state.statebarSelected=0;
             else state.statebarSelected=i; end
