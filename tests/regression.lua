@@ -1414,6 +1414,32 @@ test('input trace coalesces repeated polling and is cleared when requested',func
  d.enabled=false
 end)
 
+test('queued Enter runs with a stale combat subtarget flag and keeps sticky navigation',function()
+ ready();s.visible=false;s.guideOpen=false;s.navKeysEnabled=true;s.stickyNavigation=true;s.navToggleActive=true
+ s.held={[29]=true};s.navCaptured={};s.nativeNavHeld={};s.navPhysicalKeys={};s.navQueue={};s.deferredNav={}
+ local raw={};for key=0,255 do raw[key]=0 end
+ events.decker_custom_set_state({data_raw=raw,size=256})
+ assert(not s.held[29],'poll repairs a missed Ctrl release')
+ subTarget=1;actionTarget=0
+ local n=#requested
+ for _,key in ipairs({28,156}) do
+  local down={key=key,down=true};events.decker_custom_set_navigation(down)
+  assert(down.blocked,'Decker should own the armed macro key')
+  events.decker_draw()
+  assert(s.navToggleActive,'a successful macro should keep sticky navigation armed')
+  local up={key=key,down=false};events.decker_custom_set_navigation(up)
+  assert(up.blocked,'captured Enter must keep ownership through release')
+  s.targetGraceUntil=0
+ end
+ assert(#requested==n+2,'main and numpad Enter should each request one macro')
+ actionTarget=1
+ local confirm={key=28,down=true};events.decker_custom_set_navigation(confirm)
+ events.decker_draw()
+ assert(not confirm.blocked and #requested==n+2,'native confirmation must reach the game without replaying the macro')
+ events.decker_custom_set_navigation({key=28,down=false})
+ s.navKeysEnabled=false;s.navToggleActive=false
+end)
+
 os.execute('rm -r '..tmp)
 print(passed..' regression groups passed (mocked host; not in-game validation)')
 
