@@ -1,9 +1,9 @@
--- Decker 1.50.38-dev: bounded input diagnostics and live-validation gate.
+-- Decker 1.50.39-dev: native macro target handoff and navigation recovery.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.38-dev';
+addon.version = '1.50.39-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -889,7 +889,7 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
-local begin_native_target_handoff;
+local selector={};
 local function execute_slot(row,slot,source)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     local metric=analytics.attempt(row,slot,source);
@@ -919,14 +919,14 @@ local function execute_slot(row,slot,source)
     -- Per Ashita macro library: CTRL=1, ALT=2, each with zero-based slot 0..9.
     -- Explicit opt-in; neither modifies macros nor patches the original HUD.
     local modifier=(row=='CTRL' and 1 or 2);
+    local subtargetBefore=selector.read_subtarget();
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
     analytics.finish(metric,called);
     if called then
-        -- Only Decker navigation needs a temporary native subtarget handoff. An
-        -- ordinary mouse/direct macro request must never disable subsequent combat hotkeys.
-        if source=='navigation' and begin_native_target_handoff then begin_native_target_handoff(); end
+        -- Any macro launch path can open native targeting. Only navigation keys yield.
+        selector.begin_handoff(subtargetBefore);
         record_execution(row,slot,'executed');
         cooldown.note_request(row,slot);
     end
@@ -1668,7 +1668,6 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
-local selector={};
 local function game_input_open()
     local ok,flag=pcall(function() return AshitaCore:GetChatManager():IsInputOpen(); end)
     -- Chat input is safety-critical; unknown state must fail closed.
@@ -1687,37 +1686,49 @@ local function yield_chat_input()
     state.suppressed={};state.held={};state.nativeNavHeld={}
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
-begin_native_target_handoff=function()
+function selector.begin_handoff(subtargetBefore)
     -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
     -- ability keys or StateBar gear commands during engaged combat.
     state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
-    state.navToggleActive=false;state.navModifierHeld=false
-    state.navQueue={};state.deferredNav={};state.navCaptured={}
-    state.navRepeatAt={};state.navPhysicalKeys={}
+    selector.subtargetBefore=subtargetBefore;
+    selector.macroPrompt=false;
+    -- Keep the user's toggle and the owner of any key still held.
+    state.navQueue={};state.deferredNav={};
+    state.navRepeatAt={};
 end
-local function native_target_handoff()
+function selector.handoff_active()
     local now=os.clock();
     local prompt=selector.active();
     -- When the host exposes both flags, protect actual native targeting even
     -- when launched outside Decker. Bare subtarget flags may stay set in combat,
     -- so do not allow them to hijack navigation forever.
     if prompt and selector.actionSupported then return true; end
+    if not selector.subtargetActive then selector.macroPrompt=false; end
+    if selector.macroPrompt then return true; end
     if now>=(state.targetHandoffUntil or 0) then return false; end
+    if selector.subtargetActive and selector.subtargetBefore==false then
+        selector.macroPrompt=true;
+        return true;
+    end
     if prompt then return true; end
     return now<(state.targetGraceUntil or 0);
 end
-function selector.active()
-    local ok,flag,actionOk,action;
-    ok,flag=pcall(function()
+function selector.read_subtarget()
+    local ok,flag=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
     end);
-    actionOk,action=pcall(function()
+    if not ok or (type(flag)~='boolean' and type(flag)~='number') then return nil; end
+    return flag==true or (type(flag)=='number' and flag>0);
+end
+function selector.active()
+    local subActive=selector.read_subtarget();
+    local actionOk,action=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetActionTargetActive();
     end);
-    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number');
+    selector.supported=subActive~=nil;
+    selector.subtargetActive=subActive;
     selector.actionSupported=actionOk and (type(action)=='boolean' or type(action)=='number');
     if not selector.supported then return false; end
-    local subActive=flag==true or (type(flag)=='number' and flag>0);
     if selector.actionSupported then
         return subActive and (action==true or (type(action)=='number' and action>0));
     end
@@ -1726,6 +1737,12 @@ end
 function selector.yield_navigation()
     state.navQueue={}; state.deferredNav={};
     state.navRepeatAt={}; state.navPhysicalKeys={};
+end
+function selector.validate_queue()
+    if #state.navQueue>0 or (state.deferredNav and #state.deferredNav>0) then
+        if game_input_open() then yield_chat_input();
+        elseif selector.handoff_active() then selector.yield_navigation(); end
+    end
 end
 local NAV_REPEAT_DELAY=.35;
 local NAV_REPEAT_INTERVAL=.08;
@@ -1774,8 +1791,12 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         yield_chat_input();return
     end
     if not state.navKeysEnabled then return; end
+    if e.key==1 and not e.down then
+        selector.macroPrompt=false;
+        state.targetHandoffUntil=0;state.targetGraceUntil=0;
+    end
     if e.key==nav_scan() then
-        if native_target_handoff() then
+        if selector.handoff_active() then
             trace_input('navigation','yield-target',e.key,e.down and 'down' or 'up',false,false,true,false)
             return
         end
@@ -1785,7 +1806,7 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
     end
     if not NAV_ACTIONS[e.key] and e.key~=row_key() then return; end
     state.nativeNavHeld=state.nativeNavHeld or {};
-    if native_target_handoff() or state.nativeNavHeld[e.key] then
+    if selector.handoff_active() or state.nativeNavHeld[e.key] then
         trace_input('navigation','yield-native-target',e.key,e.down and 'down' or 'up',false,false,true,false)
         selector.yield_navigation();
         if state.navCaptured[e.key] then
@@ -1819,6 +1840,9 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     local ptr=ffi.cast('uint8_t*',e.data_raw);
     local modifier=nav_scan();
     local physicalDown=ptr[modifier]~=0;
+    for _,key in ipairs({29,157,56,184,42,54}) do
+        if ptr[key]==0 then state.held[key]=nil; end
+    end
     if game_input_open() then
         if physicalDown~=state.navPhysicalDown then
             trace_input('modifier','physical-edge-during-chat',modifier,physicalDown and 'down' or 'up',false,true,false,physicalDown)
@@ -1827,7 +1851,7 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
         yield_chat_input()
         return
     end
-    local targeting=state.navKeysEnabled and native_target_handoff();
+    local targeting=state.navKeysEnabled and selector.handoff_active();
     if physicalDown~=state.navPhysicalDown then
         trace_input('modifier',targeting and 'yield-target' or 'physical-edge',
             modifier,physicalDown and 'down' or 'up',
@@ -1859,7 +1883,9 @@ ashita.events.register('key_state','decker_custom_set_state',function(e)
     if state.navKeysEnabled and not targeting then ptr[modifier]=0; end
     if targeting then selector.yield_navigation(); end
     state.nativeNavHeld=state.nativeNavHeld or {};
-    local activeKeys={}; for key,_ in pairs(NAV_ACTIONS) do activeKeys[key]=true; end; activeKeys[row_key()]=true;
+    local activeKeys={}; for key,_ in pairs(NAV_ACTIONS) do activeKeys[key]=true; end;
+    local rowKey=row_key();
+    if rowKey>=0 then activeKeys[rowKey]=true; end
     for key,_ in pairs(activeKeys) do
         local wasDown=state.navPhysicalKeys[key] or false;
         local nowDown=ptr[key]~=0;
@@ -1908,7 +1934,7 @@ ashita.events.register('key_data','decker_native_arrow_watch',function(e)
     if e.key==29 or e.key==157 or e.key==56 or e.key==184 or e.key==42 or e.key==54 then
         state.held[e.key]=e.down and true or nil;
     end
-    if not game_input_open() and not native_target_handoff() and not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
+    if not game_input_open() and not selector.handoff_active() and not e.blocked and (e.key==200 or e.key==208) and e.down and modifier_down() and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive))
         and state.phase>=4 and #state.names==20 and not selector.active() then
         state.pendingRefreshFrames=3;
         state.awaitingPageFingerprint=state.previousFingerprint;
@@ -1928,7 +1954,7 @@ end);
 -- Do not claim an authoritative selection cursor without a verified game getter.
 ashita.events.register('key_data','decker_native_horizontal_watch',function(e)
     if e.key~=203 and e.key~=205 then return; end
-    if not game_input_open() and not native_target_handoff() and e.down and modifier_down() and state.phase>=4 and not selector.active()
+    if not game_input_open() and not selector.handoff_active() and e.down and modifier_down() and state.phase>=4 and not selector.active()
         and not (state.navKeysEnabled and (state.navModifierHeld or state.navToggleActive)) then
         state.navSlot=nil;
         state.navRow=nil;
@@ -2411,9 +2437,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     if state.profileReady and os.clock()-(state.lastBookTitleCheck or 0)>5 then state.lastBookTitleCheck=os.clock(); refresh_book_titles(); end
     if state.layoutDirtyAt and os.clock()-state.layoutDirtyAt>=.5 then save_display(); end
-    if (#state.navQueue>0 or (state.deferredNav and #state.deferredNav>0)) and selector.active() then
-        selector.yield_navigation();
-    end
+    selector.validate_queue();
     if #state.navQueue>0 then
         -- Consume input transitions once per frame, in order.  Limit queued
         -- set changes while a native request is unresolved; never advance
@@ -2432,6 +2456,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     end
                 else
                     nav_command(key,repeating);
+                    if (key==28 or key==156) and selector.handoff_active() then break; end
                 end
             end
         end

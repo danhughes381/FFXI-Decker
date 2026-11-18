@@ -88,3 +88,7 @@ Keep native action rows and custom StateBars as saved. The opt-in preset supplie
 ## StateBar v1.50.26-dev
 
 Store slot order and label sizes in the character CFG. Move hotkeys with their slots, keep Classic 75 order separate from custom order and use the saved Aegis state for supported mode highlights. The owner requested both updater channels carry the same tested source and version.
+
+## Queued macro navigation and native targeting
+
+Use the same target-handoff check for the keyboard hooks and the frame that executes queued navigation. Preserve sticky navigation and captured-key ownership during temporary handoff. Clear stale modifier state when keyboard polling sees a release.

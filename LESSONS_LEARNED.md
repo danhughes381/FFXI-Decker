@@ -22,3 +22,5 @@ A CTRL or ALT position can represent different actions in every book and set. Ke
 - An open macro HUD does not itself consume alliance navigation. Armed Decker navigation captures the same arrows and Enter in both event and held-state paths. The native targeting guard must cover both, discard deferred page work and preserve the owner of keys already down until release.
 
 - A remembered button press cannot establish that an Aegis toggle remains active. Mocked Decker checks now cover the transition from MDT to neutral, sparse hotkey reordering and separate font settings after a CFG reload.
+
+- A subtarget flag can be true while the action-target flag is false. In the mocked Ashita regression, keyboard capture accepted Enter in that state. The older frame handler could still drop the queued macro using the raw selector check. Test the route through the draw callback as well as the keyboard hooks.
