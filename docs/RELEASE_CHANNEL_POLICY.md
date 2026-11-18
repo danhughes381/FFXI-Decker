@@ -5,7 +5,7 @@
 Two user-facing channels exist, with exactly **one canonical Development line**:
 
 - **Stable**: v1.50.34, based on the Work-authored chat-input build. Official source branch: `main`. The `stable` branch mirrors this code. No Combat Analytics or newer recast clocks in this Stable version.
-- **Development**: v1.50.38-dev, consolidated chat input/target handoff, PLD tank-mode highlight fix, exact-name recast display hints and Combat Analytics. Official source branch: `development`. Do not treat old `dev/decker-v1.49.5-integration`, `fix/*`, `feature/*`, or Work branches as alternative release channels.
+- **Development**: v1.50.39-dev, consolidated chat input/target handoff, PLD tank-mode highlight fix, exact-name recast display hints and Combat Analytics. Official source branch: `development`. Do not treat old `dev/decker-v1.49.5-integration`, `fix/*`, `feature/*`, or Work branches as alternative release channels.
 
 The in-game updater reads `updates/development.txt` or `updates/stable.txt`, depending on its selected channel. The manifest pins an **immutable source commit** plus SHA-256 and version; branch names themselves are not authoritative. Mirrors of these two manifests in `main`, `development`, `stable` and the legacy integration branch are strictly compatibility copies of the same pair, never separate channels.
 
@@ -21,7 +21,7 @@ The in-game updater reads `updates/development.txt` or `updates/stable.txt`, dep
 
 ## Current pinned releases
 
-- Development v1.50.38-dev: `1ff1cfdc5e28be5a67d7c5e464c5e5457dd2f051`, SHA-256 `3c2a041d101f8a206f4b75021584271cfad903b715f527aa8a8fe714c26f2a96`. 114 mocked regression groups pass under Lua 5.4 and LuaJIT.
+- Development v1.50.39-dev: `7f43bd2a57b5db3cb8ef0a14f175f57a582e40e9`, SHA-256 `1a8cf95db4a910750fdfd739d054ce7a15200a4eedc16d81373c87eed94064a1`. The Windows LuaJIT run passed 116 mocked regression groups, including clicked Cure, native target confirmation and Enter recovery.
 - Stable v1.50.34: `8f08412f391cebd00f7663f1eabd4e82b8c7514e`, SHA-256 `b4ee5d37a1fee84879a41e64b3f323955b1213cbf636952c4e34e480ac4d71e3`. 93 mocked regression groups pass under Lua 5.4 and LuaJIT.
 
 Neither build has been directly installed or live tested on the user's Windows machine by this process.
