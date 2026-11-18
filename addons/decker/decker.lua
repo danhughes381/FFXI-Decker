@@ -1,9 +1,9 @@
--- Decker 1.50.43-dev: check Ninja job access for Ninjutsu macros.
+-- Decker 1.50.44-dev: include Shield Bash in exact-label recast clocks.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.43-dev';
+addon.version = '1.50.44-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -117,7 +117,7 @@ local recastObserver={observed={},events={},pending={}};
 local inferredCooldown={};
 function cooldown.infer(name)
     if not state.cooldownAutoNames or type(name)~='string'
-        or #name<2 or #name>8 or name:find('[^%w %-%._]') then return nil; end
+        or #name<2 or #name>20 or name:find('[^%w %-%._]') then return nil; end
     if inferredCooldown[name] then return inferredCooldown[name]; end
     local ok,binding=pcall(function()
         local res=AshitaCore:GetResourceManager();
