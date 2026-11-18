@@ -889,7 +889,7 @@ local function record_execution(row,slot,source)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
-local begin_native_target_handoff;
+local selector={};
 local function execute_slot(row,slot,source)
     if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
     local metric=analytics.attempt(row,slot,source);
@@ -919,14 +919,14 @@ local function execute_slot(row,slot,source)
     -- Per Ashita macro library: CTRL=1, ALT=2, each with zero-based slot 0..9.
     -- Explicit opt-in; neither modifies macros nor patches the original HUD.
     local modifier=(row=='CTRL' and 1 or 2);
+    local subtargetBefore=selector.read_subtarget();
     local called,err=pcall(function()
         ffi.cast('Decker_FsMacroContainer_runMacro_f',state.addresses.run)(controller,modifier,slot-1);
     end);
     analytics.finish(metric,called);
     if called then
-        -- Only Decker navigation needs a temporary native subtarget handoff. An
-        -- ordinary mouse/direct macro request must never disable subsequent combat hotkeys.
-        if source=='navigation' and begin_native_target_handoff then begin_native_target_handoff(); end
+        -- Any macro launch path can open native targeting. Only navigation keys yield.
+        selector.begin_handoff(subtargetBefore);
         record_execution(row,slot,'executed');
         cooldown.note_request(row,slot);
     end
@@ -1668,7 +1668,6 @@ end
 local function row_key() local key=ROW_KEYS[state.rowSwitchKey] or 207; return key~=nav_scan() and key or -1; end
 local NAV_ACTIONS={ [200]=true,[208]=true,[203]=true,[205]=true,[57]=true,[28]=true,[156]=true };
 local NAV_ARROWS={ [200]=true,[208]=true,[203]=true,[205]=true };
-local selector={};
 local function game_input_open()
     local ok,flag=pcall(function() return AshitaCore:GetChatManager():IsInputOpen(); end)
     -- Chat input is safety-critical; unknown state must fail closed.
@@ -1687,10 +1686,12 @@ local function yield_chat_input()
     state.suppressed={};state.held={};state.nativeNavHeld={}
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
-begin_native_target_handoff=function()
+function selector.begin_handoff(subtargetBefore)
     -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
     -- ability keys or StateBar gear commands during engaged combat.
     state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
+    selector.subtargetBefore=subtargetBefore;
+    selector.macroPrompt=false;
     -- Keep the user's toggle and the owner of any key still held.
     state.navQueue={};state.deferredNav={};
     state.navRepeatAt={};
@@ -1702,22 +1703,32 @@ function selector.handoff_active()
     -- when launched outside Decker. Bare subtarget flags may stay set in combat,
     -- so do not allow them to hijack navigation forever.
     if prompt and selector.actionSupported then return true; end
+    if not selector.subtargetActive then selector.macroPrompt=false; end
+    if selector.macroPrompt then return true; end
     if now>=(state.targetHandoffUntil or 0) then return false; end
+    if selector.subtargetActive and selector.subtargetBefore==false then
+        selector.macroPrompt=true;
+        return true;
+    end
     if prompt then return true; end
     return now<(state.targetGraceUntil or 0);
 end
-function selector.active()
-    local ok,flag,actionOk,action;
-    ok,flag=pcall(function()
+function selector.read_subtarget()
+    local ok,flag=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetIsSubTargetActive();
     end);
-    actionOk,action=pcall(function()
+    if not ok or (type(flag)~='boolean' and type(flag)~='number') then return nil; end
+    return flag==true or (type(flag)=='number' and flag>0);
+end
+function selector.active()
+    local subActive=selector.read_subtarget();
+    local actionOk,action=pcall(function()
         return AshitaCore:GetMemoryManager():GetTarget():GetActionTargetActive();
     end);
-    selector.supported=ok and (type(flag)=='boolean' or type(flag)=='number');
+    selector.supported=subActive~=nil;
+    selector.subtargetActive=subActive;
     selector.actionSupported=actionOk and (type(action)=='boolean' or type(action)=='number');
     if not selector.supported then return false; end
-    local subActive=flag==true or (type(flag)=='number' and flag>0);
     if selector.actionSupported then
         return subActive and (action==true or (type(action)=='number' and action>0));
     end
@@ -1780,6 +1791,10 @@ ashita.events.register('key_data','decker_custom_set_navigation',function(e)
         yield_chat_input();return
     end
     if not state.navKeysEnabled then return; end
+    if e.key==1 and not e.down then
+        selector.macroPrompt=false;
+        state.targetHandoffUntil=0;state.targetGraceUntil=0;
+    end
     if e.key==nav_scan() then
         if selector.handoff_active() then
             trace_input('navigation','yield-target',e.key,e.down and 'down' or 'up',false,false,true,false)
