@@ -107,3 +107,9 @@ Native subtarget/action-target selection takes precedence over Decker navigation
 Both updater manifests pin `e9d141c7a30b37b49b50db76015b2b13757c23a9`, SHA-256 `fc9b89eb0e8c88affb7f0885b82b7bc768700328962c5be6fb2baa8f465135a3`. Stable reads `main/updates/stable.txt`. Development clients read `dev/decker-v1.49.5-integration/updates/development.txt`.
 
 Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, ZIP integrity and HTTPS source checksum. Live Ashita/VanaCore interaction and Windows updater installation require a client check. Open **Settings → More → Updates** to install, then check StateBar drag order, text sizes and MDT on/off. Keep readiness issue #3 open for live results.
+
+## 18 November 2026 — Enter and navigation lockups
+
+[PR #51](https://github.com/danhughes381/FFXI-Decker/pull/51) changes the keyboard routing in `addons/decker/decker.lua` and adds coverage in `tests/regression.lua`. The Windows LuaJIT run passed 115 mocked regression groups, including both Enter keys, a stale combat subtarget, missed modifier release, and native target confirmation.
+
+Live Ashita validation is pending. Test repeated navigation macro execution while unengaged and engaged, native ally confirmation and the next macro, chat focus, and multibox focus switching with the regular addon stack. The updater is still pinned to its existing build.
