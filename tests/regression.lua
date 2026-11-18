@@ -1354,6 +1354,13 @@ test('StateBar tracks latest mode request with pending highlight until Aegis con
  local saved={enabled=true,locked=false,defence='pdt'}
  active,mode=api.classic.highlight(s.statebarSlots[1],1,saved,'PLD',false)
  assert(active and mode=='verified')
+ local n=#requested
+ assert(api.request(1) and #requested==n+1,'the second press still sends the toggle')
+ active=api.classic.highlight(s.statebarSlots[1],1,nil,'PLD',false)
+ assert(not active and s.statebarSelected==0,'pending colour clears on the second press without Aegis readback')
+ assert(api.request(1))
+ active,mode=api.classic.highlight(s.statebarSlots[1],1,nil,'PLD',false)
+ assert(active and mode=='pending','the third press can light the button again')
 end)
 
 test('input trace defaults off and stores only bounded non-sensitive categories',function()
