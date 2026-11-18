@@ -1,9 +1,9 @@
--- Decker 1.50.41-dev: clear pending StateBar highlights on toggle-off.
+-- Decker 1.50.42-dev: highlight unavailable macro actions.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.41-dev';
+addon.version = '1.50.42-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -890,33 +890,126 @@ local function record_execution(row,slot,source)
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
 local selector={};
-function selector.saved_target(index,name)
+-- Weapon-skill families follow Storm XI's weapon_skills dataset and Ashita skill IDs.
+selector.weaponSkills={};
+selector.wsNames={};
+for family,skills in pairs({
+    [1]={1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,228,230,231},
+    [2]={16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,224,232},
+    [3]={32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,225,226,227,229,233,238,239},
+    [4]={48,49,50,51,52,53,54,55,56,57,58,59,60,61,62},
+    [5]={64,65,66,67,68,69,70,71,72,73,74,75,76,77,78},
+    [6]={80,81,82,83,84,85,86,87,88,89,90,91,92,93,94},
+    [7]={96,97,98,99,100,101,102,103,104,105,106,107,108,109,110},
+    [8]={112,113,114,115,116,117,118,119,120,121,122,123,124,125,126},
+    [9]={128,129,130,131,132,133,134,135,136,137,138,139,140,141,142},
+    [10]={144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159},
+    [11]={160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,234},
+    [12]={176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,235,240},
+    [25]={192,193,194,196,197,198,199,200,201,202,203,204},
+    [26]={208,209,210,212,213,214,215,216,217,218,219,220,221,222},
+}) do
+    for _,id in ipairs(skills) do selector.weaponSkills[id]=family; end
+end
+function selector.actions(index,fresh)
     local path=(state.bookPath or ''):gsub('[\\/]+$','');
+    if path=='' then return nil; end
     local page=(state.manualBook-1)*10+state.trackedSet-1;
-    if path~='' then
+    local key=path..':'..page;
+    local t=os.clock();
+    local cached=selector.actionPage;
+    if fresh or not cached or cached.key~=key or t>=cached.untilAt then
+        cached={key=key,untilAt=t+.25,status={}};
+        selector.actionPage=cached;
         local file=io.open(path..'/mcr'..(page==0 and '' or tostring(page))..'.dat','rb');
         if file then
             local bytes=file:read(7625); file:close();
-            if bytes and #bytes==7624 then
-                local matches=true;
-                for slot=1,20 do
-                    local label=bytes:sub(395+(slot-1)*380,404+(slot-1)*380):match('^[^%z]*');
-                    if label~=(state.names[slot] or '') then matches=false; break; end
-                end
-                if matches then
-                    local offset=29+(index-1)*380;
-                    for line=0,5 do
-                        local start=offset+line*61;
-                        local command=bytes:sub(start,start+60):match('^[^%z]*'):lower();
-                        if command:match('^%s*/[%a]+%s+.*<st%a*>%s*$') then return true; end
-                    end
-                    return false;
-                end
-            end
+            if bytes and #bytes==7624 then cached.bytes=bytes; end
         end
     end
-    -- The shared Storm XI PLD books label the alliance macros Cure3 and Cure4.
-    -- Saved commands take precedence, including a Cure changed to <me>.
+    local bytes=cached.bytes;
+    if not bytes then return nil; end
+    for slot=1,20 do
+        local offset=(slot-1)*380;
+        if bytes:sub(395+offset,404+offset):match('^[^%z]*')~=(state.names[slot] or '') then return nil; end
+    end
+    if not cached.commands then cached.commands={}; end
+    if cached.commands[index] then return cached.commands[index],cached.status; end
+    local commands={};
+    for line=0,5 do
+        local first=29+(index-1)*380+line*61;
+        commands[#commands+1]=bytes:sub(first,first+60):match('^[^%z]*');
+    end
+    cached.commands[index]=commands;
+    return commands,cached.status;
+end
+function selector.weapon_family(memory,resources,slot)
+    local inventory=memory:GetInventory();
+    local entry=inventory:GetEquippedItem(slot);
+    local index=entry and tonumber(entry.Index);
+    if not index or index<=0 then return nil; end
+    local item=inventory:GetContainerItem(math.floor(index/256),index%256);
+    local resource=item and resources:GetItemById(item.Id);
+    return resource and tonumber(resource.Skill) or nil;
+end
+function selector.action_unavailable(kind,name,memory,resources)
+    local player=memory:GetPlayer();
+    if kind=='ma' or kind=='magic' then
+        local resource=resources:GetSpellByName(name,0);
+        return resource and player:HasSpellData() and player:HasSpell(resource.Index)==false;
+    end
+    local resource=resources:GetAbilityByName(name,0);
+    local id=resource and tonumber(resource.Id);
+    if kind=='ja' or kind=='jobability' then
+        return id and id>=512 and player:HasAbilityData() and player:HasAbility(id)==false;
+    end
+    if kind=='ws' or kind=='weaponskill' then
+        if not id or not selector.weaponSkills[id] then
+            local key=name:lower();
+            id=selector.wsNames[key];
+            if id==nil then
+                for candidate in pairs(selector.weaponSkills) do
+                    local ws=resources:GetAbilityById(candidate);
+                    local label=ws and ws.Name and ws.Name[1];
+                    if label then selector.wsNames[label:lower()]=candidate; end
+                end
+                id=selector.wsNames[key] or false;
+                selector.wsNames[key]=id;
+            end
+        end
+        local family=id and selector.weaponSkills[id];
+        if not family then return false; end
+        local equipped=selector.weapon_family(memory,resources,family>=25 and 2 or 0);
+        if equipped and equipped~=family then return true; end
+        return player:HasAbilityData() and player:HasWeaponSkill(id)==false;
+    end
+    return false;
+end
+function selector.unavailable(index)
+    local commands,status=selector.actions(index);
+    if not commands then return false; end
+    if status[index]~=nil then return status[index]; end
+    local ok,result=pcall(function()
+        local memory=AshitaCore:GetMemoryManager();
+        local resources=AshitaCore:GetResourceManager();
+        for _,command in ipairs(commands) do
+            local kind,name=command:match('^%s*/(%a+)%s+"([^"]+)"');
+            if not kind then kind,name=command:match('^%s*/(%a+)%s+([^<]+)'); end
+            if kind and selector.action_unavailable(kind:lower(),name:gsub('%s+$',''),memory,resources) then return true; end
+        end
+        return false;
+    end);
+    status[index]=ok and result==true;
+    return status[index];
+end
+function selector.saved_target(index,name)
+    local commands=selector.actions(index,true);
+    if commands then
+        for _,command in ipairs(commands) do
+            if command:lower():match('^%s*/[%a]+%s+.*<st%a*>%s*$') then return true; end
+        end
+        return false;
+    end
     return name=='Cure3' or name=='Cure4';
 end
 local function execute_slot(row,slot,source)
@@ -1331,7 +1424,7 @@ local function glass_available()
     end
     return glass.custom;
 end
-local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recastLabel)
+local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recastLabel,unavailable)
     local textScale=isStateBar and state.statebarScale or state.scale;
     local preferredLabel=isStateBar and state.statebarLabelSize>0 and state.statebarLabelSize or state.macroFontSize;
     local keySize=isStateBar and math.min(state.statebarKeySize*textScale,h*.45)
@@ -1361,7 +1454,7 @@ local function draw_glass_text(dl,text,x,y,w,h,shortcut,cooling,isStateBar,recas
             while #shown>0 and width(shown..'...',size)>w-10 do shown=shown:match('^(.*)[%z\1-\127\194-\244][\128-\191]*$') or ''; end
             shown=shown..'...';
         end
-        local col=imgui.GetColorU32(cooling and {1,.30,.30,1} or {.96,.96,.97,1});
+        local col=imgui.GetColorU32(unavailable and {1,.63,.23,1} or cooling and {1,.30,.30,1} or {.96,.96,.97,1});
         local tx=x+(w-width(shown,size))/2; local ty=y+math.max(2,(h-footer-size)/2);
         dl:AddText(font,size,{tx+1,ty+1},imgui.GetColorU32({0,0,0,1}),shown);
         dl:AddText(font,size,{tx,ty},col,shown);
@@ -1406,7 +1499,8 @@ local function draw_row(title,offset)
         local selected=state.navRow==title and state.navSlot==i;
         local binding=cooldown.binding(page,fingerprint,offset+i) or cooldown.infer(name);
         local remaining=cooldown_recast(binding);
-        local cooling=remaining~=nil and remaining>0;
+        local unavailable=selector.unavailable(offset+i);
+        local cooling=not unavailable and remaining~=nil and remaining>0;
         local recastKey=binding and ((page or 'inferred.')..(offset+i)..':'..binding.kind..':'..binding.id);
         if recastKey and remaining then cooldown.observe(recastKey,remaining); end
         local a=state.buttonOpacity;
@@ -1417,7 +1511,7 @@ local function draw_row(title,offset)
         colour(ImGuiCol_Button,base);
         colour(ImGuiCol_ButtonHovered,{base[1]+.05,base[2]+.05,base[3]+.05,a});
         colour(ImGuiCol_ButtonActive,{.45,.34,.13,a});
-        colour(ImGuiCol_Text,cooling and {1,.3,.3,1} or {.96,.96,.97,1});
+        colour(ImGuiCol_Text,unavailable and {1,.63,.23,1} or cooling and {1,.3,.3,1} or {.96,.96,.97,1});
         colour(ImGuiCol_Border,selected and {.85,.68,.30,1} or {0,0,0,0});
         if type(ImGuiStyleVar_FrameBorderSize)=='number' and imgui.PushStyleVar and imgui.PopStyleVar then
             imgui.PushStyleVar(ImGuiStyleVar_FrameBorderSize,selected and 1 or 0); nv=1;
@@ -1446,7 +1540,7 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,nil);
+                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,nil,unavailable);
                 if cooling and type(dl.AddLine)=='function' then
                     local totalKey='max:'..recastKey;
                     local high=recastObserver.observed[totalKey] or remaining;
