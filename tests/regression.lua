@@ -1289,11 +1289,16 @@ test('unmapped exact spell and ability names receive read-only clock hints',func
  local original=AshitaCore.GetResourceManager
  AshitaCore.GetResourceManager=function() return {
   GetSpellByName=function(_,name,lang) if name=='Flash' and lang==0 then return {Index=112} end end,
-  GetAbilityByName=function(_,name,lang) if name=='Sentinel' and lang==0 then return {RecastTimerId=19} end end
+  GetAbilityByName=function(_,name,lang)
+   if lang~=0 then return nil end
+   if name=='Sentinel' then return {RecastTimerId=19} end
+   if name=='Shield Bash' then return {RecastTimerId=31} end
+  end
  } end
  s.cooldownAutoNames=true
  local flash=api.cooldown.infer('Flash');assert(flash and flash.kind=='spell' and flash.id==112 and flash.inferred)
  local sentinel=api.cooldown.infer('Sentinel');assert(sentinel and sentinel.kind=='ability' and sentinel.id==19)
+ local shieldBash=api.cooldown.infer('Shield Bash');assert(shieldBash and shieldBash.kind=='ability' and shieldBash.id==31 and shieldBash.inferred)
  assert(not api.cooldown.infer('Cure3'),'nicknames must not be guessed')
  s.cooldownAutoNames=false;assert(not api.cooldown.infer('Flash'))
  s.cooldownAutoNames=true;AshitaCore.GetResourceManager=original
