@@ -132,3 +132,10 @@ Checksum correction: the previous manifest SHA-256 was recalculated from decoded
 ## Development v1.50.47-dev — high-contrast header
 
 Added a dark, slightly translucent backing strip behind the HUD header row so the book/title, lock status, active row and page badge remain readable over bright scenes. This does not change macro row appearance or layout. Source commit `53c90d1a773fdba03ee13d66eca3a0112601ef6f`, exact-byte SHA-256 `50c902ab6f727bc34698950d0e525585f422abb72107f981f95d6a482dc202e9`. All three Development manifests now pin v1.50.47-dev; Stable remains v1.50.40-dev. Automatic Lua 5.4/LuaJIT syntax and regression workflows both passed on the candidate. Not live-tested in Ashita/VanaCore. Next: install Development and confirm header contrast and layout on a bright in-game background.
+
+
+## Development v1.50.48-dev — guarded high-impact macros
+
+Added an optional per-character, per-book/set guard for manually selected native macro slots. In `Protect 2-hour macros` mode, click the displayed macro buttons to toggle protection; mapped buttons resolve to their original native slot. A guarded macro's first input only arms it. The HUD then offers a separate `CONFIRM 2-HOUR` button for eight seconds; the confirmation is cancelled on timeout, page/fingerprint change, or explicit Cancel. Mouse, assigned key/navigation and StateBar macro routes share the same guard. Native FFXI macros remain unchanged. Automatic Lua 5.4/LuaJIT syntax and regression workflows passed. Live Ashita/VanaCore behaviour is unverified.
+
+Immutable source commit `893e42890ab85a0bf2ce6eb8e91c9460b105932c`, exact-byte SHA-256 `e9e6ffb3155de86903f31efc7708edb7fd904a58510ff22384e76955ad5a40a7`. All three Development manifests now pin v1.50.48-dev. Stable remains v1.50.40-dev. Next: install from Development, protect the 2-hour macro slots, confirm one press only arms them, Confirm executes them, and timeout/Cancel do not execute.
