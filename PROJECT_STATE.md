@@ -1,21 +1,11 @@
-# Current development work — v1.50.62-dev
+# Current development work — v1.50.63-dev
 
-Fixed the macro-layout backup sidecar writer: it previously wrote literal backslash-n characters instead of line breaks, so the loader could not parse stored book/set layouts after the profile copy was unavailable. **Apply Layout** commits the draft and saves both the character profile and sidecar files. The extra source-folder sidecar remains a recovery path. Stable is v1.50.59-dev; Development is v1.50.62-dev.
+Dan confirmed that in v1.50.62-dev, clicking Apply Layout produced no message and the Decker HUD reverted to native order. The editor controls were below both rows in a fixed-height HUD, making the action difficult to reach. v1.50.63-dev moves Apply & Save, Cancel and Reset above the macro rows, expands the HUD while editing, and shows an on-screen save result plus explicit failure outcomes.
 
-Source commit: `4a9dbe7ce1fb665f67a47e8541c247fdaf6a48f4`. Source SHA-256: `54e17e4ce3a2d88f99ad6704e6b938c8cf60467a4953aa4ba4198035a37c69d7`. Both automatic Lua 5.4/LuaJIT workflows pass; the canonical workflow reports 119 mocked regression groups. In-game persistence after update/relogin still needs Dan's confirmation.
+Source commit: `622d0c13c288dabb1b03b784ec7fa834d13cf8d7`. Source SHA-256: `9a89eb14d0e27d48b14dc9edba114c2bcd0b9ae35c0aceeaacfc8040b58010df`. Both automatic Lua 5.4/LuaJIT workflows pass; canonical regression reports 119 mocked groups. Live button reachability and save/relogin persistence remain unverified.
 
-Layout workflow: Arrange macros → click first macro → click second macro to swap → press **Apply Layout**. Layout is per character, book, and set. Native FFXI macro files are not rewritten.
+Stable remains v1.50.59-dev. Development is v1.50.63-dev.
 
-
-# Current development work — v1.50.60-dev candidate
-
-Cooldown detection now reads the six native macro command lines first, resolves a unique spell or job ability, and leaves multiple trackable actions ambiguous rather than guessing. Settings adds a per-slot manual action name mapper and automatic reset. Manual overrides are associated with command contents so a display-label rename does not invalidate them. Macro data remains read-only.
-
-Source commit: `2fa5e9b91a60ba13885a292b27493cc29cbbd9b1`. Exact source SHA-256 and automatic Lua 5.4/LuaJIT workflow results are pending. Live Ashita macro-file detection, manual mapping, and actual recast overlay behavior are unverified. Stable and Development manifests are still on v1.50.59-dev pending CI review.
-
-Next action: wait for PR #57 automatic workflows. If they pass, publish v1.50.60-dev to the three Development manifests only; ask Dan to verify a renamed Ballad/other shorthand macro and one Shield Bash recast in game.
-
----
 
 # Current development work — v1.50.59-dev
 
