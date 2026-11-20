@@ -3283,8 +3283,7 @@ ashita.events.register('d3d_present','decker_draw',function()
         if drawDeps.imgui.Begin('Decker v'..addon.version..' - Settings',settingsOpen,drawDeps.scrollbar_flags()) then
             if drawDeps.imgui.Button('X  Close Settings') then drawDeps.state.showTests=false; end
             drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Show macros##settings') then drawDeps.state.visible=true; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudForceReveal=true; end
-            drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Interactive guide##settingsguide') then drawDeps.open_guide(); end
-            drawDeps.imgui.Text('v'..addon.version..' | '..(drawDeps.state.profileId or 'Waiting for login'));
+            drawDeps.imgui.Text('Decker v'..addon.version);
             drawDeps.imgui.Separator();
             -- Four user-facing sections; technical pages live under More.
             local currentTab=drawDeps.state.settingsTab;
@@ -3393,7 +3392,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     if b.source=='command' then
                         local text={b.command or ''};
                         if drawDeps.imgui.InputText('Command##sbcmd'..i,text,241) then b.command=text[1]; if drawDeps.valid_command(b.command) then drawDeps.save_display(); end end
-                        if not drawDeps.valid_command(b.command) then drawDeps.imgui.TextWrapped('Use /lac fwd tank pdt, /lac set Convert 8, /equipset 1, /lac set PDT, /item "Food" <me>, /ma "Spell" <me>, /ja "Ability" <me> or /mount "Name".'); end
+                        if not drawDeps.valid_command(b.command) then drawDeps.imgui.TextWrapped('Command not allowed. Use an approved /lac, /equipset, /item, /ma, /ja or /mount command.'); end
                     end
                     if b.source~='command' then
                     if b.kind~='utility' and drawDeps.imgui.BeginCombo('Highlight source##sbtrack'..i,
@@ -3700,6 +3699,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.imgui.Separator();
             if drawDeps.state.settingsTab=='General' and drawDeps.imgui.Button(drawDeps.state.showAdvanced and 'Hide developer tools' or 'Developer tools') then drawDeps.state.showAdvanced=not drawDeps.state.showAdvanced; end
             if drawDeps.state.settingsTab=='General' and drawDeps.state.showAdvanced then
+                if drawDeps.imgui.Button('Interactive guide') then drawDeps.open_guide(); end
                 local logging={drawDeps.state.debugLog};
                 if drawDeps.imgui.Checkbox('Developer chat logging',logging) then drawDeps.state.debugLog=logging[1]; end
                 local inputLogging={drawDeps.inputDiag.enabled};
