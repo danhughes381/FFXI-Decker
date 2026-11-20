@@ -1,10 +1,12 @@
-# Current development work — v1.50.61-dev candidate
+# Current development work — v1.50.61-dev
 
-Cooldown detection reads each native macro's six command lines first, resolves a unique spell or job ability, and leaves multiple trackable actions or no recognized action unresolved rather than guessing. Exact-label fallback is limited to when macro command data cannot be read. Settings adds a per-slot manual action-name mapper and automatic reset. Overrides are associated with command contents, so they survive display-label changes and follow a macro if its commands move to another slot in the same book/set. Native macro data remains read-only.
+Cooldown detection reads each native macro's six command lines first, resolves a unique spell or job ability, and leaves multiple trackable actions or no recognized action unresolved rather than guessing. Exact-label fallback is limited to when macro command data cannot be read. Settings adds a per-slot manual action-name mapper and automatic reset. Overrides follow the macro's command contents, so they survive display-label changes and moves within the same book/set. Native macro data remains read-only.
 
-Source commit: `85c2ac5a7218e1279cce47474cddb44cd8a0d4f8`. Source SHA-256 and the latest automatic workflow results are pending. Prior .60 code passed both automatic Lua 5.4/LuaJIT workflows (119 mocked regression groups), but those runs predate the label-fallback correction and version bump. Stable remains unchanged; Development manifests are still .60 until final validation.
+Source commit: `85c2ac5a7218e1279cce47474cddb44cd8a0d4f8`. Source SHA-256: `63bc7df91df9c136ca3a2500ea4fff8ce9ecb15f7cf1751d7fcf9fe87b894ccf`. Both automatic Lua 5.4/LuaJIT workflows pass; the canonical workflow reports 119 mocked regression groups. These checks do not verify live Ashita macro-file detection, manual mapping, or actual recast overlay rendering. Shield Bash still requires separate in-game confirmation.
 
-Next action: wait for workflows for the final .61 source. If they pass, update all Development manifests and publish only there. Live Ashita macro-file detection, manual mapping, and actual recast overlay rendering are unverified; Shield Bash needs separate in-game confirmation.
+Published to Development manifests only. Stable remains unchanged. Dan can install through Settings > More > Updates > Development.
+
+Next live check: try one macro with a nickname label and one unique spell command (for example Ballad labelled `MP`), then use Settings > Controls > Cooldown action mapping to assign an actual action name. Confirm the setting survives a relabel or move. Check Shield Bash recast separately.
 
 
 ---
