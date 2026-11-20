@@ -148,3 +148,8 @@
 - 1.47: GitHub main source baseline at inspection.
 
 Older release descriptions are retained in RELEASE_NOTES.md below the current candidate entry; they describe historical builds, not current validation.
+
+
+## 1.50.44-dev candidate — visual macro remapping
+
+On branch `feature/visual-macro-remap-20261120`, Decker can stage a per-book/set remap of displayed macro positions and apply it to the character's Decker profile. Macro contents remain in their original native FFXI slots; Decker mouse, keyboard and navigation actions resolve the mapped source slot. StateBar references remain native-slot based. Candidate is not in updater manifests and has not been tested in-game.
