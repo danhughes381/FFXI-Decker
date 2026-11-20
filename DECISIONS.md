@@ -92,3 +92,8 @@ Store slot order and label sizes in the character CFG. Move hotkeys with their s
 ## Queued macro navigation and native targeting
 
 Use the same target-handoff check for the keyboard hooks and the frame that executes queued navigation. Preserve sticky navigation and captured-key ownership during temporary handoff. Clear stale modifier state when keyboard polling sees a release.
+
+
+## Login-screen visibility — 20 November 2026
+
+Keep the Decker addon loaded so it can detect the active character and continue non-visual background work, but return from the draw callback until `profileReady` confirms a logged-in character. This hides the main HUD, StateBar, Settings and other Decker windows at login/character select, then shows them when the profile is detected. When character identity disappears, profile refresh clears the readiness flag and hides the windows again.
