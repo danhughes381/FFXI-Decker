@@ -1,3 +1,10 @@
+## 1.50.59-dev — simplify Settings
+
+- Keep features but shorten repeated help text and relabel More > General as Book & Set.
+- Move Combat Alerts, Combat Analytics, Quick Start Guide and the Interactive Guide into the Developer tools panel.
+- Show profile file and detection details only in Developer tools.
+- Automatic validation and live visual review are pending.
+
 ## 1.50.58-dev — recognize shortened Shield Bash label
 
 - Treat the in-game macro label `ShldBash` as the ability `Shield Bash` when inferring a recast timer.
