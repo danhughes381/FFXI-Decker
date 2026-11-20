@@ -1,9 +1,9 @@
--- Decker 1.50.52-dev: persist macro layouts in a character-stable store.
+-- Decker 1.50.53-dev: use Ashita config storage and recognize Shield Bash cooldowns.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.52-dev';
+addon.version = '1.50.53-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -119,21 +119,25 @@ local recastObserver={observed={},events={},pending={}};
 local inferredCooldown={};
 function cooldown.infer(name)
     if not state.cooldownAutoNames or type(name)~='string'
-        or #name<2 or #name>8 or name:find('[^%w %-%._]') then return nil; end
-    if inferredCooldown[name] then return inferredCooldown[name]; end
+        or #name<2 or #name>32 or name:find('[^%w %-%._]') then return nil; end
+    local clean=name:match('^%s*(.-)%s*$') or name;
+    if inferredCooldown[clean] then return inferredCooldown[clean]; end
+    local title=clean:lower():gsub('(%a)([%w_]*)',function(first,rest) return first:upper()..rest; end);
     local ok,binding=pcall(function()
         local res=AshitaCore:GetResourceManager();
         if not res then return nil; end
-        local spell=res:GetSpellByName(name,0);
+        local spell=res:GetSpellByName(clean,0);
+        if not spell and title~=clean then spell=res:GetSpellByName(title,0); end
         if spell and type(spell.Index)=='number' and spell.Index>=0 then
             return {kind='spell',id=spell.Index,inferred=true};
         end
-        local ability=res:GetAbilityByName(name,0);
+        local ability=res:GetAbilityByName(clean,0);
+        if not ability and title~=clean then ability=res:GetAbilityByName(title,0); end
         if ability and type(ability.RecastTimerId)=='number' and ability.RecastTimerId>=0 then
             return {kind='ability',id=ability.RecastTimerId,inferred=true};
         end
     end);
-    if ok and binding then inferredCooldown[name]=binding;return binding; end
+    if ok and binding then inferredCooldown[clean]=binding;return binding; end
 end
 local function cooldown_recast(binding)
     if not binding or not state.cooldownEnabled then return nil; end
@@ -226,12 +230,28 @@ local function identity_macro_layout()
 end
 -- Keep layout order in a character-named sidecar so server-ID/profile changes
 -- after reload cannot make a saved arrangement appear to have vanished.
-local function macro_layout_store_path()
+local function macro_layout_legacy_path()
     local source=(debug.getinfo(1,'S') or {}).source or '';
     if source:sub(1,1)~='@' or not state.profileId then return nil; end
     local directory=source:sub(2):match('^(.*[\\/])');
     local character=state.profileId:match('^[^_]+_([%a][%w_]*)$');
     if not directory or not character then return nil; end
+    return directory..'decker_layouts_'..character..'.cfg';
+end
+local function macro_layout_store_path()
+    if not state.profileId then return nil; end
+    local character=state.profileId:match('^[^_]+_([%a][%w_]*)$');
+    if not character then return nil; end
+    local ok,base=pcall(function() return AshitaCore:GetInstallPath(); end);
+    if not ok or type(base)~='string' or base=='' then return macro_layout_legacy_path(); end
+    base=base:gsub('[\\/]+$','');
+    local directory=base..'\\config\\addons\\decker\\';
+    local existsOk,exists=pcall(ashita.fs.exists,directory);
+    if not existsOk then return macro_layout_legacy_path(); end
+    if not exists then
+        local createOk=pcall(ashita.fs.create_dir,directory);
+        if not createOk then return macro_layout_legacy_path(); end
+    end
     return directory..'decker_layouts_'..character..'.cfg';
 end
 local function save_macro_layout_store()
@@ -250,7 +270,15 @@ local function save_macro_layout_store()
 end
 local function load_macro_layout_store()
     local path=macro_layout_store_path(); if not path then return false; end
-    local ok,f=pcall(io.open,path,'r'); if not ok or not f then return false; end
+    local ok,f=pcall(io.open,path,'r');
+    local legacy=false;
+    if not ok or not f then
+        local oldPath=macro_layout_legacy_path();
+        if oldPath and oldPath~=path then
+            ok,f=pcall(io.open,oldPath,'r'); legacy=ok and f~=nil;
+        end
+    end
+    if not ok or not f then return false; end
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local book,set=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
@@ -266,7 +294,9 @@ local function load_macro_layout_store()
             if valid then state.macroLayouts[book..'.'..set]=order; end
         end
     end
-    f:close(); return true;
+    f:close();
+    if legacy then save_macro_layout_store(); end
+    return true;
 end
 local function current_macro_layout()
     local key=macro_layout_key();
@@ -3512,7 +3542,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Checkbox('Show clocks and cooldown countdowns',cool) then drawDeps.state.cooldownEnabled=cool[1]; drawDeps.save_display(); end
             local auto={drawDeps.state.cooldownAutoNames};
             if drawDeps.imgui.Checkbox('Guess recast from exact macro label (display only)',auto) then drawDeps.state.cooldownAutoNames=auto[1]; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('Only exact spell/ability names (e.g. Flash) can be guessed from short button labels. These cosmetic guesses do NOT verify native macro contents. Manual mappings override guesses.');
+            drawDeps.imgui.TextWrapped('Exact spell/ability labels up to 32 characters (including Shield Bash) can be guessed, case-insensitively. These display guesses do NOT verify native macro contents. Manual mappings override guesses.');
             drawDeps.imgui.TextWrapped('Clocks use confirmed manual per-button mappings only; game macro labels are not enough to prove the action. The timer value comes from Ashita recast memory. Missing/unknown timers are not shown as READY.');
             local page,fingerprint=drawDeps.cooldown.page();
             local mapped=0;
