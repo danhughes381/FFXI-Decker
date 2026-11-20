@@ -1,5 +1,15 @@
 # Current development work — v1.50.59-dev
 
+Settings cleanup keeps existing functionality and controls, shortens repeated help text, and relabels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are under the Developer tools toggle. Profile detection/file details are also shown only when Developer tools is open. The essential full-hide recovery warning and Toggle-mode auto-hide note remain visible.
+
+Source commit: `693149515f7d8e270d2a5bd46db01d24741d0ea9`. Exact source SHA-256: `364267226b51d31f5e66a682486807a4a0f512af9a77d4a1402442eae7f2e931`. Lua 5.4/LuaJIT syntax and regression workflows pass. All three Development manifests point to v1.50.59-dev. Stable remains unchanged.
+
+Live visual review of the reorganised Settings screen remains unverified. Dan can update via Settings > More > Updates > Development.
+
+---
+
+# Current development work — v1.50.59-dev
+
 This Settings cleanup keeps existing features and controls, shortens repeated help text, and labels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are available under the new Developer tools toggle. Profile file/detection details are also hidden there. Stable remains unchanged.
 
 Source commit: `4937e69d691947468f4853048874e3d3eb70a5bb`. Automatic Lua 5.4/LuaJIT workflows are pending. Review the render in game after Development update; no functionality was intentionally removed.
