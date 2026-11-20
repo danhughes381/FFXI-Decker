@@ -1,15 +1,11 @@
-# Current development work — v1.50.61-dev
+# Current development work — v1.50.62-dev
 
-Cooldown detection reads each native macro's six command lines first, resolves a unique spell or job ability, and leaves multiple trackable actions or no recognized action unresolved rather than guessing. Exact-label fallback is limited to when macro command data cannot be read. Settings adds a per-slot manual action-name mapper and automatic reset. Overrides follow the macro's command contents, so they survive display-label changes and moves within the same book/set. Native macro data remains read-only.
+Fixed the macro-layout backup sidecar writer: it previously wrote literal backslash-n characters instead of line breaks, so the loader could not parse stored book/set layouts after the profile copy was unavailable. **Apply Layout** commits the draft and saves both the character profile and sidecar files. The extra source-folder sidecar remains a recovery path. Stable is v1.50.59-dev; Development is v1.50.62-dev.
 
-Source commit: `85c2ac5a7218e1279cce47474cddb44cd8a0d4f8`. Source SHA-256: `63bc7df91df9c136ca3a2500ea4fff8ce9ecb15f7cf1751d7fcf9fe87b894ccf`. Both automatic Lua 5.4/LuaJIT workflows pass; the canonical workflow reports 119 mocked regression groups. These checks do not verify live Ashita macro-file detection, manual mapping, or actual recast overlay rendering. Shield Bash still requires separate in-game confirmation.
+Source commit: `4a9dbe7ce1fb665f67a47e8541c247fdaf6a48f4`. Source SHA-256: `54e17e4ce3a2d88f99ad6704e6b938c8cf60467a4953aa4ba4198035a37c69d7`. Both automatic Lua 5.4/LuaJIT workflows pass; the canonical workflow reports 119 mocked regression groups. In-game persistence after update/relogin still needs Dan's confirmation.
 
-Published to Development manifests only. Stable remains unchanged. Dan can install through Settings > More > Updates > Development.
+Layout workflow: Arrange macros → click first macro → click second macro to swap → press **Apply Layout**. Layout is per character, book, and set. Native FFXI macro files are not rewritten.
 
-Next live check: try one macro with a nickname label and one unique spell command (for example Ballad labelled `MP`), then use Settings > Controls > Cooldown action mapping to assign an actual action name. Confirm the setting survives a relabel or move. Check Shield Bash recast separately.
-
-
----
 
 # Current development work — v1.50.60-dev candidate
 
