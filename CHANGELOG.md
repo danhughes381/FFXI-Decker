@@ -3,7 +3,7 @@
 - Save the per-character macro layout sidecar both in Ashita's `config/addons/decker` directory and beside the addon source.
 - On load, preserve layouts in the current character profile and recover missing book/set layouts from either sidecar or older server-qualified profile files for the same character.
 - Confirm that the persistent directory exists after attempting creation; fall back to the addon-side copy if unavailable.
-- Automatic Lua syntax/regression workflows and in-game update/relogin persistence still need verification.
+- Automatic Lua 5.4/LuaJIT syntax and regression workflows pass on the v1.50.57-dev source commit. Live Ashita update/relogin persistence still needs confirmation.
 
 ## 1.50.19-dev — navigation and saved-title test candidate
 
