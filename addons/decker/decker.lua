@@ -90,7 +90,7 @@ end
 state.cooldownEnabled=true;
 state.cooldownBindings={};
 state.macroLayouts={};
-state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil;
+state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
 local cooldown = {};
 function cooldown.page()
     if not state.profileReady or state.phase<4 or state.pendingRefreshFrames>0
@@ -225,7 +225,7 @@ local function current_macro_layout()
     return valid_macro_layout(order) and order or identity_macro_layout();
 end
 local function cancel_macro_layout()
-    state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil;
+    state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
 end
 local function begin_macro_layout()
     if not state.profileReady or state.phase<4 or #state.names~=20 then return false; end
@@ -1605,6 +1605,17 @@ local function draw_row(title,offset)
         local sourceLabel=state.layoutEditing and ('FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot)) or shortcut;
         local label=custom and '' or (name..'\n'..sourceLabel);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
+        local dragDelivered=false;
+        if state.layoutEditing then
+            if imgui.IsItemActive and imgui.IsMouseDragging and imgui.IsItemActive() and imgui.IsMouseDragging(0) then
+                state.layoutDragging=visualIndex;
+            end
+            if state.layoutDragging and imgui.IsItemHovered and imgui.IsMouseReleased
+                and imgui.IsItemHovered() and imgui.IsMouseReleased(0) then
+                swap_macro_layout_slots(state.layoutDragging,visualIndex);
+                state.layoutDragging=nil; dragDelivered=true;
+            end
+        end
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
         if custom then
@@ -1649,7 +1660,8 @@ local function draw_row(title,offset)
         if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name); end
         if clicked then
             if state.layoutEditing then
-                if state.layoutDraftKey==macro_layout_key() then
+                if dragDelivered then
+                elseif state.layoutDraftKey==macro_layout_key() then
                     if not state.layoutSelected then state.layoutSelected=visualIndex;
                     elseif state.layoutSelected==visualIndex then state.layoutSelected=nil;
                     else swap_macro_layout_slots(state.layoutSelected,visualIndex); end
@@ -2898,8 +2910,9 @@ ashita.events.register('d3d_present','decker_draw',function()
             draw_macro_panel();
             draw_row('CTRL',0);
             draw_row('ALT',10);
+            if state.layoutEditing and state.layoutDragging and imgui.IsMouseReleased and imgui.IsMouseReleased(0) then state.layoutDragging=nil; end
             if state.layoutEditing then
-                imgui.Text('LAYOUT PREVIEW - select a macro, then a destination to swap. Decker only; native macros stay put.');
+                imgui.Text('LAYOUT PREVIEW - drag a macro to swap, or select it then select a destination. Decker only; native macros stay put.');
                 imgui.SameLine();
                 if imgui.Button('Apply layout##applymacro') then
                     local key=macro_layout_key();
