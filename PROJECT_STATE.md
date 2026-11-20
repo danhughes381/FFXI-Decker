@@ -1,5 +1,15 @@
 # Current development work — v1.50.58-dev
 
+The active branch is `feature/visual-macro-remap-20261120`, under PR #57. Dan reported no cooldown overlay on the Shield Bash macro. His screenshot shows `ShldBash`; the previous inference recognized `ShieldBash` but not the shortened spelling. The alias now maps both to the Ashita resource name `Shield Bash`.
+
+Source commit: `0380e7cf1246c0e969f5eaa2b553135b92afb8b0`. Exact source SHA-256: `27c699bb2ed3f886a28b320bb59ea2f36a45db770867cec0d454f3857566c995`. Lua 5.4/LuaJIT syntax and regression workflows pass. All three Development manifests now pin v1.50.58-dev; Stable is unchanged.
+
+Live confirmation is still required: after updating Decker to Development v1.50.58-dev, use Shield Bash and check for the circular recast overlay on the `ShldBash` macro. The visual only appears while Ashita reports an active recast; the current build cannot be claimed live-verified until observed.
+
+---
+
+# Current development work — v1.50.58-dev
+
 This follow-up addresses Dan's report that Shield Bash still has no cooldown overlay. His screenshot shows the macro label `ShldBash`; the previous exact-name inference handled `ShieldBash` but did not translate this shortened label to the Ashita resource name `Shield Bash`. v1.50.58-dev adds that alias. This is a source-level diagnosis; the live overlay after use still needs confirmation.
 
 Source commit: `0380e7cf1246c0e969f5eaa2b553135b92afb8b0`. Workflow validation is pending. Do not change Stable. After validation, publish only through the Development manifests and have Dan update/retest.
