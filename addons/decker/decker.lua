@@ -1200,6 +1200,15 @@ local function execute_slot(row,slot,source,displayRow,displaySlot)
     local visualRow=displayRow or row;
     local visualSlot=displaySlot or slot;
     local idx=(row=='CTRL' and 0 or 10)+(slot-1);
+    if source=='statebar' then
+        for visualIndex,nativeIndex in ipairs(current_macro_layout()) do
+            if nativeIndex==idx+1 then
+                visualRow=visualIndex<=10 and 'CTRL' or 'ALT';
+                visualSlot=((visualIndex-1)%10)+1;
+                break;
+            end
+        end
+    end
     if source~='statebar' and not state.confirmingMacro then
         local mapped=current_macro_layout()[idx+1];
         if mapped then idx=mapped-1; row=idx<10 and 'CTRL' or 'ALT'; slot=(idx%10)+1; end
