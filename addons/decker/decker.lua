@@ -1,9 +1,9 @@
--- Decker 1.50.53-dev: use Ashita config storage and recognize Shield Bash cooldowns.
+-- Decker 1.50.54-dev: place Apply Layout on its own visible row.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.53-dev';
+addon.version = '1.50.54-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -3157,9 +3157,9 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if drawDeps.imgui.Button('Cancel##guardcancel') then drawDeps.cancel_macro_guard('Protected macro cancelled; nothing was executed.'); end
             end
             if drawDeps.state.layoutEditing then
-                drawDeps.imgui.TextWrapped('LAYOUT EDITOR: click one macro to select it, then click another to swap their positions. Click Apply layout to save; Cancel discards the changes. Decker display only; native macros stay put.');
-                drawDeps.imgui.SameLine();
-                if drawDeps.imgui.Button('Apply layout##applymacro') then
+                drawDeps.imgui.TextWrapped('LAYOUT EDITOR: click one macro to select it, then click another to swap their positions. Decker display only; native macros stay put.');
+                drawDeps.imgui.Separator();
+                if drawDeps.imgui.Button('APPLY LAYOUT##applymacro') then
                     local key=drawDeps.macro_layout_key();
                     local previous=drawDeps.state.macroLayouts[key] and drawDeps.copy_macro_layout(drawDeps.state.macroLayouts[key]) or nil;
                     if drawDeps.apply_macro_layout() then
@@ -3167,8 +3167,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                         else drawDeps.state.macroLayouts[key]=previous; drawDeps.say('Profile could not be saved; layout was not applied.',true); end
                     end
                 end
-                drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Cancel##cancelmacro') then drawDeps.cancel_macro_layout(); end
-                drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Reset order##resetmacro') then drawDeps.state.layoutDraft=drawDeps.identity_macro_layout(); drawDeps.state.layoutSelected=nil; end
+                if drawDeps.imgui.Button('Cancel##cancelmacro') then drawDeps.cancel_macro_layout(); end
+                if drawDeps.imgui.Button('Reset order##resetmacro') then drawDeps.state.layoutDraft=drawDeps.identity_macro_layout(); drawDeps.state.layoutSelected=nil; end
             else
                 if drawDeps.imgui.Button('Arrange macros##arrangemacro') then
                     if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
