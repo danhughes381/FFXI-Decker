@@ -121,7 +121,7 @@ function cooldown.encode(fingerprint)
 end
 function cooldown.decode(value)
     local kind,id,encoded=value:match('^(%l+):(%d+):([0-9a-f]+)$');
-    if (kind~='spell' and kind~='ability') or #encoded>358 or #encoded%2~=0 then return nil; end
+    if (kind~='spell' and kind~='ability') or #encoded>800 or #encoded%2~=0 then return nil; end
     local fingerprint=encoded:gsub('..',function(pair) return string.char(tonumber(pair,16)); end);
     local _,separators=fingerprint:gsub('\031','');
     if separators~=19 and separators~=5 then return nil; end
