@@ -3549,7 +3549,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if page then for n=1,20 do if drawDeps.cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
             drawDeps.imgui.Text(('Mapped actions on current page: %d / 20'):format(mapped));
             if not drawDeps.state.cooldownEnabled then drawDeps.imgui.TextWrapped('Clocks are OFF. Tick Show clocks and cooldown countdowns above.'); end
-            if mapped==0 then drawDeps.imgui.TextWrapped('No manual mappings on this book/set. Exact short labels may still show inferred timers. Other buttons need verified spell Index or ability TIMER_ID mappings.'); end
+            if mapped==0 then drawDeps.imgui.TextWrapped('No manual mappings on this book/set. Exact ability or spell labels up to 32 characters may show inferred timers, including Shield Bash. Other buttons need verified spell Index or ability TIMER_ID mappings.'); end
             for i=1,20 do
                 local b=drawDeps.cooldown.binding(page,fingerprint,i);
                 local label=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);
