@@ -1,0 +1,55 @@
+PASS first install: safe defaults and Quick Setup
+PASS profile switching isolates all settings
+PASS profile reload and zero slots persist
+PASS State and Utility requests
+PASS command allowlist rejects Lua chaining and chat
+PASS section reset only affects selected preferences
+PASS all three layouts and N row switch
+PASS StateBar collisions and permission gates
+PASS single hotkey execution and key release after disable
+PASS Settings sections render with balanced style stacks
+PASS updater manifest validation and channel version ordering
+PASS updater promotion backs up and rollback restores exact source
+PASS updater rejects invalid Lua without replacing live source
+PASS updater process polling handles pending, timeout and failed download
+PASS updater handles unsupported host explicitly
+PASS glass preferences round trip and reset independently
+PASS navigation selection cannot record execution; Enter does
+PASS custom draw: 20 buttons, key corners and independent execution/selection
+PASS mouse and direct keyboard dispatch update execution only once
+PASS long labels stay within button width and preserve full source
+PASS vector ABI variants and unsupported drawing fall back
+PASS collapsed windows and auto-hide recoverable tab balance style stacks
+PASS hover tooltip receives the macro name as literal text
+PASS configured width and compact labels reach both rendering paths
+PASS locked windows anchor positions and size preferences trigger resizing
+PASS thin Settings scrollbar balances style scope
+PASS StateBar physical hotkey edges execute once and suppress native input
+PASS glass overlays pass explicit open state and no-title flags with hidden IDs
+PASS full auto-hide draws no recovery window and Settings opens while HUD is hidden
+PASS optional recovery has one Decker button opening Settings
+PASS scrollbar visibility persists and applies to HUD StateBar and Settings
+PASS StateBar F11 captures both input streams with main shortcuts disabled
+PASS StateBar scales text within small boxes and provides full hover explanation
+PASS shared number and F-key layouts preserve row-switch routing
+PASS Settings native X closes on both expanded and collapsed Begin paths
+PASS single assigned-key switch gates layout editing and sets both legacy permissions
+PASS custom slot edit overrides shared layout and persists explicit custom status
+PASS legacy split assignments migrate to custom while unedited split remains a preset
+PASS StateBar Settings button follows main Settings visibility and opens its tab
+PASS HUD identity and key status share one spaced line in every layout
+PASS status is red when locked or held and key column stays fixed across status and book changes
+PASS plain-language mod behaviour choices retain hold and toggle semantics
+PASS Hold HUD follows physical mod press and release without timer or recovery window
+PASS Toggle HUD remains after release and uses configured inactivity timing when unlocked
+PASS Display defaults expanded and warns to finish setup before hiding completely
+PASS successful connection enables assigned keys by default but preserves saved opt-out
+PASS macro toggle echo colours only locked and respects echo-off
+PASS title-file reader preserves blank slots and rejects malformed or unsupported bytes
+PASS read-only twenty-book title import persists isolated aliases
+PASS native book requests use zero-based indices through book twenty with connection gates
+PASS HUD heading uses the selected book alias or imported game title
+PASS HUD Macro set and book controls select native books 1-20 with wrapping arrows
+PASS both updater channels offer newer versions and complete mocked install backup and reload
+PASS Stable update page no longer claims the channel is unpublished
+54 regression groups passed (mocked host; not in-game validation)

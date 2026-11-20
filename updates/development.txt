@@ -1,0 +1,4 @@
+protocol=1
+version=1.50.64-dev
+commit=6b28d95f540c00321e841d761047c6c0de426602
+sha256=6cd44e9d8ba3dfbc04e29c09ebebf0374b66b2d48fd8bcee3a60a2c5f974170c
