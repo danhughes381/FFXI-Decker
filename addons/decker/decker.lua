@@ -1,9 +1,9 @@
--- Decker 1.50.55-dev: resolve CamelCase ability labels for cooldown timers.
+-- Decker 1.50.56-dev: keep the yellow selection on the displayed macro.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.55-dev';
+addon.version = '1.50.56-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1062,8 +1062,8 @@ end
 local function flash_slot(row,slot)
     state.flashRow=row; state.flashSlot=slot; state.flashUntil=os.clock()+0.30;
 end
-local function record_execution(row,slot,source)
-    state.navRow=row; state.navSlot=slot; state.navSource=source;
+local function record_execution(row,slot,source,displayRow,displaySlot)
+    state.navRow=displayRow or row; state.navSlot=displaySlot or slot; state.navSource=source;
     state.lastExecuted={row=row,slot=slot,name=state.names[(row=='CTRL' and 0 or 10)+slot] or '',set=state.trackedSet};
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
@@ -1195,8 +1195,10 @@ function selector.saved_target(index,name)
     end
     return name=='Cure3' or name=='Cure4';
 end
-local function execute_slot(row,slot,source)
+local function execute_slot(row,slot,source,displayRow,displaySlot)
     if state.guideOpen or state.layoutEditing or state.guardEditing then return false; end -- Editors never execute macros.
+    local visualRow=displayRow or row;
+    local visualSlot=displaySlot or slot;
     local idx=(row=='CTRL' and 0 or 10)+(slot-1);
     if source~='statebar' and not state.confirmingMacro then
         local mapped=current_macro_layout()[idx+1];
@@ -1222,7 +1224,8 @@ local function execute_slot(row,slot,source)
             or pending.book~=(state.manualBook or 1) or pending.set~=(state.trackedSet or 1)
             or pending.fingerprint~=state.previousFingerprint or os.clock()>=pending.expires then
             state.pendingMacroConfirm={row=row,slot=slot,source=source,index=idx+1,book=state.manualBook or 1,
-                set=state.trackedSet or 1,fingerprint=state.previousFingerprint,name=name,expires=os.clock()+8};
+                set=state.trackedSet or 1,fingerprint=state.previousFingerprint,name=name,expires=os.clock()+8,
+                displayRow=visualRow,displaySlot=visualSlot};
         end
         state.visible=true; state.hudForceReveal=true; state.hudLastActivity=os.clock();
         state.clickSummary='ARMED: '..name..' - press the separate Confirm 2-hour button.';
@@ -1253,7 +1256,7 @@ local function execute_slot(row,slot,source)
     if called then
         -- Any macro launch path can open native targeting. Only navigation keys yield.
         selector.begin_handoff(subtargetBefore,expectsTarget);
-        record_execution(row,slot,'executed');
+        record_execution(row,slot,'executed',visualRow,visualSlot);
         cooldown.note_request(row,slot);
     end
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
@@ -1275,7 +1278,7 @@ local function confirm_macro_guard()
     end
     state.pendingMacroConfirm=nil;
     state.confirmingMacro=true;
-    local ok,result=pcall(execute_slot,pending.row,pending.slot,pending.source);
+    local ok,result=pcall(execute_slot,pending.row,pending.slot,pending.source,pending.displayRow,pending.displaySlot);
     state.confirmingMacro=false;
     if not ok then
         state.clickSummary='Protected macro failed safely: '..tostring(result); say(state.clickSummary,true); return false;
