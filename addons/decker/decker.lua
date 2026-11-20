@@ -1,9 +1,9 @@
--- Decker 1.50.54-dev: place Apply Layout on its own visible row.
+-- Decker 1.50.55-dev: resolve CamelCase ability labels for cooldown timers.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.54-dev';
+addon.version = '1.50.55-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -122,7 +122,10 @@ function cooldown.infer(name)
         or #name<2 or #name>32 or name:find('[^%w %-%._]') then return nil; end
     local clean=name:match('^%s*(.-)%s*$') or name;
     if inferredCooldown[clean] then return inferredCooldown[clean]; end
-    local title=clean:lower():gsub('(%a)([%w_]*)',function(first,rest) return first:upper()..rest; end);
+    local spaced=clean:gsub('(%l)(%u)','%1 %2');
+    local title=spaced:lower():gsub('(%a)([%w_]*)',function(first,rest) return first:upper()..rest; end);
+    local compact=clean:lower():gsub('[^%w]','');
+    local resourceName=compact=='shieldbash' and 'Shield Bash' or title;
     local ok,binding=pcall(function()
         local res=AshitaCore:GetResourceManager();
         if not res then return nil; end
@@ -132,7 +135,7 @@ function cooldown.infer(name)
             return {kind='spell',id=spell.Index,inferred=true};
         end
         local ability=res:GetAbilityByName(clean,0);
-        if not ability and title~=clean then ability=res:GetAbilityByName(title,0); end
+        if not ability and resourceName~=clean then ability=res:GetAbilityByName(resourceName,0); end
         if ability and type(ability.RecastTimerId)=='number' and ability.RecastTimerId>=0 then
             return {kind='ability',id=ability.RecastTimerId,inferred=true};
         end
