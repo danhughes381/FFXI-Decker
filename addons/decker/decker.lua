@@ -3450,6 +3450,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.state.settingsTab=='Appearance' then
             if drawDeps.imgui.CollapsingHeader('Display',ImGuiTreeNodeFlags_DefaultOpen or 32) then
                         local auto={drawDeps.state.autoHide};
+            drawDeps.imgui.TextWrapped('These inactivity settings apply to Toggle mode.');
             if drawDeps.imgui.Button('Unlock HUD for dragging') then drawDeps.state.hudPos=nil; drawDeps.state.positionLocked=false; drawDeps.save_display(); end
             drawDeps.imgui.SameLine();
             if drawDeps.imgui.Button('Save this character layout now') then
@@ -3468,6 +3469,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.imgui.Text('When the macros auto-hide:');
             if drawDeps.imgui.Button('Hide completely'..(drawDeps.state.autoHideMode=='hide' and ' [selected]' or '')) then drawDeps.state.autoHideMode='hide'; drawDeps.save_display(); end
             drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Keep small Decker button'..(drawDeps.state.autoHideMode=='collapse' and ' [selected]' or '')) then drawDeps.state.autoHideMode='collapse'; drawDeps.save_display(); end
+            drawDeps.imgui.TextWrapped('First-time setup: select Hide completely only after Decker is working and you know how to reopen it with /decker settings or /decker show.');
             drawDeps.imgui.TextWrapped('Reopen Settings with /decker settings or show macros with /decker show.');
             local motion={drawDeps.state.motionEnabled};
             if drawDeps.imgui.Checkbox('Subtle animations (uncheck for reduced motion)',motion) then drawDeps.state.motionEnabled=motion[1]; drawDeps.save_display(); end
