@@ -1,9 +1,9 @@
--- Decker 1.50.49-dev: clarify click-to-swap layout and persist visible hotkey preferences.
+-- Decker 1.50.50-dev: clarify click-to-swap layout and preserve visible hotkey preferences.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.49-dev';
+addon.version = '1.50.50-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -3385,19 +3385,22 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Checkbox('Auto-connect macros after login',automatic) then
                 drawDeps.state.autoConnect=automatic[1]; drawDeps.state.autoConnectPending=false; drawDeps.save_display();
             end
-                local assigned={drawDeps.state.savedKeybinds};
-                if drawDeps.imgui.Checkbox('Use my assigned keys',assigned) then
-                    drawDeps.state.savedKeybinds=assigned[1]; drawDeps.state.savedAck=assigned[1];
-                    drawDeps.state.keybinds=assigned[1] and drawDeps.state.allowAllClicks and drawDeps.state.phase>=4 and #drawDeps.state.names==20;
-                    drawDeps.state.acknowledgeKeys=drawDeps.state.keybinds;
-                    if assigned[1] then drawDeps.state.savedNavEnabled=true; drawDeps.state.navKeysEnabled=true; end
-                    drawDeps.state.held={}; drawDeps.nav_clear(); drawDeps.save_display();
-                end
-                drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
-                    and (drawDeps.shortcuts_active()
+                if drawDeps.state.allowAllClicks and drawDeps.state.phase>=4 and #drawDeps.state.names==20 then
+                    local assigned={drawDeps.state.savedKeybinds};
+                    if drawDeps.imgui.Checkbox('Use my assigned keys',assigned) then
+                        drawDeps.state.keybinds=assigned[1]; drawDeps.state.savedKeybinds=assigned[1];
+                        drawDeps.state.acknowledgeKeys=assigned[1]; drawDeps.state.savedAck=assigned[1];
+                        if assigned[1] then drawDeps.state.savedNavEnabled=true; drawDeps.state.navKeysEnabled=true; end
+                        drawDeps.state.held={}; drawDeps.nav_clear(); drawDeps.save_display();
+                    end
+                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
                         and 'Uses the keys in your selected layout or custom slots. Disable before typing or editing macros.'
-                        or 'Saved as on; becomes active when Decker reconnects to your in-game macros.')
-                    or 'Off. Turn this on to use your assigned macro keys.');
+                        or 'Off. Turn this on to use your assigned macro keys.');
+                else
+                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
+                        and 'Assigned macro keys are saved ON; they become active after Decker reconnects to your in-game macros.'
+                        or 'Assigned macro keys are saved OFF. Connect to macros to change this setting.');
+                end
                 local nav={drawDeps.state.savedNavEnabled};
                 if drawDeps.imgui.Checkbox('Enable navigation hotkeys',nav) then
                     drawDeps.state.savedNavEnabled=nav[1]; drawDeps.state.navKeysEnabled=nav[1];
