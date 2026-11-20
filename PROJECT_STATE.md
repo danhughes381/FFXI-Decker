@@ -1,10 +1,12 @@
-# Current development work — v1.50.63-dev
+# Current development work — v1.50.64-dev
 
-Dan confirmed he is on the latest Development build, used Apply & Save, logged out and back in, and the Decker HUD returned to its default macro order. The .63 top-of-HUD controls and visible save status did not resolve persistence. Do not claim layout persistence is fixed.
+The screenshot from Dan shows the exact success message, “Saved layout for Book 2, Set 1,” followed by a relog where the macro HUD returned to default order. This confirms the Apply write reported success but reload did not restore the mapping.
 
-Known code facts: Apply calls `save_display()`, which writes the character profile and layout sidecars; the loader reads the profile, then sidecars and legacy profile files. v1.50.62 fixed literal backslash-n sidecar line endings; that alone was insufficient. Next diagnostic: get the exact visible status after Apply ("Saved layout for Book X, Set Y" or save failure). Then distinguish failed disk write from book/set/profile mismatch during reload before changing storage semantics.
+Root cause identified in the loader: Lua's `key and key:match(...)` expression collapsed the multiple captures to one value. The saved `Book.Set` key could not be parsed on load. v1.50.64-dev corrects the macro sidecar and profile readers; the same multi-capture issue was corrected for the optional two-hour protection settings. Source commit: `6b28d95f540c00321e841d761047c6c0de426602`. Source SHA-256: `6cd44e9d8ba3dfbc04e29c09ebebf0374b66b2d48fd8bcee3a60a2c5f974170c`.
 
-v1.50.63 source commit: `622d0c13c288dabb1b03b784ec7fa834d13cf8d7`. SHA-256: `9a89eb14d0e27d48b14dc9edba114c2bcd0b9ae35c0aceeaacfc8040b58010df`. Both automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups. This is not proof of live persistence.
+The Development manifest now points to v1.50.64-dev. Stable remains v1.50.59-dev. The user must still verify a save/relog in game; do not describe persistence as live-verified until then. Automated syntax/workflow checks have not been run for this change.
+
+---
 
 Stable is v1.50.59-dev; Development is v1.50.63-dev.
 
