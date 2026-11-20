@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.46-dev';
+addon.version = '1.50.47-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -2930,6 +2930,19 @@ ashita.events.register('d3d_present','decker_draw',function()
         local title=drawDeps.state.bookAliases[book] or drawDeps.state.bookNames[book] or '';
         if #title>15 then title=title:sub(1,15)..'...'; end
         local header=('DECKER | Book %d%s (#%d)'):format(book,title~='' and (' - '..title) or '',drawDeps.state.trackedSet or 1);
+        -- A dark backing keeps the white book/status text and gold page badge readable over bright game scenes.
+        if drawDeps.imgui.GetCursorScreenPos and drawDeps.imgui.GetContentRegionAvail
+            and drawDeps.imgui.GetWindowDrawList and drawDeps.imgui.GetColorU32 then
+            pcall(function()
+                local x,y=drawDeps.pair(drawDeps.imgui.GetCursorScreenPos());
+                local width=drawDeps.pair(drawDeps.imgui.GetContentRegionAvail());
+                if not x or not width then return; end
+                local h=type(drawDeps.imgui.GetTextLineHeight)=='function' and drawDeps.imgui.GetTextLineHeight() or 16;
+                local dl=drawDeps.imgui.GetWindowDrawList();
+                dl:AddRectFilled({x-6,y-3},{x+width-4,y+h+3},drawDeps.imgui.GetColorU32({.025,.035,.055,.94}),4);
+                dl:AddRect({x-6,y-3},{x+width-4,y+h+3},drawDeps.imgui.GetColorU32({.34,.42,.54,.88}),4);
+            end);
+        end
         local function header_width(text)
             if drawDeps.imgui.CalcTextSize then local ok,a,b=pcall(drawDeps.imgui.CalcTextSize,text); if ok then local w=drawDeps.pair(a,b); if w then return w; end end end
             return #text*8;
