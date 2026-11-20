@@ -1,21 +1,13 @@
 # Current development work — v1.50.63-dev
 
-Dan confirmed that in v1.50.62-dev, clicking Apply Layout produced no message and the Decker HUD reverted to native order. The editor controls were below both rows in a fixed-height HUD, making the action difficult to reach. v1.50.63-dev moves Apply & Save, Cancel and Reset above the macro rows, expands the HUD while editing, and shows an on-screen save result plus explicit failure outcomes.
+Dan confirmed he is on the latest Development build, used Apply & Save, logged out and back in, and the Decker HUD returned to its default macro order. The .63 top-of-HUD controls and visible save status did not resolve persistence. Do not claim layout persistence is fixed.
 
-Source commit: `622d0c13c288dabb1b03b784ec7fa834d13cf8d7`. Source SHA-256: `9a89eb14d0e27d48b14dc9edba114c2bcd0b9ae35c0aceeaacfc8040b58010df`. Both automatic Lua 5.4/LuaJIT workflows pass; canonical regression reports 119 mocked groups. Live button reachability and save/relogin persistence remain unverified.
+Known code facts: Apply calls `save_display()`, which writes the character profile and layout sidecars; the loader reads the profile, then sidecars and legacy profile files. v1.50.62 fixed literal backslash-n sidecar line endings; that alone was insufficient. Next diagnostic: get the exact visible status after Apply ("Saved layout for Book X, Set Y" or save failure). Then distinguish failed disk write from book/set/profile mismatch during reload before changing storage semantics.
 
-Stable remains v1.50.59-dev. Development is v1.50.63-dev.
+v1.50.63 source commit: `622d0c13c288dabb1b03b784ec7fa834d13cf8d7`. SHA-256: `9a89eb14d0e27d48b14dc9edba114c2bcd0b9ae35c0aceeaacfc8040b58010df`. Both automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups. This is not proof of live persistence.
 
+Stable is v1.50.59-dev; Development is v1.50.63-dev.
 
-# Current development work — v1.50.59-dev
-
-Settings cleanup keeps existing functionality and controls, shortens repeated help text, and relabels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are under the Developer tools toggle. Profile detection/file details are also shown only when Developer tools is open. The essential full-hide recovery warning and Toggle-mode auto-hide note remain visible.
-
-Source commit: `693149515f7d8e270d2a5bd46db01d24741d0ea9`. Exact source SHA-256: `364267226b51d31f5e66a682486807a4a0f512af9a77d4a1402442eae7f2e931`. Lua 5.4/LuaJIT syntax and regression workflows pass. All three Development manifests point to v1.50.59-dev. Stable remains unchanged.
-
-Live visual review of the reorganised Settings screen remains unverified. Dan can update via Settings > More > Updates > Development.
-
----
 
 # Current development work — v1.50.59-dev
 
