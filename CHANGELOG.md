@@ -2,7 +2,7 @@
 
 - Treat the in-game macro label `ShldBash` as the ability `Shield Bash` when inferring a recast timer.
 - The prior lookup handled `ShieldBash` but did not recognize this shortened label.
-- Automatic validation and the in-game recast overlay still need confirmation.
+- Automatic Lua 5.4/LuaJIT syntax and regression workflows pass. The live in-game overlay after using Shield Bash still needs confirmation.
 
 ## 1.50.57-dev — macro layout persistence recovery
 
