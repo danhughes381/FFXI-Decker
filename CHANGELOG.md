@@ -1,3 +1,9 @@
+## 1.50.58-dev — recognize shortened Shield Bash label
+
+- Treat the in-game macro label `ShldBash` as the ability `Shield Bash` when inferring a recast timer.
+- The prior lookup handled `ShieldBash` but did not recognize this shortened label.
+- Automatic validation and the in-game recast overlay still need confirmation.
+
 ## 1.50.57-dev — macro layout persistence recovery
 
 - Save the per-character macro layout sidecar both in Ashita's `config/addons/decker` directory and beside the addon source.
