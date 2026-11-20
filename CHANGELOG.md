@@ -1,3 +1,10 @@
+## 1.50.64-dev — restore macro layouts after relog
+
+- Fix Lua multi-return parsing in both macro layout readers. The `key and key:match(...)` expression kept only the first capture, so saved `Book.Set` keys were not reconstructed on reload even though Apply reported success.
+- Apply the same parsing correction to saved two-hour protection keys.
+- Development manifest points to the corrected source; Stable remains at v1.50.59-dev.
+- Live relog verification is still required.
+
 ## 1.50.63-dev — expose Apply & Save result
 
 - Move layout editing controls above the macro rows so Apply & Save is visible without scrolling the fixed-height HUD.
