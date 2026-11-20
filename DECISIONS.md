@@ -1,3 +1,7 @@
+## Cooldown mapping source
+
+Use native macro commands as the primary source for cooldown action identity. A macro label is presentation text and may be shorthand. Infer automatically only when the macro contains exactly one unique trackable spell or job ability; leave multiple action candidates ambiguous. Manual overrides name the actual action and are fingerprinted against the macro commands, not its display label. Keep exact-label inference as a clearly secondary fallback only when the native command file cannot be read. This feature reads macro data and does not modify it.
+
 # FFXI-Decker — decision register
 
 Record only decisions with material future impact. Keep earlier project history and existing decisions intact.
