@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.44-dev';
+addon.version = '1.50.45-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -2673,6 +2673,8 @@ end);
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
+    -- The addon remains loaded at character select, but every Decker window stays hidden until a character profile is detected.
+    if not state.profileReady then return; end
     if state.layoutEditing and state.layoutDraftKey~=macro_layout_key() then cancel_macro_layout(); end
     if state.profileReady and state.autoConnectPending and not state.autoConnectAttempted and os.clock()>=state.autoConnectAt then
         state.autoConnectAttempted=true; state.autoConnectPending=false;
