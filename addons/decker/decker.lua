@@ -1299,7 +1299,7 @@ local function valid_command(command)
     return false;
 end
 local function request_statebar(i)
-    if state.guideOpen then return false; end -- Guide cannot fire StateBar commands or macros.
+    if state.guideOpen or state.layoutEditing then return false; end -- Guide and layout preview cannot fire StateBar actions.
     local slots,_,job,level=classic.slots();
     local b=slots[i]; if not b or not state.profileReady then return false; end
     if state.classic75 and not classic.available(b,job,level) then return false; end
@@ -2899,7 +2899,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             draw_row('CTRL',0);
             draw_row('ALT',10);
             if state.layoutEditing then
-                imgui.Text('LAYOUT PREVIEW - select a macro, then a destination to swap.');
+                imgui.Text('LAYOUT PREVIEW - select a macro, then a destination to swap. Decker only; native macros stay put.');
                 imgui.SameLine();
                 if imgui.Button('Apply layout##applymacro') then
                     if apply_macro_layout() then save_display(); say('Decker macro layout applied to this book/set.',true); end
