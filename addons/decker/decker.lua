@@ -430,8 +430,10 @@ local function toggle_macro_guard(index)
     return false,previous;
 end
 local function load_display()
-    local path=settings_path(); if not path then return; end
-    local ok,f=pcall(io.open,path,'r'); if not ok or not f then return; end
+    local path=settings_path();
+    local ok,f=false,nil;
+    if path then ok,f=pcall(io.open,path,'r'); end
+    if ok and f then
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local n=tonumber(value);
@@ -557,7 +559,8 @@ local function load_display()
         elseif key=='book' and n and n==math.floor(n) and n>=1 and n<=BOOK_COUNT then state.manualBook=n;
         elseif key=='set' and n and n==math.floor(n) and n>=1 and n<=10 then state.trackedSet=n; state.trackedSource='saved (unverified)'; end
     end
-    f:close();
+    end -- profile file may be absent after an updater replacement; still load the sidecar below.
+    if f then f:close(); end
     if not load_macro_layout_store() then save_macro_layout_store(); end
     if not state.windowPositions.hud and state.hudPos then state.windowPositions.hud=copy_value(state.hudPos); end
     if state.mappingMode=='split' then
