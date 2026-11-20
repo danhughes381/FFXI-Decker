@@ -224,7 +224,7 @@ end
 local function identity_macro_layout()
     local order={}; for i=1,20 do order[i]=i; end; return order;
 end
--- Keep layout order in a character-named sidecar so a server-ID/profile change
+-- Keep layout order in a character-named sidecar so server-ID/profile changes
 -- after reload cannot make a saved arrangement appear to have vanished.
 local function macro_layout_store_path()
     local source=(debug.getinfo(1,'S') or {}).source or '';
@@ -3639,7 +3639,7 @@ end
 local function save_macro_layout_store()
     local path=macro_layout_store_path(); if not path then return false; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return false; end
-    f:write('layoutstore=1\\n');
+    f:write('layoutstore=1\n');
     for key,order in pairs(state.macroLayouts) do
         local book,set=key:match('^(%d+)%.(%d+)
     local key=macro_layout_key();
@@ -7043,7 +7043,7 @@ end);
         if book and set and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT and tonumber(set)>=1 and tonumber(set)<=10
             and valid_macro_layout(order) then
             local encoded={}; for i=1,20 do encoded[i]=('%02d'):format(order[i]); end
-            f:write('macrolayout.',key,'=',table.concat(encoded),'\\n');
+            f:write('macrolayout.',key,'=',table.concat(encoded),'\n');
         end
     end
     return f:close()~=nil;
