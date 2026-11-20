@@ -111,10 +111,19 @@ function cooldown.macro_signature(index,fallback)
     return fallback;
 end
 function cooldown.binding(page,fingerprint,index)
-    local binding=page and state.cooldownBindings[page..index];
-    if not binding then return nil; end
+    if not page then return nil; end
     local signature=cooldown.macro_signature(index,fingerprint);
-    return (binding.fingerprint==signature or binding.fingerprint==fingerprint) and binding or nil;
+    if signature then
+        -- Follow an explicitly mapped macro when its command contents move to
+        -- another slot in the same book/set.
+        for slot=1,20 do
+            local candidate=state.cooldownBindings[page..slot];
+            if candidate and candidate.fingerprint==signature then return candidate; end
+        end
+    end
+    local binding=state.cooldownBindings[page..index];
+    -- Keep pre-command-fingerprint mappings readable until their macro changes.
+    return binding and binding.fingerprint==fingerprint and binding or nil;
 end
 function cooldown.encode(fingerprint)
     return (fingerprint:gsub('.',function(byte) return ('%02x'):format(byte:byte()); end));
