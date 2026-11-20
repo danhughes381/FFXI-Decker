@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.47-dev';
+addon.version = '1.50.48-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -89,7 +89,7 @@ end
 -- Cooldown bindings are optional per button; never infer actions from user-defined labels.
 state.cooldownEnabled=true;
 state.cooldownBindings={};
-state.macroLayouts={};
+state.macroLayouts={}; state.macroGuards={}; state.guardEditing=false; state.pendingMacroConfirm=nil; state.confirmingMacro=false;
 state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
 local cooldown = {};
 function cooldown.page()
@@ -202,6 +202,12 @@ function cooldown.alerts() return recastObserver.events; end
 local function macro_layout_key()
     return tostring(state.manualBook or 1)..'.'..tostring(state.trackedSet or 1);
 end
+local function macro_guard_key(index,book,set)
+    return tostring(book or state.manualBook or 1)..'.'..tostring(set or state.trackedSet or 1)..'.'..tostring(index);
+end
+local function macro_guarded(index,book,set)
+    return state.macroGuards[macro_guard_key(index,book,set)]==true;
+end
 local function valid_macro_layout(order)
     if type(order)~='table' or #order~=20 then return false; end
     local seen={};
@@ -228,7 +234,7 @@ local function cancel_macro_layout()
     state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
 end
 local function begin_macro_layout()
-    if not state.profileReady or state.phase<4 or #state.names~=20 then return false; end
+    if not state.profileReady or state.phase<4 or #state.names~=20 or state.guardEditing then return false; end
     state.layoutDraftKey=macro_layout_key();
     state.layoutDraft=copy_macro_layout(current_macro_layout());
     state.layoutEditing=true; state.layoutSelected=nil;
@@ -282,6 +288,13 @@ local function save_display()
             f:write('macrolayout.',key,'=',table.concat(encoded),'\n');
         end
     end
+    for key,enabled in pairs(state.macroGuards) do
+        local book,set,index=key:match('^(%d+)%.(%d+)%.(%d+)$');
+        if enabled and book and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT
+            and tonumber(set)>=1 and tonumber(set)<=10 and tonumber(index)>=1 and tonumber(index)<=20 then
+            f:write('macroguard.',key,'=1\n');
+        end
+    end
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n','cooldownautonames=',state.cooldownAutoNames and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for key,binding in pairs(state.cooldownBindings) do
@@ -292,12 +305,27 @@ local function save_display()
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
     local closed=f:close(); state.layoutDirtyAt=nil; return closed~=nil;
 end
+local function toggle_macro_guard(index)
+    if not state.guardEditing or type(index)~='number' or index<1 or index>20 then return false,nil; end
+    local key=macro_guard_key(index);
+    local previous=state.macroGuards[key];
+    if previous then state.macroGuards[key]=nil; else state.macroGuards[key]=true; end
+    if save_display() then return true,not previous; end
+    state.macroGuards[key]=previous;
+    return false,previous;
+end
 local function load_display()
     local path=settings_path(); if not path then return; end
     local ok,f=pcall(io.open,path,'r'); if not ok or not f then return; end
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local n=tonumber(value);
+        local guardBook,guardSet,guardIndex=key and key:match('^macroguard%.(%d+)%.(%d+)%.(%d+)$');
+        guardBook,guardSet,guardIndex=tonumber(guardBook),tonumber(guardSet),tonumber(guardIndex);
+        if value=='1' and guardBook and guardBook>=1 and guardBook<=BOOK_COUNT
+            and guardSet and guardSet>=1 and guardSet<=10 and guardIndex and guardIndex>=1 and guardIndex<=20 then
+            state.macroGuards[guardBook..'.'..guardSet..'.'..guardIndex]=true;
+        end
         local layoutBook,layoutSet=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
         layoutBook,layoutSet=tonumber(layoutBook),tonumber(layoutSet);
         if layoutBook and layoutBook>=1 and layoutBook<=BOOK_COUNT and layoutSet and layoutSet>=1 and layoutSet<=10
@@ -514,7 +542,7 @@ local function refresh_profile()
     state.windowPositions={}; state.layoutDirtyAt=nil;
     state.hudPos=nil; state.keyAssignmentPage=false; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
     state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
-    state.macroLayouts={}; cancel_macro_layout();
+    state.macroLayouts={}; state.macroGuards={}; state.guardEditing=false; state.pendingMacroConfirm=nil; state.confirmingMacro=false; cancel_macro_layout();
     state.autoConnectPending=false; state.autoConnectAttempted=false; state.autoConnectAt=0;
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
     state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
@@ -1087,9 +1115,9 @@ function selector.saved_target(index,name)
     return name=='Cure3' or name=='Cure4';
 end
 local function execute_slot(row,slot,source)
-    if state.guideOpen or state.layoutEditing then return false; end -- Layout preview never executes a macro.
+    if state.guideOpen or state.layoutEditing or state.guardEditing then return false; end -- Editors never execute macros.
     local idx=(row=='CTRL' and 0 or 10)+(slot-1);
-    if source~='statebar' then
+    if source~='statebar' and not state.confirmingMacro then
         local mapped=current_macro_layout()[idx+1];
         if mapped then idx=mapped-1; row=idx<10 and 'CTRL' or 'ALT'; slot=(idx%10)+1; end
     end
@@ -1106,6 +1134,22 @@ local function execute_slot(row,slot,source)
     end
     local name=state.names[idx+1] or '';
     if name=='' then state.clickSummary='Empty macro slot: no action'; return refused(); end
+    if not state.confirmingMacro and macro_guarded(idx+1) then
+        analytics.finish(metric,false);
+        local pending=state.pendingMacroConfirm;
+        if not pending or pending.index~=idx+1 or pending.row~=row or pending.slot~=slot
+            or pending.book~=(state.manualBook or 1) or pending.set~=(state.trackedSet or 1)
+            or pending.fingerprint~=state.previousFingerprint or os.clock()>=pending.expires then
+            state.pendingMacroConfirm={row=row,slot=slot,source=source,index=idx+1,book=state.manualBook or 1,
+                set=state.trackedSet or 1,fingerprint=state.previousFingerprint,name=name,expires=os.clock()+8};
+        end
+        state.visible=true; state.hudForceReveal=true; state.hudLastActivity=os.clock();
+        state.clickSummary='ARMED: '..name..' - press the separate Confirm 2-hour button.';
+        say(state.clickSummary,true);
+        return false;
+    elseif not state.confirmingMacro then
+        state.pendingMacroConfirm=nil;
+    end
     local mem=ashita and ashita.memory;
     if not mem then state.clickSummary='BLOCKED: memory API unavailable'; return refused(); end
     local ok,ptr=pcall(function() return mem.read_uint32(state.addresses.controller); end);
@@ -1134,6 +1178,28 @@ local function execute_slot(row,slot,source)
     state.clickSummary=called and (row..'+'..tostring(slot==10 and 0 or slot)..' requested ('..name..')') or ('Lua error: '..tostring(err));
     say(state.clickSummary);
     return called;
+end
+local function cancel_macro_guard(reason)
+    state.pendingMacroConfirm=nil;
+    if reason then state.clickSummary=reason; end
+end
+local function confirm_macro_guard()
+    local pending=state.pendingMacroConfirm;
+    if not pending then return false; end
+    if os.clock()>=pending.expires or pending.book~=(state.manualBook or 1)
+        or pending.set~=(state.trackedSet or 1) or pending.fingerprint~=state.previousFingerprint
+        or not macro_guarded(pending.index,pending.book,pending.set) then
+        cancel_macro_guard('Protected macro confirmation expired or page changed; nothing was executed.');
+        say(state.clickSummary,true); return false;
+    end
+    state.pendingMacroConfirm=nil;
+    state.confirmingMacro=true;
+    local ok,result=pcall(execute_slot,pending.row,pending.slot,pending.source);
+    state.confirmingMacro=false;
+    if not ok then
+        state.clickSummary='Protected macro failed safely: '..tostring(result); say(state.clickSummary,true); return false;
+    end
+    return result;
 end
 
 -- Optional Classic 75 presets leave the existing character bar intact.
@@ -1299,7 +1365,7 @@ local function valid_command(command)
     return false;
 end
 local function request_statebar(i)
-    if state.guideOpen or state.layoutEditing then return false; end -- Guide and layout preview cannot fire StateBar actions.
+    if state.guideOpen or state.layoutEditing or state.guardEditing then return false; end -- Editors cannot fire StateBar actions.
     local slots,_,job,level=classic.slots();
     local b=slots[i]; if not b or not state.profileReady then return false; end
     if state.classic75 and not classic.available(b,job,level) then return false; end
@@ -1580,6 +1646,7 @@ local function draw_row(title,offset)
         local flashing=state.flashRow==physicalRow and state.flashSlot==physicalSlot and now<state.flashUntil;
         local remembered=e and e.row==physicalRow and e.slot==physicalSlot and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=(state.navRow==title and state.navSlot==i) or (state.layoutEditing and state.layoutSelected==visualIndex);
+        local guarded=macro_guarded(physicalIndex);
         local binding=cooldown.binding(page,fingerprint,physicalIndex) or cooldown.infer(name);
         local remaining=cooldown_recast(binding);
         local unavailable=selector.unavailable(physicalIndex);
@@ -1602,7 +1669,9 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local sourceLabel=state.layoutEditing and ('FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot)) or shortcut;
+        local sourceLabel=state.layoutEditing and ('FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot))
+            or state.guardEditing and (guarded and 'GUARDED' or 'CLICK TO GUARD')
+            or guarded and '2HR LOCK' or shortcut;
         local label=custom and '' or (name..'\n'..sourceLabel);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         local dragDelivered=false;
@@ -1659,7 +1728,11 @@ local function draw_row(title,offset)
         end
         if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name); end
         if clicked then
-            if state.layoutEditing then
+            if state.guardEditing then
+                local saved,enabled=toggle_macro_guard(physicalIndex);
+                if saved then say(enabled and ('2-hour guard enabled for '..name..'.') or ('2-hour guard removed from '..name..'.'),true);
+                else say('Could not save the macro guard; profile write failed.',true); end
+            elseif state.layoutEditing then
                 if dragDelivered then
                 elseif state.layoutDraftKey==macro_layout_key() then
                     if not state.layoutSelected then state.layoutSelected=visualIndex;
@@ -2681,6 +2754,11 @@ local drawDeps = {
     begin_macro_layout = begin_macro_layout,
     book_label = book_label,
     cancel_macro_layout = cancel_macro_layout,
+    cancel_macro_guard = cancel_macro_guard,
+    confirm_macro_guard = confirm_macro_guard,
+    macro_guarded = macro_guarded,
+    macro_guard_key = macro_guard_key,
+    toggle_macro_guard = toggle_macro_guard,
     chat = chat,
     classic = classic,
     connect_macros = connect_macros,
@@ -2746,6 +2824,11 @@ ashita.events.register('d3d_present','decker_draw',function()
     -- The addon remains loaded at character select, but every Decker window stays hidden until a character profile is detected.
     if not drawDeps.state.profileReady then return; end
     if drawDeps.state.layoutEditing and drawDeps.state.layoutDraftKey~=drawDeps.macro_layout_key() then drawDeps.cancel_macro_layout(); end
+    local pendingGuard=drawDeps.state.pendingMacroConfirm;
+    if pendingGuard and (os.clock()>=pendingGuard.expires or pendingGuard.book~=(drawDeps.state.manualBook or 1)
+        or pendingGuard.set~=(drawDeps.state.trackedSet or 1) or pendingGuard.fingerprint~=drawDeps.state.previousFingerprint) then
+        drawDeps.cancel_macro_guard('Protected macro confirmation expired or page changed; nothing was executed.');
+    end
     if drawDeps.state.profileReady and drawDeps.state.autoConnectPending and not drawDeps.state.autoConnectAttempted and os.clock()>=drawDeps.state.autoConnectAt then
         drawDeps.state.autoConnectAttempted=true; drawDeps.state.autoConnectPending=false;
         if drawDeps.state.phase<4 then drawDeps.connect_macros(); end
@@ -2995,6 +3078,13 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.draw_macro_panel();
             drawDeps.draw_row('CTRL',0);
             drawDeps.draw_row('ALT',10);
+            if drawDeps.state.pendingMacroConfirm then
+                local armed=drawDeps.state.pendingMacroConfirm;
+                drawDeps.imgui.TextWrapped('2-HOUR ARMED: '..armed.name..' has not run. Confirm separately within 8 seconds.');
+                if drawDeps.imgui.Button('CONFIRM 2-HOUR##guardconfirm') then drawDeps.confirm_macro_guard(); end
+                drawDeps.imgui.SameLine();
+                if drawDeps.imgui.Button('Cancel##guardcancel') then drawDeps.cancel_macro_guard('Protected macro cancelled; nothing was executed.'); end
+            end
             if drawDeps.state.layoutEditing and drawDeps.state.layoutDragging and drawDeps.imgui.IsMouseReleased and drawDeps.imgui.IsMouseReleased(0) then drawDeps.state.layoutDragging=nil; end
             if drawDeps.state.layoutEditing then
                 drawDeps.imgui.Text('LAYOUT PREVIEW - drag a macro to swap, or select it then select a destination. Decker only; native macros stay put.');
@@ -3012,6 +3102,16 @@ ashita.events.register('d3d_present','decker_draw',function()
             else
                 if drawDeps.imgui.Button('Arrange macros##arrangemacro') then
                     if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
+                end
+            end
+            if drawDeps.state.guardEditing then
+                drawDeps.imgui.Separator();
+                drawDeps.imgui.TextWrapped('2-HOUR GUARD SETUP: click macro buttons to toggle protection for this book/set. Protected buttons show GUARDED.');
+                if drawDeps.imgui.Button('Done##guarddone') then drawDeps.state.guardEditing=false; end
+            elseif not drawDeps.state.layoutEditing then
+                drawDeps.imgui.Separator();
+                if drawDeps.imgui.Button('Protect 2-hour macros##guardstart') then
+                    drawDeps.state.pendingMacroConfirm=nil; drawDeps.state.guardEditing=true; drawDeps.state.visible=true;
                 end
             end
             if drawDeps.state.allowSwitch then
