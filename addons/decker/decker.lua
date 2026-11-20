@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.59-dev';
+addon.version = '1.50.60-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -91,6 +91,8 @@ state.cooldownEnabled=true;
 state.cooldownBindings={};
 state.macroLayouts={}; state.macroGuards={}; state.guardEditing=false; state.pendingMacroConfirm=nil; state.confirmingMacro=false;
 state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
+state.cooldownDrafts={selected=1,text=''};
+local selector;
 local cooldown = {};
 function cooldown.page()
     if not state.profileReady or state.phase<4 or state.pendingRefreshFrames>0
@@ -98,9 +100,21 @@ function cooldown.page()
         or not state.previousFingerprint or state.nameCount==0 then return nil; end
     return state.manualBook..'.'..state.trackedSet..'.', state.previousFingerprint;
 end
+function cooldown.macro_signature(index,fallback)
+    if selector and selector.actions then
+        local commands=selector.actions(index);
+        if commands then
+            local signature=table.concat(commands,'\031');
+            if signature:gsub('\031','')~='' then return signature; end
+        end
+    end
+    return fallback;
+end
 function cooldown.binding(page,fingerprint,index)
     local binding=page and state.cooldownBindings[page..index];
-    return binding and binding.fingerprint==fingerprint and binding or nil;
+    if not binding then return nil; end
+    local signature=cooldown.macro_signature(index,fingerprint);
+    return (binding.fingerprint==signature or binding.fingerprint==fingerprint) and binding or nil;
 end
 function cooldown.encode(fingerprint)
     return (fingerprint:gsub('.',function(byte) return ('%02x'):format(byte:byte()); end));
@@ -110,12 +124,12 @@ function cooldown.decode(value)
     if (kind~='spell' and kind~='ability') or #encoded>358 or #encoded%2~=0 then return nil; end
     local fingerprint=encoded:gsub('..',function(pair) return string.char(tonumber(pair,16)); end);
     local _,separators=fingerprint:gsub('\031','');
-    if separators~=19 then return nil; end
+    if separators~=19 and separators~=5 then return nil; end
     return {kind=kind,id=tonumber(id),fingerprint=fingerprint};
 end
 -- Recasts are display observations, not proof that the macro executed a cast.
 local recastObserver={observed={},events={},pending={}};
--- Read-only exact-name lookup. Native macro labels are not verified actions.
+-- Read-only fallback for exact-name labels. Macro command parsing is preferred.
 local inferredCooldown={};
 function cooldown.infer(name)
     if not state.cooldownAutoNames or type(name)~='string'
@@ -1106,7 +1120,7 @@ local function record_execution(row,slot,source,displayRow,displaySlot)
     flash_slot(row,slot);
     if state.autoHide and state.autoHideDelay==0 then state.hudImmediateHide=true; end
 end
-local selector={};
+selector={};
 -- Weapon-skill families follow Storm XI's weapon_skills dataset and Ashita skill IDs.
 selector.weaponSkills={};
 selector.wsNames={};
@@ -1159,6 +1173,60 @@ function selector.actions(index,fresh)
     end
     cached.commands[index]=commands;
     return commands,cached.status;
+end
+function cooldown.infer_macro(index)
+    if not selector or not selector.actions then return nil; end
+    local commands=selector.actions(index);
+    if not commands then return nil; end
+    local found={}; local seen={};
+    local ok=pcall(function()
+        local resources=AshitaCore:GetResourceManager();
+        if not resources then return; end
+        for _,command in ipairs(commands) do
+            local kind,name=command:match('^%s*/(%a+)%s+"([^"]+)"');
+            if not kind then kind,name=command:match('^%s*/(%a+)%s+([^<]+)'); end
+            kind=(kind or ''):lower(); name=(name or ''):gsub('%s+$','');
+            local resource,entry;
+            if name~='' and (kind=='ma' or kind=='magic' or kind=='nin' or kind=='ninjutsu') then
+                resource=resources:GetSpellByName(name,0);
+                if resource and type(resource.Index)=='number' and resource.Index>=0 then
+                    entry={kind='spell',id=resource.Index,name=resource.Name and resource.Name[1] or name};
+                end
+            elseif name~='' and (kind=='ja' or kind=='jobability') then
+                resource=resources:GetAbilityByName(name,0);
+                if resource and type(resource.RecastTimerId)=='number' and resource.RecastTimerId>=0 then
+                    entry={kind='ability',id=resource.RecastTimerId,name=resource.Name and resource.Name[1] or name};
+                end
+            end
+            if entry then
+                local key=entry.kind..':'..entry.id;
+                if not seen[key] then seen[key]=true; found[#found+1]=entry; end
+            end
+        end
+    end);
+    if not ok then return nil; end
+    if #found==1 then return found[1]; end
+    if #found>1 then return nil,'ambiguous',found; end
+    return nil;
+end
+function cooldown.resolve_action(name)
+    if type(name)~='string' then return nil; end
+    name=name:match('^%s*(.-)%s*$') or '';
+    if name=='' or #name>64 then return nil; end
+    local ok,binding=pcall(function()
+        local resources=AshitaCore:GetResourceManager();
+        if not resources then return nil; end
+        local spell=resources:GetSpellByName(name,0);
+        if spell and type(spell.Index)=='number' and spell.Index>=0 then
+            return {kind='spell',id=spell.Index,name=spell.Name and spell.Name[1] or name};
+        end
+        local ability=resources:GetAbilityByName(name,0);
+        if ability and type(ability.RecastTimerId)=='number' and ability.RecastTimerId>=0 then
+            return {kind='ability',id=ability.RecastTimerId,name=ability.Name and ability.Name[1] or name};
+        end
+    end);
+    if ok then return binding; end
+    return nil;
 end
 function selector.weapon_family(memory,resources,slot)
     local inventory=memory:GetInventory();
@@ -1781,7 +1849,11 @@ local function draw_row(title,offset)
         local remembered=e and e.row==physicalRow and e.slot==physicalSlot and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
         local selected=(state.navRow==title and state.navSlot==i) or (state.layoutEditing and state.layoutSelected==visualIndex);
         local guarded=macro_guarded(physicalIndex);
-        local binding=cooldown.binding(page,fingerprint,physicalIndex) or cooldown.infer(name);
+        local binding=cooldown.binding(page,fingerprint,physicalIndex);
+        if not binding then
+            local inferred,why=cooldown.infer_macro(physicalIndex);
+            binding=inferred or (why~='ambiguous' and cooldown.infer(name) or nil);
+        end
         local remaining=cooldown_recast(binding);
         local unavailable=selector.unavailable(physicalIndex);
         local cooling=not unavailable and remaining~=nil and remaining>0;
@@ -2659,10 +2731,18 @@ ashita.events.register('command','decker_cmd',function(e)
             elseif kind=='clear' then
                 state.cooldownBindings[page..index]=nil; save_display(); say('Cooldown mapping cleared for this page.',true);
             elseif (kind=='spell' or kind=='ability') and id and id>=0 and id==math.floor(id) then
-                state.cooldownBindings[page..index]={kind=kind,id=id,fingerprint=fingerprint};
-                save_display(); say('Cooldown mapping saved for this book/set and '..row..' '..slot,true);
-            else say('Usage: /decker cooldown ctrl 1 spell 123 | ability TIMER_ID | clear',true); end
-        else say('Usage: /decker cooldown on|off|status | ctrl|alt SLOT spell|ability ID',true); end
+                local signature=cooldown.macro_signature(index,fingerprint);
+                state.cooldownBindings[page..index]={kind=kind,id=id,fingerprint=signature};
+                save_display(); say('Cooldown mapping saved for this macro; it follows its commands when its label changes.',true);
+            elseif kind=='action' then
+                local action=cooldown.resolve_action(table.concat(a,' ',6));
+                if action then
+                    local signature=cooldown.macro_signature(index,fingerprint);
+                    state.cooldownBindings[page..index]={kind=action.kind,id=action.id,fingerprint=signature};
+                    save_display(); say('Cooldown mapped to '..action.name..' for this macro.',true);
+                else say('Action not found. Enter the exact spell or ability name.',true); end
+            else say('Usage: /decker cooldown ctrl 1 spell ID | ability TIMER_ID | action "Spell or Ability" | clear',true); end
+        else say('Usage: /decker cooldown on|off|status | ctrl|alt SLOT spell ID | ability TIMER_ID | action "Name"',true); end
         end
     elseif cmd=='guide' then open_guide()
     elseif cmd=='settings' then state.showTests=true
@@ -3582,12 +3662,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                         end
                     end
                     if not drawDeps.state.keyAssignmentPage and drawDeps.imgui.CollapsingHeader('Cooldown text colours') then
-            drawDeps.imgui.Text('Recast clocks and countdowns (manual mappings)');
+            drawDeps.imgui.Text('Recast clocks and countdowns');
             local cool={drawDeps.state.cooldownEnabled};
             if drawDeps.imgui.Checkbox('Show clocks and cooldown countdowns',cool) then drawDeps.state.cooldownEnabled=cool[1]; drawDeps.save_display(); end
             local auto={drawDeps.state.cooldownAutoNames};
-            if drawDeps.imgui.Checkbox('Guess recast from exact macro label (display only)',auto) then drawDeps.state.cooldownAutoNames=auto[1]; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('Recognised labels show their recast; manual mappings override guesses.');
+            if drawDeps.imgui.Checkbox('Use exact-label guess only when macro commands are unavailable',auto) then drawDeps.state.cooldownAutoNames=auto[1]; drawDeps.save_display(); end
+            drawDeps.imgui.TextWrapped('Decker reads macro commands first. A manual action overrides detection and stays with those commands if you rename the macro.');
             local page,fingerprint=drawDeps.cooldown.page();
             local mapped=0;
             if page then for n=1,20 do if drawDeps.cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
@@ -3600,7 +3680,34 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine();
                 if b and drawDeps.imgui.Button('Clear##cool'..i) then drawDeps.state.cooldownBindings[page..i]=nil; drawDeps.save_display(); end
             end
-            if drawDeps.imgui.CollapsingHeader('Manual mapping help') then drawDeps.imgui.TextWrapped('Example: /decker cooldown ctrl 1 spell 123. Clear with /decker cooldown ctrl 1 clear. Ability mappings use the recast timer ID.'); end
+            local selected=math.max(1,math.min(20,tonumber(drawDeps.state.cooldownDrafts.selected) or 1));
+            local selectedLabel=(selected<=10 and 'CTRL ' or 'ALT ')..tostring((selected-1)%10+1);
+            if drawDeps.imgui.BeginCombo('Macro slot',selectedLabel) then
+                for i=1,20 do
+                    local item=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);
+                    if drawDeps.imgui.Selectable(item,selected==i) then drawDeps.state.cooldownDrafts.selected=i; selected=i; end
+                end
+                drawDeps.imgui.EndCombo();
+            end
+            local manual=drawDeps.cooldown.binding(page,fingerprint,selected);
+            local detected,reason,candidates=drawDeps.cooldown.infer_macro(selected);
+            if not detected and reason~='ambiguous' then detected=drawDeps.cooldown.infer(drawDeps.state.names[selected]); end
+            drawDeps.imgui.Text('Detected: '..(detected and (detected.name or (detected.kind..' '..detected.id)) or reason=='ambiguous' and ('multiple actions ('..#candidates..')') or 'no trackable action'));
+            drawDeps.imgui.Text('Manual: '..(manual and (manual.name or (manual.kind..' '..manual.id)) or 'automatic'));
+            local draft={drawDeps.state.cooldownDrafts.text or ''};
+            if drawDeps.imgui.InputText('Spell or ability name',draft,65) then drawDeps.state.cooldownDrafts.text=draft[1]; end
+            if drawDeps.imgui.Button('Map action') then
+                local action=drawDeps.cooldown.resolve_action(drawDeps.state.cooldownDrafts.text or '');
+                if page and action then
+                    local signature=drawDeps.cooldown.macro_signature(selected,fingerprint);
+                    drawDeps.state.cooldownBindings[page..selected]={kind=action.kind,id=action.id,name=action.name,fingerprint=signature};
+                    drawDeps.state.cooldownDrafts.text=''; drawDeps.state.cooldownStatus=nil; drawDeps.save_display();
+                else drawDeps.state.cooldownStatus=page and 'Enter an exact spell or ability name.' or 'Refresh the current macro page first.'; end
+            end
+            drawDeps.imgui.SameLine();
+            if drawDeps.imgui.Button('Use automatic') and page then drawDeps.state.cooldownBindings[page..selected]=nil; drawDeps.state.cooldownStatus=nil; drawDeps.save_display(); end
+            if drawDeps.state.cooldownStatus then drawDeps.imgui.TextWrapped(drawDeps.state.cooldownStatus); end
+            if drawDeps.imgui.CollapsingHeader('Manual mapping help') then drawDeps.imgui.TextWrapped('Enter the actual spell or ability name, for example Mage\'s Ballad or Shield Bash. Advanced: /decker cooldown ctrl 1 spell ID or ability TIMER_ID.'); end
                         drawDeps.imgui.Separator();
                     end -- cooldown options
                     if drawDeps.state.keyAssignmentPage then
