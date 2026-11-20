@@ -1,9 +1,9 @@
--- Decker 1.50.50-dev: clarify click-to-swap layout and preserve visible hotkey preferences.
+-- Decker 1.50.51-dev: restore navigation hotkeys with saved assigned keys.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.50-dev';
+addon.version = '1.50.51-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1445,10 +1445,13 @@ local function connect_macros()
         -- Restore deliberate preferences only after native connection succeeds.
         state.acknowledgeKeys=state.savedKeybinds; state.savedAck=state.savedKeybinds;
         state.keybinds=state.savedKeybinds and state.allowAllClicks;
+        local restoreNavigation=state.savedKeybinds and not state.savedNavEnabled;
+        if restoreNavigation then state.savedNavEnabled=true; end
         state.navKeysEnabled=state.savedNavEnabled;
         state.navToggleActive=false;
         -- A successful manual connection authorizes future automatic reconnection for this character.
-        if not state.autoConnect then state.autoConnect=true; save_display(); end
+        if not state.autoConnect then state.autoConnect=true; save_display();
+        elseif restoreNavigation then save_display(); end
     end
 end
 -- Display-only glass renderer. Native buttons retain hit testing, IDs and execution.
