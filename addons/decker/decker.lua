@@ -1,9 +1,9 @@
--- Decker 1.50.57-dev: keep the yellow selection on the displayed macro.
+-- Decker 1.50.58-dev: keep the yellow selection on the displayed macro.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.57-dev';
+addon.version = '1.50.58-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -125,7 +125,7 @@ function cooldown.infer(name)
     local spaced=clean:gsub('(%l)(%u)','%1 %2');
     local title=spaced:lower():gsub('(%a)([%w_]*)',function(first,rest) return first:upper()..rest; end);
     local compact=clean:lower():gsub('[^%w]','');
-    local resourceName=compact=='shieldbash' and 'Shield Bash' or title;
+    local resourceName=(compact=='shieldbash' or compact=='shldbash') and 'Shield Bash' or title;
     local ok,binding=pcall(function()
         local res=AshitaCore:GetResourceManager();
         if not res then return nil; end
