@@ -4,7 +4,7 @@
 - Leave macros with multiple trackable actions unresolved instead of guessing. Exact-label lookup remains a fallback when command data is unavailable.
 - Add a Settings mapper to choose a macro slot, enter an exact spell or ability name, save a manual override, or return to automatic detection.
 - Key saved overrides to macro commands so renaming the visible label does not discard the mapping.
-- Source-level change only so far; automatic CI and live Ashita timer/UI behaviour are pending.
+- Lua 5.4/LuaJIT syntax and existing mocked regression workflows pass (119 groups). Live Ashita macro-file detection, manual mapping, and actual timer/UI behaviour remain unverified.
 
 ## 1.50.59-dev — simplify Settings
 
