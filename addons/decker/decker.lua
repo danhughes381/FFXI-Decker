@@ -1184,9 +1184,9 @@ function selector.actions(index,fresh)
     return commands,cached.status;
 end
 function cooldown.infer_macro(index)
-    if not selector or not selector.actions then return nil; end
+    if not selector or not selector.actions then return nil,'unavailable'; end
     local commands=selector.actions(index);
-    if not commands then return nil; end
+    if not commands then return nil,'unavailable'; end
     local found={}; local seen={};
     local ok=pcall(function()
         local resources=AshitaCore:GetResourceManager();
@@ -1213,10 +1213,10 @@ function cooldown.infer_macro(index)
             end
         end
     end);
-    if not ok then return nil; end
+    if not ok then return nil,'unavailable'; end
     if #found==1 then return found[1]; end
     if #found>1 then return nil,'ambiguous',found; end
-    return nil;
+    return nil,'none';
 end
 function cooldown.resolve_action(name)
     if type(name)~='string' then return nil; end
@@ -1861,7 +1861,7 @@ local function draw_row(title,offset)
         local binding=cooldown.binding(page,fingerprint,physicalIndex);
         if not binding then
             local inferred,why=cooldown.infer_macro(physicalIndex);
-            binding=inferred or (why~='ambiguous' and cooldown.infer(name) or nil);
+            binding=inferred or (why=='unavailable' and cooldown.infer(name) or nil);
         end
         local remaining=cooldown_recast(binding);
         local unavailable=selector.unavailable(physicalIndex);
@@ -3700,7 +3700,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
             local manual=drawDeps.cooldown.binding(page,fingerprint,selected);
             local detected,reason,candidates=drawDeps.cooldown.infer_macro(selected);
-            if not detected and reason~='ambiguous' then detected=drawDeps.cooldown.infer(drawDeps.state.names[selected]); end
+            if not detected and reason=='unavailable' then detected=drawDeps.cooldown.infer(drawDeps.state.names[selected]); end
             drawDeps.imgui.Text('Detected: '..(detected and (detected.name or (detected.kind..' '..detected.id)) or reason=='ambiguous' and ('multiple actions ('..#candidates..')') or 'no trackable action'));
             drawDeps.imgui.Text('Manual: '..(manual and (manual.name or (manual.kind..' '..manual.id)) or 'automatic'));
             local draft={drawDeps.state.cooldownDrafts.text or ''};
