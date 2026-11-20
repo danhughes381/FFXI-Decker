@@ -3670,7 +3670,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                             if drawDeps.imgui.Checkbox('Echo macro visibility on/off to chat',echo) then drawDeps.state.echoLock=echo[1]; drawDeps.save_display(); end
                         end
                     end
-                    if not drawDeps.state.keyAssignmentPage and drawDeps.imgui.CollapsingHeader('Cooldown text colours') then
+                    if not drawDeps.state.keyAssignmentPage and drawDeps.imgui.CollapsingHeader('Cooldown action mapping') then
             drawDeps.imgui.Text('Recast clocks and countdowns');
             local cool={drawDeps.state.cooldownEnabled};
             if drawDeps.imgui.Checkbox('Show clocks and cooldown countdowns',cool) then drawDeps.state.cooldownEnabled=cool[1]; drawDeps.save_display(); end
@@ -3680,7 +3680,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             local page,fingerprint=drawDeps.cooldown.page();
             local mapped=0;
             if page then for n=1,20 do if drawDeps.cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
-            drawDeps.imgui.Text(('Mapped actions on current page: %d / 20'):format(mapped));
+            drawDeps.imgui.Text(('Manual overrides on current page: %d / 20'):format(mapped));
             if not drawDeps.state.cooldownEnabled then drawDeps.imgui.TextWrapped('Clocks are OFF. Tick Show clocks and cooldown countdowns above.'); end
             for i=1,20 do
                 local b=drawDeps.cooldown.binding(page,fingerprint,i);
