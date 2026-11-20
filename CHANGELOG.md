@@ -1,3 +1,11 @@
+## 1.50.60-dev — identify cooldowns from macro commands
+
+- Read each native macro's command lines and infer a spell or job ability when exactly one trackable action is present. Display labels can be nicknames such as `MP` or `Mag Acc`.
+- Leave macros with multiple trackable actions unresolved instead of guessing. Exact-label lookup remains a fallback when command data is unavailable.
+- Add a Settings mapper to choose a macro slot, enter an exact spell or ability name, save a manual override, or return to automatic detection.
+- Key saved overrides to macro commands so renaming the visible label does not discard the mapping.
+- Source-level change only so far; automatic CI and live Ashita timer/UI behaviour are pending.
+
 ## 1.50.59-dev — simplify Settings
 
 - Keep features but shorten repeated help text and relabel More > General as Book & Set.
