@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.43-dev';
+addon.version = '1.50.44-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -89,6 +89,8 @@ end
 -- Cooldown bindings are optional per button; never infer actions from user-defined labels.
 state.cooldownEnabled=true;
 state.cooldownBindings={};
+state.macroLayouts={};
+state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil;
 local cooldown = {};
 function cooldown.page()
     if not state.profileReady or state.phase<4 or state.pendingRefreshFrames>0
@@ -197,6 +199,53 @@ function cooldown.observe(key,seconds)
 end
 function cooldown.alerts() return recastObserver.events; end
 -- Persist deliberate key preferences, not execution gates temporarily cleared by Connect/reload.
+local function macro_layout_key()
+    return tostring(state.manualBook or 1)..'.'..tostring(state.trackedSet or 1);
+end
+local function valid_macro_layout(order)
+    if type(order)~='table' or #order~=20 then return false; end
+    local seen={};
+    for i=1,20 do
+        local n=order[i];
+        if type(n)~='number' or n~=math.floor(n) or n<1 or n>20 or seen[n] then return false; end
+        seen[n]=true;
+    end
+    return true;
+end
+local function copy_macro_layout(order)
+    local result={}; for i=1,20 do result[i]=order[i]; end; return result;
+end
+local function identity_macro_layout()
+    local order={}; for i=1,20 do order[i]=i; end; return order;
+end
+local function current_macro_layout()
+    local key=macro_layout_key();
+    if state.layoutEditing and state.layoutDraftKey==key and valid_macro_layout(state.layoutDraft) then return state.layoutDraft; end
+    local order=state.macroLayouts[key];
+    return valid_macro_layout(order) and order or identity_macro_layout();
+end
+local function cancel_macro_layout()
+    state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil;
+end
+local function begin_macro_layout()
+    if state.phase<4 or #state.names~=20 then return false; end
+    state.layoutDraftKey=macro_layout_key();
+    state.layoutDraft=copy_macro_layout(current_macro_layout());
+    state.layoutEditing=true; state.layoutSelected=nil;
+    return true;
+end
+local function apply_macro_layout()
+    local key=macro_layout_key();
+    if not state.layoutEditing or state.layoutDraftKey~=key or not valid_macro_layout(state.layoutDraft) then cancel_macro_layout(); return false; end
+    state.macroLayouts[key]=copy_macro_layout(state.layoutDraft);
+    cancel_macro_layout(); return true;
+end
+local function swap_macro_layout_slots(a,b)
+    if not state.layoutEditing or state.layoutDraftKey~=macro_layout_key() or not valid_macro_layout(state.layoutDraft)
+        or a<1 or a>20 or b<1 or b>20 then return; end
+    state.layoutDraft[a],state.layoutDraft[b]=state.layoutDraft[b],state.layoutDraft[a];
+    state.layoutSelected=nil;
+end
 local function save_display()
     if not state.profileReady then return; end
     local path=settings_path(); if not path then return; end
@@ -225,6 +274,14 @@ local function save_display()
             if value and value~='' then f:write(field:lower(),i,'=',value:gsub('.',function(c) return string.format('%02X',string.byte(c)); end),'\n'); end
         end
     end
+    for key,order in pairs(state.macroLayouts) do
+        local book,set=key:match('^(%d+)%.(%d+)$');
+        if book and set and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT and tonumber(set)>=1 and tonumber(set)<=10
+            and valid_macro_layout(order) then
+            local encoded={}; for i=1,20 do encoded[i]=('%02d'):format(order[i]); end
+            f:write('macrolayout.',key,'=',table.concat(encoded),'\n');
+        end
+    end
     f:write('cooldownenabled=',state.cooldownEnabled and '1' or '0','\n','cooldownautonames=',state.cooldownAutoNames and '1' or '0','\n');
     for i=1,20 do local b=state.cooldownBindings[i]; if b then f:write('cooldown',i,'=',b.kind,':',b.id,'\n'); end end
     for key,binding in pairs(state.cooldownBindings) do
@@ -241,6 +298,18 @@ local function load_display()
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local n=tonumber(value);
+        local layoutBook,layoutSet=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
+        layoutBook,layoutSet=tonumber(layoutBook),tonumber(layoutSet);
+        if layoutBook and layoutBook>=1 and layoutBook<=BOOK_COUNT and layoutSet and layoutSet>=1 and layoutSet<=10
+            and #value==40 and not value:find('[^%d]') then
+            local order,seen={},{}; local valid=true;
+            for i=1,20 do
+                local slot=tonumber(value:sub((i-1)*2+1,i*2));
+                if not slot or slot<1 or slot>20 or seen[slot] then valid=false; break; end
+                order[i]=slot; seen[slot]=true;
+            end
+            if valid then state.macroLayouts[layoutBook..'.'..layoutSet]=order; end
+        end
         for _,id in ipairs({'hud','statebar','collapsed'}) do
             if (key==id..'posx' or key==id..'posy') and n and n>=-20000 and n<=20000 then
                 state.windowPositions[id]=state.windowPositions[id] or {20,20};
@@ -445,6 +514,7 @@ local function refresh_profile()
     state.windowPositions={}; state.layoutDirtyAt=nil;
     state.hudPos=nil; state.keyAssignmentPage=false; state.statebarSelected=0; state.navRow='CTRL'; state.navSlot=1;
     state.names={}; state.phase=0; state.allowAllClicks=false; state.allowSwitch=false;
+    state.macroLayouts={}; cancel_macro_layout();
     state.autoConnectPending=false; state.autoConnectAttempted=false; state.autoConnectAt=0;
     state.autoRefresh=false; state.clickConsent=false; state.confirmAll=false;
     state.navToggleActive=false; state.navModifierHeld=false; state.navPhysicalDown=false;
@@ -1017,7 +1087,12 @@ function selector.saved_target(index,name)
     return name=='Cure3' or name=='Cure4';
 end
 local function execute_slot(row,slot,source)
-    if state.guideOpen then return false; end -- Simulated guide is strictly non-executing, including hotkeys.
+    if state.guideOpen or state.layoutEditing then return false; end -- Layout preview never executes a macro.
+    local idx=(row=='CTRL' and 0 or 10)+(slot-1);
+    if source~='statebar' then
+        local mapped=current_macro_layout()[idx+1];
+        if mapped then idx=mapped-1; row=idx<10 and 'CTRL' or 'ALT'; slot=(idx%10)+1; end
+    end
     local metric=analytics.attempt(row,slot,source);
     local function refused() analytics.finish(metric,false); return false; end
     if not state.allowAllClicks then
@@ -1029,7 +1104,6 @@ local function execute_slot(row,slot,source)
     if not validaddr(state.addresses.controller) or not validaddr(state.addresses.run) then
         state.clickSummary='BLOCKED: native execute signature unavailable'; return refused();
     end
-    local idx=(row=='CTRL' and 0 or 10)+(slot-1);
     local name=state.names[idx+1] or '';
     if name=='' then state.clickSummary='Empty macro slot: no action'; return refused(); end
     local mem=ashita and ashita.memory;
@@ -1487,25 +1561,30 @@ local function draw_glass_face(dl,x,y,w,h,opacity,accent)
 end
 local function draw_row(title,offset)
     local now=os.clock(); -- One animation clock sample for the entire row.
+    local order=current_macro_layout();
     local page,fingerprint=cooldown.page();
     local w=math.floor(state.hudWidth*state.scale);
     local h=math.floor(state.hudHeight*state.scale);
     for i=1,10 do
         if i>1 then imgui.SameLine(); end
-        local name=state.names[offset+i] or '';
+        local visualIndex=offset+i;
+        local physicalIndex=order[visualIndex] or visualIndex;
+        local name=state.names[physicalIndex] or '';
         local shortcut=state.mappingMode=='numbers' and tostring(i==10 and 0 or i)
             or state.mappingMode=='functions' and ('F'..i)
             or DIRECT_NAMES[state.directKeys[offset+i]] or '?';
         if not state.compactKeys then shortcut=title..' '..tostring(i==10 and 0 or i)..' | '..shortcut; end
-        local flashing=state.flashRow==title and state.flashSlot==i and now<state.flashUntil;
         local e=state.lastExecuted;
-        local remembered=e and e.row==title and e.slot==i and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
-        local selected=state.navRow==title and state.navSlot==i;
-        local binding=cooldown.binding(page,fingerprint,offset+i) or cooldown.infer(name);
+        local physicalRow=physicalIndex<=10 and 'CTRL' or 'ALT';
+        local physicalSlot=((physicalIndex-1)%10)+1;
+        local flashing=state.flashRow==physicalRow and state.flashSlot==physicalSlot and now<state.flashUntil;
+        local remembered=e and e.row==physicalRow and e.slot==physicalSlot and e.set==state.trackedSet and e.name==name and state.trackedSource~='unverified (same names)';
+        local selected=(state.navRow==title and state.navSlot==i) or (state.layoutEditing and state.layoutSelected==visualIndex);
+        local binding=cooldown.binding(page,fingerprint,physicalIndex) or cooldown.infer(name);
         local remaining=cooldown_recast(binding);
-        local unavailable=selector.unavailable(offset+i);
+        local unavailable=selector.unavailable(physicalIndex);
         local cooling=not unavailable and remaining~=nil and remaining>0;
-        local recastKey=binding and ((page or 'inferred.')..(offset+i)..':'..binding.kind..':'..binding.id);
+        local recastKey=binding and ((page or 'inferred.')..physicalIndex..':'..binding.kind..':'..binding.id);
         if recastKey and remaining then cooldown.observe(recastKey,remaining); end
         local a=state.buttonOpacity;
         local accents={{.30,.22,.10,a},{.10,.23,.34,a},{.25,.15,.33,a},{.23,.25,.28,a}};
@@ -1523,7 +1602,8 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local label=custom and '' or (name..'\n'..shortcut);
+        local sourceLabel=state.layoutEditing and ('FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot)) or shortcut;
+        local label=custom and '' or (name..'\n'..sourceLabel);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
@@ -1544,7 +1624,7 @@ local function draw_row(title,offset)
                             imgui.GetColorU32({1,.94,.65,fade*.85}),imgui.GetColorU32({.95,.73,.35,fade*.85}));
                     end
                 end
-                draw_glass_text(dl,name,x,y,w,h,shortcut,cooling,false,nil,unavailable);
+                draw_glass_text(dl,name,x,y,w,h,sourceLabel,cooling,false,nil,unavailable);
                 if cooling and type(dl.AddLine)=='function' then
                     local totalKey='max:'..recastKey;
                     local high=recastObserver.observed[totalKey] or remaining;
@@ -1567,7 +1647,15 @@ local function draw_row(title,offset)
             if not ok then glass.custom=false; glass.diagnostic='Host draw API fallback: '..tostring(err); end
         end
         if imgui.IsItemHovered and imgui.SetTooltip and imgui.IsItemHovered() and name~='' then imgui.SetTooltip(name); end
-        if clicked then execute_slot(title,i,'mouse'); end
+        if clicked then
+            if state.layoutEditing then
+                if state.layoutDraftKey==macro_layout_key() then
+                    if not state.layoutSelected then state.layoutSelected=visualIndex;
+                    elseif state.layoutSelected==visualIndex then state.layoutSelected=nil;
+                    else swap_macro_layout_slots(state.layoutSelected,visualIndex); end
+                else cancel_macro_layout(); end
+            else execute_slot(title,i,'mouse'); end
+        end
     end
 end
 -- Draw the panel behind the two rows without introducing a child window or changing layout.
@@ -2573,6 +2661,7 @@ end);
 ashita.events.register('d3d_present','decker_draw',function()
     update_poll();
     if os.clock()-state.lastProfileCheck>1 then state.lastProfileCheck=os.clock(); refresh_profile(); end
+    if state.layoutEditing and state.layoutDraftKey~=macro_layout_key() then cancel_macro_layout(); end
     if state.profileReady and state.autoConnectPending and not state.autoConnectAttempted and os.clock()>=state.autoConnectAt then
         state.autoConnectAttempted=true; state.autoConnectPending=false;
         if state.phase<4 then connect_macros(); end
@@ -2809,6 +2898,19 @@ ashita.events.register('d3d_present','decker_draw',function()
             draw_macro_panel();
             draw_row('CTRL',0);
             draw_row('ALT',10);
+            if state.layoutEditing then
+                imgui.Text('LAYOUT PREVIEW - select a macro, then a destination to swap.');
+                imgui.SameLine();
+                if imgui.Button('Apply layout##applymacro') then
+                    if apply_macro_layout() then save_display(); say('Decker macro layout applied to this book/set.',true); end
+                end
+                imgui.SameLine(); if imgui.Button('Cancel##cancelmacro') then cancel_macro_layout(); end
+                imgui.SameLine(); if imgui.Button('Reset order##resetmacro') then state.layoutDraft=identity_macro_layout(); state.layoutSelected=nil; end
+            else
+                if imgui.Button('Arrange macros##arrangemacro') then
+                    if not begin_macro_layout() then say('Connect to in-game macros before arranging the current book/set.',true); end
+                end
+            end
             if state.allowSwitch then
                 if imgui.Button('<##deckprev') then select_page(((state.trackedSet or 1)+8)%10+1); end
                 imgui.SameLine(); imgui.Text(('Macro set %d/10'):format(state.trackedSet or 1));
