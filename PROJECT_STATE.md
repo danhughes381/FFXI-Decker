@@ -1,3 +1,13 @@
+# Current development work — v1.50.60-dev candidate
+
+Cooldown detection now reads the six native macro command lines first, resolves a unique spell or job ability, and leaves multiple trackable actions ambiguous rather than guessing. Settings adds a per-slot manual action name mapper and automatic reset. Manual overrides are associated with command contents so a display-label rename does not invalidate them. Macro data remains read-only.
+
+Source commit: `2fa5e9b91a60ba13885a292b27493cc29cbbd9b1`. Exact source SHA-256 and automatic Lua 5.4/LuaJIT workflow results are pending. Live Ashita macro-file detection, manual mapping, and actual recast overlay behavior are unverified. Stable and Development manifests are still on v1.50.59-dev pending CI review.
+
+Next action: wait for PR #57 automatic workflows. If they pass, publish v1.50.60-dev to the three Development manifests only; ask Dan to verify a renamed Ballad/other shorthand macro and one Shield Bash recast in game.
+
+---
+
 # Current development work — v1.50.59-dev
 
 Settings cleanup keeps existing functionality and controls, shortens repeated help text, and relabels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are under the Developer tools toggle. Profile detection/file details are also shown only when Developer tools is open. The essential full-hide recovery warning and Toggle-mode auto-hide note remain visible.
