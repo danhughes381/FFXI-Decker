@@ -1,3 +1,15 @@
+# Current development work — v1.50.57-dev
+
+The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This fix addresses Dan's report that visual macro swaps disappeared after updating Decker. The root cause was confirmed in source: `load_display()` returned immediately when the character profile file was missing, before loading the layout sidecar. The loader now continues into sidecar recovery even without that profile file.
+
+Layout saving now writes both the Ashita config sidecar and an add-on-side copy. Loading keeps current profile values, fills missing book/set layouts from both copies, and scans older server-qualified profile files for the same character. Stable remains unchanged.
+
+Source commit: `4084689dfcc3d245ac650deb38a41653702439d2`. Exact source SHA-256: `a6236735d4953a747823b942e2251c3ec2ffe5426ac02d93415435a0d31ac1b7`. Lua 5.4 and LuaJIT syntax/regression workflows pass. All three Development manifests (main, development, legacy Development) now pin v1.50.57-dev. Live Ashita update/relogin recovery remains unverified; Dan needs to confirm the affected book/set layout in game.
+
+Next action: update Decker through Settings > More > Updates > Development, reconnect macros if prompted, then check the previously rearranged book/set. If every existing layout copy was already deleted, the intended order cannot be reconstructed automatically.
+
+---
+
 # Current development work — v1.50.57-dev candidate
 
 The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This change addresses Dan's report that visual macro swaps disappeared after updating Decker. Layout saves now write two copies, and startup merges existing per-profile layouts with sidecars and earlier server-qualified profile files for the same character.
