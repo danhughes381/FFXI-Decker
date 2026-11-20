@@ -1,9 +1,9 @@
--- Decker 1.50.58-dev: keep the yellow selection on the displayed macro.
+-- Decker 1.50.59-dev: keep the yellow selection on the displayed macro.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.58-dev';
+addon.version = '1.50.59-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -3284,7 +3284,6 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Button('X  Close Settings') then drawDeps.state.showTests=false; end
             drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Show macros##settings') then drawDeps.state.visible=true; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudForceReveal=true; end
             drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Interactive guide##settingsguide') then drawDeps.open_guide(); end
-            drawDeps.imgui.TextWrapped('Chat commands: /decker settings | guide | show | hide | help');
             drawDeps.imgui.Text('v'..addon.version..' | '..(drawDeps.state.profileId or 'Waiting for login'));
             drawDeps.imgui.Separator();
             -- Four user-facing sections; technical pages live under More.
@@ -3298,21 +3297,23 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.imgui.Separator();
             if moreActive then
                 drawDeps.imgui.Text('More options:');
-                for i,tab in ipairs({'General','Profiles','Updates'}) do
+                for i,tab in ipairs({{'Book & Set','General'},{'Profiles','Profiles'},{'Updates','Updates'}}) do
                     if i>1 then drawDeps.imgui.SameLine(); end
-                    if drawDeps.imgui.Button((drawDeps.state.settingsTab==tab and '['..tab..']' or tab)..'##more'..tab) then drawDeps.state.settingsTab=tab; end
+                    if drawDeps.imgui.Button((drawDeps.state.settingsTab==tab[2] and '['..tab[1]..']' or tab[1])..'##more'..tab[2]) then drawDeps.state.settingsTab=tab[2]; end
                 end
                 drawDeps.imgui.Separator();
             end
             if drawDeps.state.settingsTab=='Profiles' then
-                drawDeps.imgui.TextWrapped('Active character: '..(drawDeps.state.profileId or 'Waiting for character login'));
-                drawDeps.imgui.TextWrapped('Detection: '..state.profileDiagnostic);
-                drawDeps.imgui.TextWrapped('Profile file: '..(drawDeps.state.profileId and ('decker_profile_'..state.profileId..'.cfg') or '(none; saves disabled)'));
-                drawDeps.imgui.TextWrapped('Profiles are saved separately per server and character. Settings are not copied between characters.');
+                local profileName=drawDeps.state.profileId and drawDeps.state.profileId:match('^[^_]+_(.*)$') or nil;
+                drawDeps.imgui.Text('Character: '..(profileName or 'Waiting for login'));
+                drawDeps.imgui.Text('Settings are kept separately for each character.');
+                if drawDeps.state.showAdvanced then
+                    drawDeps.imgui.TextWrapped('Detection: '..state.profileDiagnostic);
+                    drawDeps.imgui.TextWrapped('Profile file: '..(drawDeps.state.profileId and ('decker_profile_'..state.profileId..'.cfg') or '(none; saves disabled)'));
+                end
             elseif drawDeps.state.settingsTab=='Updates' then
                 drawDeps.imgui.Text('Installed: v'..addon.version);
-                drawDeps.imgui.TextWrapped('Stable and Development channels are available. Check to see the published version on your selected channel.');
-                drawDeps.imgui.TextWrapped('Check, install and reload Decker here. Character settings are preserved. Development builds may have unverified changes.');
+                drawDeps.imgui.TextWrapped('Choose a channel, check for updates, then install and reload.');
                 if not drawDeps.updater.job and not drawDeps.updater.installed then
                     if drawDeps.imgui.BeginCombo('Update channel',drawDeps.updater.channel) then
                         for _,channel in ipairs({'development','stable'}) do
@@ -3334,7 +3335,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                     end
                 end
                 drawDeps.imgui.TextWrapped(drawDeps.updater.status);
-                drawDeps.imgui.TextWrapped('Windows PowerShell is required. Downloads run in the background over HTTPS, are SHA-256 checked and compiled before installation. A backup enables rollback. Reload affects Decker only; reconnect macros afterward.');
+                drawDeps.imgui.TextWrapped('Requires Windows PowerShell. Decker is backed up before reload; reconnect macros afterward.');
             elseif drawDeps.state.settingsTab=='StateBar' then
                 local preset={drawDeps.state.classic75};
                 if drawDeps.imgui.Checkbox('Classic 75 job presets',preset) then drawDeps.state.classic75=preset[1]; drawDeps.state.statebarDrag=nil; drawDeps.save_display(); end
@@ -3368,9 +3369,9 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine(); drawDeps.imgui.Text(('%.0f%%'):format(drawDeps.state.statebarScale*100)); drawDeps.imgui.SameLine();
                 if drawDeps.imgui.Button('StateBar larger') then drawDeps.state.statebarScale=math.min(1.5,drawDeps.state.statebarScale+.1); drawDeps.save_display(); end
                 drawDeps.classic.draw_font_controls();
-                drawDeps.imgui.TextWrapped('Aegis gear modes highlight while active in the saved profile. Manual highlights toggle on each press. Utility slots run one-off actions.');
+                drawDeps.imgui.TextWrapped('Aegis modes highlight while active; manual states toggle. Utility slots run once.');
                 drawDeps.imgui.Separator();
-                drawDeps.imgui.TextWrapped('Each button has an action to run and a separate key to press. Enable StateBar hotkeys to reserve those keys; this switch is independent of the main macro keyboard switch. Disable before typing or editing macros.');
+                drawDeps.imgui.TextWrapped('Each slot has an action and optional hotkey. Hotkeys reserve their keys; turn them off before typing.');
                 local sbhot={drawDeps.state.statebarHotkeysEnabled};
                 if drawDeps.imgui.Checkbox('Enable StateBar hotkeys',sbhot) then drawDeps.state.statebarHotkeysEnabled=sbhot[1]; drawDeps.save_display(); end
                 drawDeps.imgui.Text('StateBar keyboard: '..(not drawDeps.state.statebarHotkeysEnabled and 'OFF' or not drawDeps.state.statebarEnabled and 'Enable StateBar first' or drawDeps.statebar_input_ready() and 'READY' or 'WAITING - Connect to in-game macros'));
@@ -3407,7 +3408,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                         end
                         drawDeps.imgui.EndCombo();
                     end
-                    drawDeps.imgui.TextWrapped('FFXI macro source: choose the action from its upper (CTRL) or lower (ALT) row. These are the two native rows, regardless of your Decker key labels.');
+                    
                     if drawDeps.imgui.BeginCombo('Macro to run##bar'..i,(b.row=='CTRL' and 'Upper row (CTRL) ' or 'Lower row (ALT) ')..tostring(b.slot==10 and 0 or b.slot)) then
                         for _,row in ipairs({'CTRL','ALT'}) do
                             for slot=1,10 do
@@ -3444,13 +3445,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                     end
                 end
                 if #drawDeps.state.statebarSlots<12 and drawDeps.imgui.Button('Add StateBar slot') then table.insert(drawDeps.state.statebarSlots,{row='CTRL',slot=1}); drawDeps.save_display(); end
-                drawDeps.imgui.TextWrapped('StateBar macros use the current book and set. Hotkeys are single keys: letters, F1-F12, number pad, punctuation and editing keys. Ctrl/Alt combinations remain native FFXI controls. Changing State/Utility only changes highlighting.');
+                drawDeps.imgui.TextWrapped('StateBar uses the current book and set. State slots keep a highlight; Utility slots run once.');
                 end
             end
             if drawDeps.state.settingsTab=='Appearance' then
             if drawDeps.imgui.CollapsingHeader('Display',ImGuiTreeNodeFlags_DefaultOpen or 32) then
                         local auto={drawDeps.state.autoHide};
-            drawDeps.imgui.Text('Character profile: '..(drawDeps.state.profileId or 'waiting for login'));
             if drawDeps.imgui.Button('Unlock HUD for dragging') then drawDeps.state.hudPos=nil; drawDeps.state.positionLocked=false; drawDeps.save_display(); end
             drawDeps.imgui.SameLine();
             if drawDeps.imgui.Button('Save this character layout now') then
@@ -3458,7 +3458,6 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.state.layoutSaveNotice=drawDeps.state.profileReady and ('Saved for '..tostring(drawDeps.state.profileId)) or 'Log in to save a character layout';
             end
             if drawDeps.state.layoutSaveNotice then drawDeps.imgui.TextWrapped(drawDeps.state.layoutSaveNotice); end
-            drawDeps.imgui.TextWrapped('Hold mode shows macros while the mod key is down and hides them on release. These inactivity settings apply to Toggle mode.');
             if drawDeps.imgui.Checkbox('Auto-hide macro display (Toggle mode)',auto) then drawDeps.state.autoHide=auto[1]; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudHasInteracted=true; drawDeps.state.hudImmediateHide=false; drawDeps.save_display(); end
             drawDeps.imgui.Text('Hide after activity / inactivity:');
             for _,seconds in ipairs({0,2,5,10,15,30}) do
@@ -3466,19 +3465,15 @@ ashita.events.register('d3d_present','decker_draw',function()
                 local duration=seconds==0 and 'Immediately (0s)' or (seconds..'s');
                 if drawDeps.imgui.Button((drawDeps.state.autoHideDelay==seconds and '[' or '')..duration..(drawDeps.state.autoHideDelay==seconds and ']' or '')..'##hide'..seconds) then drawDeps.state.autoHideDelay=seconds; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudHasInteracted=true; drawDeps.state.hudImmediateHide=false; drawDeps.save_display(); end
             end
-            drawDeps.imgui.TextWrapped('0s hides just after a macro or StateBar action, or when Toggle navigation ends. It never hides before your first action. The 2-30s choices retain inactivity timing.');
+            drawDeps.imgui.TextWrapped('0s hides after an action; longer choices hide after inactivity.');
             drawDeps.imgui.Text('When the macros auto-hide:');
             if drawDeps.imgui.Button('Hide completely'..(drawDeps.state.autoHideMode=='hide' and ' [selected]' or '')) then drawDeps.state.autoHideMode='hide'; drawDeps.save_display(); end
             drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Keep small Decker button'..(drawDeps.state.autoHideMode=='collapse' and ' [selected]' or '')) then drawDeps.state.autoHideMode='collapse'; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('First-time setup: select Hide completely only after Decker is working and you know how to reopen it with /decker settings or /decker show.');
-            drawDeps.imgui.TextWrapped('/decker settings opens Settings. /decker show reveals macros. /decker hide hides macros. /decker help lists commands.');
+            drawDeps.imgui.TextWrapped('Reopen Settings with /decker settings or show macros with /decker show.');
             local motion={drawDeps.state.motionEnabled};
             if drawDeps.imgui.Checkbox('Subtle animations (uncheck for reduced motion)',motion) then drawDeps.state.motionEnabled=motion[1]; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('Animation is visual-only: selection glow and a brief confirmation line after a macro request. Disabling motion leaves the normal selected/pressed highlights.');
             local scroll={drawDeps.state.showScrollbars};
             if drawDeps.imgui.Checkbox('Show scrollbars',scroll) then drawDeps.state.showScrollbars=scroll[1]; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('Scrollbar visibility applies to the macro HUD, StateBar and Settings. Mouse-wheel scrolling remains available.');
-            drawDeps.imgui.TextWrapped('The macro display stays visible while navigation is active. Settings stays visible while open. Keyboard shortcuts keep working when hidden.')
             for _,item in ipairs({{'Outer window','outerOpacity'},{'Inner macro panel','panelOpacity'},{'Macro buttons','buttonOpacity'}}) do
                 local key=item[2];
                 drawDeps.imgui.Text(('%s opacity: %d%%'):format(item[1],math.floor(drawDeps.state[key]*100+.5)));
@@ -3527,20 +3522,16 @@ ashita.events.register('d3d_present','decker_draw',function()
                         if assigned[1] then drawDeps.state.savedNavEnabled=true; drawDeps.state.navKeysEnabled=true; end
                         drawDeps.state.held={}; drawDeps.nav_clear(); drawDeps.save_display();
                     end
-                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
-                        and 'Uses the keys in your selected layout or custom slots. Disable before typing or editing macros.'
-                        or 'Off. Turn this on to use your assigned macro keys.');
+                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds and 'Saved ON.' or 'Saved OFF.');
                 else
-                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
-                        and 'Assigned macro keys are saved ON; they become active after Decker reconnects to your in-game macros.'
-                        or 'Assigned macro keys are saved OFF. Connect to macros to change this setting.');
+                    drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds and 'Assigned keys saved ON; connect to activate.' or 'Assigned keys saved OFF. Connect to change.');
                 end
                 local nav={drawDeps.state.savedNavEnabled};
                 if drawDeps.imgui.Checkbox('Enable navigation hotkeys',nav) then
                     drawDeps.state.savedNavEnabled=nav[1]; drawDeps.state.navKeysEnabled=nav[1];
                     drawDeps.nav_clear(); drawDeps.save_display();
                 end
-                drawDeps.imgui.TextWrapped('Uses the mod key, row switch and arrow keys. Turning on Use my assigned keys also enables this. The preference is saved across addon updates; it becomes active after macro connection.');
+                drawDeps.imgui.TextWrapped('Uses the mod key, row switch and arrows. Assigned keys also enables this.');
                 if drawDeps.shortcuts_active() then
                     local layout=({numbers='Both rows: 1-0',functions='Both rows: F1-F10',split='F1-F10 / 1-0',custom='Custom keys in use'})[drawDeps.state.mappingMode];
                     drawDeps.imgui.Text('Key layout: '..(layout or 'Both rows: 1-0'));
@@ -3554,7 +3545,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                         end
                         if drawDeps.imgui.Button('Customise keys for both rows') then drawDeps.state.keyAssignmentPage=true; end
                         if drawDeps.state.mappingMode=='numbers' or drawDeps.state.mappingMode=='functions' then
-                            drawDeps.imgui.TextWrapped('Both rows share the same keys. Use your mod key, then the switch row key to select which row they run.');
+                            drawDeps.imgui.TextWrapped('Press the mod key, then the row key to switch rows.');
                             drawDeps.imgui.Text('Active row: '..(drawDeps.state.navRow=='ALT' and 'LOWER' or 'UPPER')..' | Mod key: '..state.navModifier..' | Switch row: '..state.rowSwitchKey);
                         end
                         if drawDeps.imgui.CollapsingHeader('Advanced keys') then
@@ -3568,7 +3559,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                                 end
                                 drawDeps.imgui.EndCombo();
                             end
-                            drawDeps.imgui.TextWrapped('Shows the macros and activates arrow navigation. Choose different mod and row keys. Default: Right Shift.');
+                            drawDeps.imgui.TextWrapped('Shows the HUD and enables navigation. Default: Right Shift.');
                             if (drawDeps.state.navModifier=='RSHIFT' or drawDeps.state.navModifier=='LSHIFT') and drawDeps.imgui.CollapsingHeader('Windows Shift shortcut help') then
                                 drawDeps.imgui.TextWrapped('Five Shift presses can open Windows Sticky Keys. In Windows Settings, search Sticky keys and turn off its keyboard shortcut. You can also choose HOME as your Decker mod key.');
                             end
@@ -3578,13 +3569,13 @@ ashita.events.register('d3d_present','decker_draw',function()
                                 end
                                 drawDeps.imgui.EndCombo();
                             end
-                            drawDeps.imgui.TextWrapped('While the mod is active, this key or Space switches between upper and lower rows. Laptop keypad 1/End: choose NUMPAD1; END is the dedicated End key.');
+                            drawDeps.imgui.TextWrapped('Switches rows while navigation is active. Choose NUMPAD1 for a laptop End key.');
                             if drawDeps.imgui.BeginCombo('Macro mod behaviour',drawDeps.state.stickyNavigation and 'Press key once (Toggle)' or 'Hold key pressed down') then
                                 if drawDeps.imgui.Selectable('Press key once (Toggle)',drawDeps.state.stickyNavigation) then drawDeps.state.stickyNavigation=true; drawDeps.nav_clear(); drawDeps.save_display(); end
                                 if drawDeps.imgui.Selectable('Hold key pressed down',not drawDeps.state.stickyNavigation) then drawDeps.state.stickyNavigation=false; drawDeps.nav_clear(); drawDeps.save_display(); end
                                 drawDeps.imgui.EndCombo();
                             end
-                            drawDeps.imgui.TextWrapped(drawDeps.state.stickyNavigation and 'Tap the mod key to activate; tap again to finish.' or 'Hold the mod key to activate; release to finish.');
+                            drawDeps.imgui.TextWrapped(drawDeps.state.stickyNavigation and 'Tap to show; tap again to hide.' or 'Hold to show; release to hide.');
                             local echo={drawDeps.state.echoLock};
                             if drawDeps.imgui.Checkbox('Echo macro visibility on/off to chat',echo) then drawDeps.state.echoLock=echo[1]; drawDeps.save_display(); end
                         end
@@ -3595,14 +3586,12 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Checkbox('Show clocks and cooldown countdowns',cool) then drawDeps.state.cooldownEnabled=cool[1]; drawDeps.save_display(); end
             local auto={drawDeps.state.cooldownAutoNames};
             if drawDeps.imgui.Checkbox('Guess recast from exact macro label (display only)',auto) then drawDeps.state.cooldownAutoNames=auto[1]; drawDeps.save_display(); end
-            drawDeps.imgui.TextWrapped('Exact spell/ability labels up to 32 characters (including Shield Bash) can be guessed, case-insensitively. These display guesses do NOT verify native macro contents. Manual mappings override guesses.');
-            drawDeps.imgui.TextWrapped('Clocks use confirmed manual per-button mappings only; game macro labels are not enough to prove the action. The timer value comes from Ashita recast memory. Missing/unknown timers are not shown as READY.');
+            drawDeps.imgui.TextWrapped('Recognised labels show their recast; manual mappings override guesses.');
             local page,fingerprint=drawDeps.cooldown.page();
             local mapped=0;
             if page then for n=1,20 do if drawDeps.cooldown.binding(page,fingerprint,n) then mapped=mapped+1; end end end
             drawDeps.imgui.Text(('Mapped actions on current page: %d / 20'):format(mapped));
             if not drawDeps.state.cooldownEnabled then drawDeps.imgui.TextWrapped('Clocks are OFF. Tick Show clocks and cooldown countdowns above.'); end
-            if mapped==0 then drawDeps.imgui.TextWrapped('No manual mappings on this book/set. Exact ability or spell labels up to 32 characters may show inferred timers, including Shield Bash. Other buttons need verified spell Index or ability TIMER_ID mappings.'); end
             for i=1,20 do
                 local b=drawDeps.cooldown.binding(page,fingerprint,i);
                 local label=(i<=10 and 'CTRL ' or 'ALT ')..tostring((i-1)%10+1);
@@ -3610,14 +3599,14 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine();
                 if b and drawDeps.imgui.Button('Clear##cool'..i) then drawDeps.state.cooldownBindings[page..i]=nil; drawDeps.save_display(); end
             end
-            drawDeps.imgui.TextWrapped('Verify the displayed book and set in FFXI before mapping. Old unscoped mappings need to be reassigned. To map a button: /decker cooldown ctrl 1 spell 123, or /decker cooldown alt 2 ability 5. Use /decker cooldown ctrl 1 clear to remove. Ability value is a recast timer ID.');
+            if drawDeps.imgui.CollapsingHeader('Manual mapping help') then drawDeps.imgui.TextWrapped('Example: /decker cooldown ctrl 1 spell 123. Clear with /decker cooldown ctrl 1 clear. Ability mappings use the recast timer ID.'); end
                         drawDeps.imgui.Separator();
                     end -- cooldown options
                     if drawDeps.state.keyAssignmentPage then
                         if drawDeps.imgui.Button('Back to key layouts') then drawDeps.state.keyAssignmentPage=false; end
                         drawDeps.imgui.Text('Custom keys for both rows');
             drawDeps.imgui.Text('Upper row - CTRL macros (slots 1-10)');
-            drawDeps.imgui.TextWrapped('Choose a key for each slot. Changing a slot selects Custom keys and replaces the preset layout. Use None to leave a slot unassigned.');
+            drawDeps.imgui.TextWrapped('Choose a key for each slot. None leaves it unassigned.');
             for i=1,20 do
                 if i==11 then drawDeps.imgui.Separator(); drawDeps.imgui.Text('Lower row - ALT macros (slots 1-10)'); end
                 local slot=(i-1)%10+1;
@@ -3646,11 +3635,10 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
                     end -- custom key page
                 else
-                    drawDeps.imgui.TextWrapped('Key layout and custom key controls become available after connecting and enabling Use my assigned keys.');
+                    drawDeps.imgui.TextWrapped('Connect to macros and enable assigned keys to edit layouts.');
                 end -- key controls enabled
             end -- Controls tab
             if drawDeps.state.settingsTab=='General' and drawDeps.imgui.CollapsingHeader('Book and Set controls') then
-                drawDeps.imgui.TextWrapped('20 macro books, each containing 10 macro sets. Equipment sets are separate saved gear presets, not additional macro books.');
                 if drawDeps.state.allowSwitch and drawDeps.validaddr(drawDeps.state.addresses.set_book) then
                     if drawDeps.imgui.BeginCombo('In-game macro book',drawDeps.book_label(drawDeps.state.manualBook or 1)) then
                         for book=1,drawDeps.BOOK_COUNT do if drawDeps.imgui.Selectable(drawDeps.book_label(book)..'##nativebook'..book,drawDeps.state.manualBook==book) then drawDeps.select_native_book(book); end end
@@ -3660,15 +3648,13 @@ ashita.events.register('d3d_present','decker_draw',function()
                 local book=drawDeps.state.manualBook or 1;
                 local alias={drawDeps.state.bookAliases[book] or ''};
                 if drawDeps.imgui.InputText('Decker name for this book',alias,33) then drawDeps.state.bookAliases[book]=alias[1]~='' and alias[1]:gsub('[%c#]',''):sub(1,32) or nil; drawDeps.save_display(); end
-                drawDeps.imgui.TextWrapped('Optional display label only. Leave blank to use the imported in-game title.');
                 if drawDeps.imgui.CollapsingHeader('Import saved in-game book names') then
                     local folder={drawDeps.state.bookPath};
                     if drawDeps.imgui.InputText('This character macro folder',folder,1025) then drawDeps.state.bookPath=folder[1]; drawDeps.save_display(); end
-                    drawDeps.imgui.TextWrapped('Saved titles are detected from the current character ID when supported. If needed, paste this character FFXI USER folder containing mcr.ttl. Refreshes every 5 seconds; save in-game renames first.');
+                    drawDeps.imgui.TextWrapped('Choose this character’s FFXI USER folder, then refresh after renaming books in game.');
                     if drawDeps.imgui.Button('Read or refresh book names') then drawDeps.refresh_book_titles(); end
                     drawDeps.imgui.TextWrapped(drawDeps.state.bookNameStatus);
                 end
-                drawDeps.imgui.TextWrapped('Book selection changes the in-game book. Titles come from saved files, not a live getter. Select a set below after switching books.');
                 drawDeps.imgui.TextWrapped(drawDeps.state.switchSummary);
                 if drawDeps.state.allowSwitch then
                     drawDeps.imgui.Text('Jump to macro set:');
@@ -3680,11 +3666,11 @@ ashita.events.register('d3d_present','decker_draw',function()
                     drawDeps.imgui.TextWrapped('Macro set switching is unavailable until native macros connect.');
                 end
             end
-            if drawDeps.state.settingsTab=='General' and drawDeps.imgui.CollapsingHeader('Combat Alerts (read-only)') then
+            if drawDeps.state.settingsTab=='General' and drawDeps.state.showAdvanced and drawDeps.imgui.CollapsingHeader('Combat Alerts') then
                 drawDeps.imgui.TextWrapped('Recast ready alerts only; a new recast does NOT prove a spell succeeded. No enemy-action automation.');
                 for _,alert in ipairs(drawDeps.cooldown.alerts()) do drawDeps.imgui.TextWrapped(alert.kind..': '..alert.name); end
             end
-            if drawDeps.state.settingsTab=='General' and drawDeps.imgui.CollapsingHeader('Combat Analytics (local only)') then
+            if drawDeps.state.settingsTab=='General' and drawDeps.state.showAdvanced and drawDeps.imgui.CollapsingHeader('Combat Analytics') then
                 drawDeps.imgui.TextWrapped('Records macro button attempts and native requests; cannot prove a spell actually cast. Never moves buttons.');
                 local a=drawDeps.analytics.active;
                 drawDeps.imgui.TextWrapped(a and ('Recording '..a.kind:upper()..': '..a.label) or 'No active session');
@@ -3697,7 +3683,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 if drawDeps.imgui.Button('Print top 10 in chat') then for _,line in ipairs(drawDeps.analytics.report()) do drawDeps.say(line,true);end end
                 drawDeps.imgui.TextWrapped('Named session: /decker session start hnm Tiamat (or exp Camp). Stop: /decker session stop. Report: /decker session report. Statistics are memory-only and reset on character change or client exit.');
             end
-            if drawDeps.state.settingsTab=='General' and drawDeps.imgui.CollapsingHeader('Quick Start Guide') then
+            if drawDeps.state.settingsTab=='General' and drawDeps.state.showAdvanced and drawDeps.imgui.CollapsingHeader('Quick Start Guide') then
                 drawDeps.imgui.TextWrapped('Decker - Enhanced In-Game Macro Interface for FFXI')
                 drawDeps.imgui.TextWrapped('1. Open FFXI and load Decker in Ashita.')
                 drawDeps.imgui.TextWrapped('2. Open Settings. Select Refresh macro names to load your current Ctrl/Alt macro labels.')
@@ -3712,7 +3698,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.TextWrapped('If macro names are missing or outdated, use Refresh macro names again. Your original FFXI macros remain unchanged.')
             end
             drawDeps.imgui.Separator();
-            if drawDeps.state.settingsTab=='General' and drawDeps.imgui.Button(drawDeps.state.showAdvanced and 'Hide advanced diagnostics' or 'Show advanced diagnostics') then drawDeps.state.showAdvanced=not drawDeps.state.showAdvanced; end
+            if drawDeps.state.settingsTab=='General' and drawDeps.imgui.Button(drawDeps.state.showAdvanced and 'Hide developer tools' or 'Developer tools') then drawDeps.state.showAdvanced=not drawDeps.state.showAdvanced; end
             if drawDeps.state.settingsTab=='General' and drawDeps.state.showAdvanced then
                 local logging={drawDeps.state.debugLog};
                 if drawDeps.imgui.Checkbox('Developer chat logging',logging) then drawDeps.state.debugLog=logging[1]; end
@@ -3736,7 +3722,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             end
             if (drawDeps.state.settingsTab=='General' or drawDeps.state.settingsTab=='Controls') and drawDeps.state.phase>=4 and drawDeps.imgui.Button('Refresh macro names') then drawDeps.state.confirmAll=true; drawDeps.read_all_names(); end
             drawDeps.imgui.Separator(); drawDeps.imgui.Text('Decker v'..addon.version..'  |  by Mutant X')
-            drawDeps.imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.');
+            if drawDeps.state.showAdvanced then drawDeps.imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.'); end
             local section=moreActive and 'General' or drawDeps.state.settingsTab;
             if drawDeps.imgui.Button('Restore section defaults') then drawDeps.state.resetSection=section; end
             if drawDeps.state.resetSection==section then
