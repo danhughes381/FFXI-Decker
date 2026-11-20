@@ -1,3 +1,11 @@
+# Current development work — v1.50.59-dev
+
+This Settings cleanup keeps existing features and controls, shortens repeated help text, and labels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are available under the new Developer tools toggle. Profile file/detection details are also hidden there. Stable remains unchanged.
+
+Source commit: `4937e69d691947468f4853048874e3d3eb70a5bb`. Automatic Lua 5.4/LuaJIT workflows are pending. Review the render in game after Development update; no functionality was intentionally removed.
+
+---
+
 # Current development work — v1.50.58-dev
 
 The active branch is `feature/visual-macro-remap-20261120`, under PR #57. Dan reported no cooldown overlay on the Shield Bash macro. His screenshot shows `ShldBash`; the previous inference recognized `ShieldBash` but not the shortened spelling. The alias now maps both to the Ashita resource name `Shield Bash`.
