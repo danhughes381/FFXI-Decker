@@ -1,9 +1,9 @@
--- Decker 1.50.43-dev: check Ninja job access for Ninjutsu macros.
+-- Decker 1.50.49-dev: clarify click-to-swap layout and persist visible hotkey preferences.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.48-dev';
+addon.version = '1.50.49-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1669,22 +1669,13 @@ local function draw_row(title,offset)
         local custom=glass_available();
         local x,y;
         if custom then x,y=pair(imgui.GetCursorScreenPos()); custom=x~=nil; end
-        local sourceLabel=state.layoutEditing and ('FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot))
+        local sourceLabel=state.layoutEditing and (state.layoutSelected==visualIndex
+                and ('SELECTED - CLICK DESTINATION | FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot))
+                or ('CLICK TO SELECT | FROM '..physicalRow..' '..tostring(physicalSlot==10 and 0 or physicalSlot)))
             or state.guardEditing and (guarded and 'GUARDED' or 'CLICK TO GUARD')
             or guarded and '2HR LOCK' or shortcut;
         local label=custom and '' or (name..'\n'..sourceLabel);
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
-        local dragDelivered=false;
-        if state.layoutEditing then
-            if imgui.IsItemActive and imgui.IsMouseDragging and imgui.IsMouseReleased and imgui.IsItemActive() and imgui.IsMouseDragging(0) then
-                state.layoutDragging=visualIndex;
-            end
-            if state.layoutDragging and imgui.IsItemHovered and imgui.IsMouseReleased
-                and imgui.IsItemHovered() and imgui.IsMouseReleased(0) then
-                swap_macro_layout_slots(state.layoutDragging,visualIndex);
-                state.layoutDragging=nil; dragDelivered=true;
-            end
-        end
         if nc>0 then imgui.PopStyleColor(nc); end
         if nv>0 then imgui.PopStyleVar(); end
         if custom then
@@ -1733,8 +1724,7 @@ local function draw_row(title,offset)
                 if saved then say(enabled and ('2-hour guard enabled for '..name..'.') or ('2-hour guard removed from '..name..'.'),true);
                 else say('Could not save the macro guard; profile write failed.',true); end
             elseif state.layoutEditing then
-                if dragDelivered then
-                elseif state.layoutDraftKey==macro_layout_key() then
+                if state.layoutDraftKey==macro_layout_key() then
                     if not state.layoutSelected then state.layoutSelected=visualIndex;
                     elseif state.layoutSelected==visualIndex then state.layoutSelected=nil;
                     else swap_macro_layout_slots(state.layoutSelected,visualIndex); end
@@ -3085,9 +3075,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine();
                 if drawDeps.imgui.Button('Cancel##guardcancel') then drawDeps.cancel_macro_guard('Protected macro cancelled; nothing was executed.'); end
             end
-            if drawDeps.state.layoutEditing and drawDeps.state.layoutDragging and drawDeps.imgui.IsMouseReleased and drawDeps.imgui.IsMouseReleased(0) then drawDeps.state.layoutDragging=nil; end
             if drawDeps.state.layoutEditing then
-                drawDeps.imgui.Text('LAYOUT PREVIEW - drag a macro to swap, or select it then select a destination. Decker only; native macros stay put.');
+                drawDeps.imgui.TextWrapped('LAYOUT EDITOR: click one macro to select it, then click another to swap their positions. Click Apply layout to save; Cancel discards the changes. Decker display only; native macros stay put.');
                 drawDeps.imgui.SameLine();
                 if drawDeps.imgui.Button('Apply layout##applymacro') then
                     local key=drawDeps.macro_layout_key();
@@ -3396,17 +3385,25 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Checkbox('Auto-connect macros after login',automatic) then
                 drawDeps.state.autoConnect=automatic[1]; drawDeps.state.autoConnectPending=false; drawDeps.save_display();
             end
-                if drawDeps.state.allowAllClicks and drawDeps.state.phase>=4 and #drawDeps.state.names==20 then
-                    local enabled={drawDeps.shortcuts_active()};
-                    if drawDeps.imgui.Checkbox('Use my assigned keys',enabled) then
-                        drawDeps.state.keybinds=enabled[1]; drawDeps.state.savedKeybinds=enabled[1];
-                        drawDeps.state.acknowledgeKeys=enabled[1]; drawDeps.state.savedAck=enabled[1];
-                        drawDeps.state.held={}; drawDeps.save_display();
-                    end
-                    drawDeps.imgui.TextWrapped('Uses the keys in your selected layout or custom slots. Disable before typing or editing macros.');
-                else
-                    drawDeps.imgui.TextWrapped('Connect to in-game macros to use your assigned keys. Enabled by default after connection; untick it if preferred.');
+                local assigned={drawDeps.state.savedKeybinds};
+                if drawDeps.imgui.Checkbox('Use my assigned keys',assigned) then
+                    drawDeps.state.savedKeybinds=assigned[1]; drawDeps.state.savedAck=assigned[1];
+                    drawDeps.state.keybinds=assigned[1] and drawDeps.state.allowAllClicks and drawDeps.state.phase>=4 and #drawDeps.state.names==20;
+                    drawDeps.state.acknowledgeKeys=drawDeps.state.keybinds;
+                    if assigned[1] then drawDeps.state.savedNavEnabled=true; drawDeps.state.navKeysEnabled=true; end
+                    drawDeps.state.held={}; drawDeps.nav_clear(); drawDeps.save_display();
                 end
+                drawDeps.imgui.TextWrapped(drawDeps.state.savedKeybinds
+                    and (drawDeps.shortcuts_active()
+                        and 'Uses the keys in your selected layout or custom slots. Disable before typing or editing macros.'
+                        or 'Saved as on; becomes active when Decker reconnects to your in-game macros.')
+                    or 'Off. Turn this on to use your assigned macro keys.');
+                local nav={drawDeps.state.savedNavEnabled};
+                if drawDeps.imgui.Checkbox('Enable navigation hotkeys',nav) then
+                    drawDeps.state.savedNavEnabled=nav[1]; drawDeps.state.navKeysEnabled=nav[1];
+                    drawDeps.nav_clear(); drawDeps.save_display();
+                end
+                drawDeps.imgui.TextWrapped('Uses the mod key, row switch and arrow keys. Turning on Use my assigned keys also enables this. The preference is saved across addon updates; it becomes active after macro connection.');
                 if drawDeps.shortcuts_active() then
                     local layout=({numbers='Both rows: 1-0',functions='Both rows: F1-F10',split='F1-F10 / 1-0',custom='Custom keys in use'})[drawDeps.state.mappingMode];
                     drawDeps.imgui.Text('Key layout: '..(layout or 'Both rows: 1-0'));
@@ -3451,9 +3448,6 @@ ashita.events.register('d3d_present','decker_draw',function()
                                 drawDeps.imgui.EndCombo();
                             end
                             drawDeps.imgui.TextWrapped(drawDeps.state.stickyNavigation and 'Tap the mod key to activate; tap again to finish.' or 'Hold the mod key to activate; release to finish.');
-                            local nav={drawDeps.state.navKeysEnabled};
-                            if drawDeps.imgui.Checkbox('Enable hotkeys##navigation',nav) then drawDeps.state.navKeysEnabled=nav[1]; drawDeps.state.savedNavEnabled=nav[1]; drawDeps.nav_clear(); drawDeps.save_display(); end
-                            drawDeps.imgui.TextWrapped('Enables the mod key, row switching and arrows. Left/Right selects; Up/Down changes set; hold an arrow to scroll; release to stop. Enter runs the selection.');
                             local echo={drawDeps.state.echoLock};
                             if drawDeps.imgui.Checkbox('Echo macro visibility on/off to chat',echo) then drawDeps.state.echoLock=echo[1]; drawDeps.save_display(); end
                         end
