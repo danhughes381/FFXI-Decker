@@ -1,9 +1,9 @@
--- Decker 1.50.56-dev: keep the yellow selection on the displayed macro.
+-- Decker 1.50.57-dev: keep the yellow selection on the displayed macro.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.56-dev';
+addon.version = '1.50.57-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -236,7 +236,7 @@ end
 local function macro_layout_legacy_path()
     local source=(debug.getinfo(1,'S') or {}).source or '';
     if source:sub(1,1)~='@' or not state.profileId then return nil; end
-    local directory=source:sub(2):match('^(.*[\\/])');
+    local directory=source:sub(2):match('^(.*[\\\\/])');
     local character=state.profileId:match('^[^_]+_([%a][%w_]*)$');
     if not directory or not character then return nil; end
     return directory..'decker_layouts_'..character..'.cfg';
@@ -247,41 +247,46 @@ local function macro_layout_store_path()
     if not character then return nil; end
     local ok,base=pcall(function() return AshitaCore:GetInstallPath(); end);
     if not ok or type(base)~='string' or base=='' then return macro_layout_legacy_path(); end
-    base=base:gsub('[\\/]+$','');
-    local directory=base..'\\config\\addons\\decker\\';
+    base=base:gsub('[\\\\/]+$','');
+    local directory=base..'\\\\config\\\\addons\\\\decker\\\\';
     local existsOk,exists=pcall(ashita.fs.exists,directory);
     if not existsOk then return macro_layout_legacy_path(); end
     if not exists then
-        local createOk=pcall(ashita.fs.create_dir,directory);
-        if not createOk then return macro_layout_legacy_path(); end
+        pcall(ashita.fs.create_dir,directory);
+        existsOk,exists=pcall(ashita.fs.exists,directory);
+        if not existsOk or not exists then return macro_layout_legacy_path(); end
     end
     return directory..'decker_layouts_'..character..'.cfg';
 end
-local function save_macro_layout_store()
-    local path=macro_layout_store_path(); if not path then return false; end
+local function write_macro_layout_store(path)
+    if type(path)~='string' or path=='' then return false; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return false; end
-    f:write('layoutstore=1\n');
-    for key,order in pairs(state.macroLayouts) do
-        local book,set=key:match('^(%d+)%.(%d+)$');
-        if book and set and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT and tonumber(set)>=1 and tonumber(set)<=10
-            and valid_macro_layout(order) then
-            local encoded={}; for i=1,20 do encoded[i]=('%02d'):format(order[i]); end
-            f:write('macrolayout.',key,'=',table.concat(encoded),'\n');
+    local wrote=pcall(function()
+        f:write('layoutstore=2\\n');
+        for key,order in pairs(state.macroLayouts) do
+            local book,set=key:match('^(%d+)%.(%d+)$');
+            if book and set and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT and tonumber(set)>=1 and tonumber(set)<=10
+                and valid_macro_layout(order) then
+                local encoded={}; for i=1,20 do encoded[i]=('%02d'):format(order[i]); end
+                f:write('macrolayout.',key,'=',table.concat(encoded),'\\n');
+            end
         end
-    end
-    return f:close()~=nil;
+    end);
+    local closedOk,closed=pcall(function() return f:close(); end);
+    return wrote and closedOk and closed~=nil;
 end
-local function load_macro_layout_store()
-    local path=macro_layout_store_path(); if not path then return false; end
+local function save_macro_layout_store()
+    local primary=macro_layout_store_path();
+    local fallback=macro_layout_legacy_path();
+    local primarySaved=write_macro_layout_store(primary);
+    local fallbackSaved=fallback~=primary and write_macro_layout_store(fallback) or false;
+    return primarySaved or fallbackSaved;
+end
+local function read_macro_layout_file(path,overwrite)
+    if type(path)~='string' or path=='' then return false; end
     local ok,f=pcall(io.open,path,'r');
-    local legacy=false;
-    if not ok or not f then
-        local oldPath=macro_layout_legacy_path();
-        if oldPath and oldPath~=path then
-            ok,f=pcall(io.open,oldPath,'r'); legacy=ok and f~=nil;
-        end
-    end
     if not ok or not f then return false; end
+    local loaded=false;
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local book,set=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
@@ -294,12 +299,42 @@ local function load_macro_layout_store()
                 if not slot or slot<1 or slot>20 or seen[slot] then valid=false; break; end
                 order[i]=slot; seen[slot]=true;
             end
-            if valid then state.macroLayouts[book..'.'..set]=order; end
+            local layoutKey=book..'.'..set;
+            if valid and (overwrite or not state.macroLayouts[layoutKey]) then
+                state.macroLayouts[layoutKey]=order; loaded=true;
+            end
         end
     end
     f:close();
-    if legacy then save_macro_layout_store(); end
-    return true;
+    return loaded;
+end
+local function load_macro_layout_store()
+    local loaded=false;
+    -- The active per-character profile was read first. Keep any valid entries
+    -- it contains, then fill gaps from both persistent and legacy locations.
+    local primary=macro_layout_store_path();
+    local legacy=macro_layout_legacy_path();
+    if primary then loaded=read_macro_layout_file(primary,false) or loaded; end
+    if legacy and legacy~=primary then loaded=read_macro_layout_file(legacy,false) or loaded; end
+    -- Earlier builds stored layouts in server-qualified profile files beside
+    -- the addon. Search all matching character profiles to survive server-ID
+    -- changes and updater replacements of the active profile filename.
+    local source=(debug.getinfo(1,'S') or {}).source or '';
+    local directory=source:sub(1,1)=='@' and source:sub(2):match('^(.*[\\\\/])') or nil;
+    local character=state.profileId and state.profileId:match('^[^_]+_([%a][%w_]*)$');
+    if directory and character and ashita and ashita.fs and ashita.fs.get_dir then
+        local ok,files=pcall(ashita.fs.get_dir,directory,'decker_profile_.*_'..character..'%.cfg',true);
+        if ok and type(files)=='table' then
+            for _,file in ipairs(files) do
+                if type(file)=='string' then
+                    local candidate=file:match('[\\\\/]') and file or directory..file;
+                    loaded=read_macro_layout_file(candidate,false) or loaded;
+                end
+            end
+        end
+    end
+    if loaded then save_macro_layout_store(); end
+    return loaded;
 end
 local function current_macro_layout()
     local key=macro_layout_key();
