@@ -1,3 +1,11 @@
+# Current development work — v1.50.58-dev
+
+This follow-up addresses Dan's report that Shield Bash still has no cooldown overlay. His screenshot shows the macro label `ShldBash`; the previous exact-name inference handled `ShieldBash` but did not translate this shortened label to the Ashita resource name `Shield Bash`. v1.50.58-dev adds that alias. This is a source-level diagnosis; the live overlay after use still needs confirmation.
+
+Source commit: `0380e7cf1246c0e969f5eaa2b553135b92afb8b0`. Workflow validation is pending. Do not change Stable. After validation, publish only through the Development manifests and have Dan update/retest.
+
+---
+
 # Current development work — v1.50.57-dev
 
 The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This fix addresses Dan's report that visual macro swaps disappeared after updating Decker. The root cause was confirmed in source: `load_display()` returned immediately when the character profile file was missing, before loading the layout sidecar. The loader now continues into sidecar recovery even without that profile file.
