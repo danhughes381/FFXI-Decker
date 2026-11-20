@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.61-dev';
+addon.version = '1.50.62-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -285,13 +285,13 @@ local function write_macro_layout_store(path)
     if type(path)~='string' or path=='' then return false; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return false; end
     local wrote=pcall(function()
-        f:write('layoutstore=2\\n');
+        f:write('layoutstore=2\n');
         for key,order in pairs(state.macroLayouts) do
             local book,set=key:match('^(%d+)%.(%d+)$');
             if book and set and tonumber(book)>=1 and tonumber(book)<=BOOK_COUNT and tonumber(set)>=1 and tonumber(set)<=10
                 and valid_macro_layout(order) then
                 local encoded={}; for i=1,20 do encoded[i]=('%02d'):format(order[i]); end
-                f:write('macrolayout.',key,'=',table.concat(encoded),'\\n');
+                f:write('macrolayout.',key,'=',table.concat(encoded),'\n');
             end
         end
     end);
