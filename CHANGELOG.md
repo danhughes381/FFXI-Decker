@@ -3,7 +3,7 @@
 - Keep features but shorten repeated help text and relabel More > General as Book & Set.
 - Move Combat Alerts, Combat Analytics, Quick Start Guide and the Interactive Guide into the Developer tools panel.
 - Show profile file and detection details only in Developer tools.
-- Automatic validation and live visual review are pending.
+- Lua 5.4/LuaJIT syntax and regression workflows pass. Live visual review of the reorganised Settings screen remains pending.
 
 ## 1.50.58-dev — recognize shortened Shield Bash label
 
