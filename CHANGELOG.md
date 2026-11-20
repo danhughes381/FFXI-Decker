@@ -1,3 +1,9 @@
+## 1.50.62-dev — repair macro layout backup files
+
+- Write real line breaks into the redundant macro-layout sidecars. The previous writer emitted literal `\\n` characters, so sidecar layouts could not be read back after losing the profile copy.
+- **Apply Layout** remains the save/commit action; stored layouts are character, book and set scoped.
+- Both automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups pass. Live update/relogin persistence still requires in-game confirmation.
+
 ## 1.50.61-dev — identify cooldowns from macro commands
 
 - Read each native macro's command lines and infer a spell or job ability when exactly one trackable action is present. Display labels can be nicknames such as `MP` or `Mag Acc`.
