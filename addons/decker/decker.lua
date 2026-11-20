@@ -228,7 +228,7 @@ local function cancel_macro_layout()
     state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil;
 end
 local function begin_macro_layout()
-    if state.phase<4 or #state.names~=20 then return false; end
+    if not state.profileReady or state.phase<4 or #state.names~=20 then return false; end
     state.layoutDraftKey=macro_layout_key();
     state.layoutDraft=copy_macro_layout(current_macro_layout());
     state.layoutEditing=true; state.layoutSelected=nil;
@@ -247,9 +247,9 @@ local function swap_macro_layout_slots(a,b)
     state.layoutSelected=nil;
 end
 local function save_display()
-    if not state.profileReady then return; end
-    local path=settings_path(); if not path then return; end
-    local ok,f=pcall(io.open,path,'w'); if not ok or not f then return; end
+    if not state.profileReady then return false; end
+    local path=settings_path(); if not path then return false; end
+    local ok,f=pcall(io.open,path,'w'); if not ok or not f then return false; end
     f:write('showscrollbars=',state.showScrollbars and '1' or '0','\n');
     f:write('motionenabled=',state.motionEnabled and '1' or '0','\n');
     f:write('glassversion=1\nouteropacity=',state.outerOpacity,'\npanelopacity=',state.panelOpacity,'\nbuttonopacity=',state.buttonOpacity,'\nmacrofont=',state.macroFont:gsub(' ','_'),'\nmacrofontsize=',state.macroFontSize,'\n');
@@ -290,7 +290,7 @@ local function save_display()
         end
     end
     for i=1,20 do f:write('direct',i,'=',state.directKeys[i] or 0,'\n'); end
-    f:close(); state.layoutDirtyAt=nil;
+    local closed=f:close(); state.layoutDirtyAt=nil; return closed~=nil;
 end
 local function load_display()
     local path=settings_path(); if not path then return; end
@@ -2902,7 +2902,12 @@ ashita.events.register('d3d_present','decker_draw',function()
                 imgui.Text('LAYOUT PREVIEW - select a macro, then a destination to swap. Decker only; native macros stay put.');
                 imgui.SameLine();
                 if imgui.Button('Apply layout##applymacro') then
-                    if apply_macro_layout() then save_display(); say('Decker macro layout applied to this book/set.',true); end
+                    local key=macro_layout_key();
+                    local previous=state.macroLayouts[key] and copy_macro_layout(state.macroLayouts[key]) or nil;
+                    if apply_macro_layout() then
+                        if save_display() then say('Decker macro layout applied to this book/set.',true);
+                        else state.macroLayouts[key]=previous; say('Profile could not be saved; layout was not applied.',true); end
+                    end
                 end
                 imgui.SameLine(); if imgui.Button('Cancel##cancelmacro') then cancel_macro_layout(); end
                 imgui.SameLine(); if imgui.Button('Reset order##resetmacro') then state.layoutDraft=identity_macro_layout(); state.layoutSelected=nil; end
