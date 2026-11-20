@@ -113,3 +113,10 @@ Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, Z
 [PR #51](https://github.com/danhughes381/FFXI-Decker/pull/51) changes the keyboard routing in `addons/decker/decker.lua` and adds coverage in `tests/regression.lua`. The Windows LuaJIT run passed 115 mocked regression groups, including both Enter keys, a stale combat subtarget, missed modifier release, and native target confirmation.
 
 Live Ashita validation is pending. Test repeated navigation macro execution while unengaged and engaged, native ally confirmation and the next macro, chat focus, and multibox focus switching with the regular addon stack. The updater is still pinned to its existing build.
+
+
+## 20 November 2026 — Visual macro remap candidate
+
+Development branch `feature/visual-macro-remap-20261120`, candidate Decker 1.50.44-dev. Adds a per-character mapping for the current tracked book/set: the HUD can preview swapping displayed macro positions, then Apply saves the mapping in Decker's profile. Mouse buttons and Decker keyboard/navigation inputs resolve to the original native macro slot; StateBar buttons remain bound to their configured native slots. FFXI macro contents and native macro files are not changed.
+
+The layout editor currently uses select-then-select-to-swap controls, plus Apply, Cancel and Reset order. It is page-scoped and editing blocks Decker macro and StateBar execution. This is a source-only candidate: no tests were added or run, no live Ashita/VanaCore validation is recorded, and updater manifests/channels are unchanged. Next: review the diff, run the required repository checks, then install in Development and verify preview/cancel/apply, reload persistence, book/set isolation, cooldowns, Decker keys/navigation and StateBar references before any promotion.
