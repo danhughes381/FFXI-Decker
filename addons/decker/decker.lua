@@ -1,9 +1,9 @@
--- Decker 1.50.59-dev: keep the yellow selection on the displayed macro.
+-- Decker 1.50.64-dev: restore saved macro layout keys correctly.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.63-dev';
+addon.version = '1.50.64-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -312,7 +312,7 @@ local function read_macro_layout_file(path,overwrite)
     local loaded=false;
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
-        local book,set=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
+        local book,set; if key then book,set=key:match('^macrolayout%.(%d+)%.(%d+)$'); end
         book,set=tonumber(book),tonumber(set);
         if book and book>=1 and book<=BOOK_COUNT and set and set>=1 and set<=10
             and #value==40 and not value:find('[^%d]') then
@@ -462,13 +462,13 @@ local function load_display()
     for line in f:lines() do
         local key,value=line:match('^([%w.]+)=([%w_.:%-]+)$');
         local n=tonumber(value);
-        local guardBook,guardSet,guardIndex=key and key:match('^macroguard%.(%d+)%.(%d+)%.(%d+)$');
+        local guardBook,guardSet,guardIndex; if key then guardBook,guardSet,guardIndex=key:match('^macroguard%.(%d+)%.(%d+)%.(%d+)$'); end
         guardBook,guardSet,guardIndex=tonumber(guardBook),tonumber(guardSet),tonumber(guardIndex);
         if value=='1' and guardBook and guardBook>=1 and guardBook<=BOOK_COUNT
             and guardSet and guardSet>=1 and guardSet<=10 and guardIndex and guardIndex>=1 and guardIndex<=20 then
             state.macroGuards[guardBook..'.'..guardSet..'.'..guardIndex]=true;
         end
-        local layoutBook,layoutSet=key and key:match('^macrolayout%.(%d+)%.(%d+)$');
+        local layoutBook,layoutSet; if key then layoutBook,layoutSet=key:match('^macrolayout%.(%d+)%.(%d+)$'); end
         layoutBook,layoutSet=tonumber(layoutBook),tonumber(layoutSet);
         if layoutBook and layoutBook>=1 and layoutBook<=BOOK_COUNT and layoutSet and layoutSet>=1 and layoutSet<=10
             and #value==40 and not value:find('[^%d]') then
