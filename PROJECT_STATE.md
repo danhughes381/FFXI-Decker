@@ -1,3 +1,13 @@
+# Current development work — v1.50.57-dev candidate
+
+The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This change addresses Dan's report that visual macro swaps disappeared after updating Decker. Layout saves now write two copies, and startup merges existing per-profile layouts with sidecars and earlier server-qualified profile files for the same character.
+
+Source commit: `938d701f2eb428d99ebddd0f3a1a70b9e0c17c08`. Decker source reports v1.50.57-dev. Automated workflow status and exact source hash are pending. Do not claim live persistence until Dan confirms an update/relogin in Ashita. Stable remains unchanged.
+
+Next action: allow PR workflows to run; if they pass, publish only on Development and ask Dan to update/reconnect and verify the affected book/set layouts. If any layout file is still present in his install, this build should recover it; it cannot reconstruct a permutation if every prior copy has already been deleted.
+
+---
+
 # Decker — project state
 
 Updated 21 October 2026. Owner selected **v1.50.12-dev as the latest main, Stable and Development baseline**.
