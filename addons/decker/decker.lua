@@ -1607,7 +1607,7 @@ local function draw_row(title,offset)
         local clicked=imgui.Button(label..'##decker_'..title..i,{w,h});
         local dragDelivered=false;
         if state.layoutEditing then
-            if imgui.IsItemActive and imgui.IsMouseDragging and imgui.IsItemActive() and imgui.IsMouseDragging(0) then
+            if imgui.IsItemActive and imgui.IsMouseDragging and imgui.IsMouseReleased and imgui.IsItemActive() and imgui.IsMouseDragging(0) then
                 state.layoutDragging=visualIndex;
             end
             if state.layoutDragging and imgui.IsItemHovered and imgui.IsMouseReleased
