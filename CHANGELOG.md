@@ -1,4 +1,4 @@
-## 1.50.60-dev — identify cooldowns from macro commands
+## 1.50.61-dev — identify cooldowns from macro commands
 
 - Read each native macro's command lines and infer a spell or job ability when exactly one trackable action is present. Display labels can be nicknames such as `MP` or `Mag Acc`.
 - Leave macros with multiple trackable actions unresolved instead of guessing. Exact-label lookup remains a fallback when command data is unavailable.
