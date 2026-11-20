@@ -3312,7 +3312,7 @@ ashita.events.register('d3d_present','decker_draw',function()
                 end
             elseif drawDeps.state.settingsTab=='Updates' then
                 drawDeps.imgui.Text('Installed: v'..addon.version);
-                drawDeps.imgui.TextWrapped('Choose a channel, check for updates, then install and reload.');
+                drawDeps.imgui.TextWrapped('Stable and Development channels are available. Choose one, check for updates, then install and reload.');
                 if not drawDeps.updater.job and not drawDeps.updater.installed then
                     if drawDeps.imgui.BeginCombo('Update channel',drawDeps.updater.channel) then
                         for _,channel in ipairs({'development','stable'}) do
