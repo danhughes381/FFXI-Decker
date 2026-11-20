@@ -1,3 +1,9 @@
+## 1.50.63-dev — expose Apply & Save result
+
+- Move layout editing controls above the macro rows so Apply & Save is visible without scrolling the fixed-height HUD.
+- Expand the HUD while arranging macros and show persistent on-screen status for unsaved changes, success, and save failure.
+- Automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups pass. Live Ashita click and relog persistence still require confirmation.
+
 ## 1.50.62-dev — repair macro layout backup files
 
 - Write real line breaks into the redundant macro-layout sidecars. The previous writer emitted literal `\\n` characters, so sidecar layouts could not be read back after losing the profile copy.
