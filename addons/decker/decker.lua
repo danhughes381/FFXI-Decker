@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.62-dev';
+addon.version = '1.50.63-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -90,7 +90,7 @@ end
 state.cooldownEnabled=true;
 state.cooldownBindings={};
 state.macroLayouts={}; state.macroGuards={}; state.guardEditing=false; state.pendingMacroConfirm=nil; state.confirmingMacro=false;
-state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
+state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil; state.layoutStatus=nil;
 state.cooldownDrafts={selected=1,text=''};
 local selector;
 local cooldown = {};
@@ -366,13 +366,14 @@ local function current_macro_layout()
     return valid_macro_layout(order) and order or identity_macro_layout();
 end
 local function cancel_macro_layout()
-    state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil;
+    state.layoutEditing=false; state.layoutDraft=nil; state.layoutDraftKey=nil; state.layoutSelected=nil; state.layoutDragging=nil; state.layoutStatus=nil;
 end
 local function begin_macro_layout()
     if not state.profileReady or state.phase<4 or #state.names~=20 or state.guardEditing then return false; end
     state.layoutDraftKey=macro_layout_key();
     state.layoutDraft=copy_macro_layout(current_macro_layout());
     state.layoutEditing=true; state.layoutSelected=nil;
+    state.layoutStatus='Click two macros to swap them, then Apply & Save.';
     return true;
 end
 local function apply_macro_layout()
@@ -386,6 +387,7 @@ local function swap_macro_layout_slots(a,b)
         or a<1 or a>20 or b<1 or b>20 then return; end
     state.layoutDraft[a],state.layoutDraft[b]=state.layoutDraft[b],state.layoutDraft[a];
     state.layoutSelected=nil;
+    state.layoutStatus='Unsaved layout changes. Press Apply & Save.';
 end
 local function save_display()
     if not state.profileReady then return false; end
@@ -3210,7 +3212,7 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     if drawDeps.state.visible and not holdHidden and not idleHidden then
     local hudw=math.floor(10*drawDeps.state.hudWidth*drawDeps.state.scale+9*8+32);
-    drawDeps.size_window('hud',hudw,math.floor(2*drawDeps.state.hudHeight*drawDeps.state.scale+90));
+    drawDeps.size_window('hud',hudw,math.floor(2*drawDeps.state.hudHeight*drawDeps.state.scale+90+(drawDeps.state.layoutEditing and 52 or 0)));
     drawDeps.pin_window('hud',drawDeps.state.positionLocked);
     -- Explicit open-state table keeps flags in the host binding's three-argument Begin overload.
     -- Hidden IDs preserve window identity; the single content heading is drawn below.
@@ -3287,6 +3289,39 @@ ashita.events.register('d3d_present','decker_draw',function()
         end
         drawDeps.imgui.Text(bookIndicator);
         if bookColor then drawDeps.imgui.PopStyleColor(); end
+        if drawDeps.state.layoutEditing then
+            drawDeps.imgui.TextWrapped('LAYOUT EDITOR: click one macro, then another to swap. Apply & Save keeps this order for this book and set.');
+            if drawDeps.imgui.Button('APPLY & SAVE LAYOUT##applymacro_top') then
+                local key=drawDeps.macro_layout_key();
+                local previous=drawDeps.state.macroLayouts[key] and drawDeps.copy_macro_layout(drawDeps.state.macroLayouts[key]) or nil;
+                if drawDeps.apply_macro_layout() then
+                    if drawDeps.save_display() then
+                        drawDeps.state.layoutStatus=('Saved layout for Book %d, Set %d.'):format(drawDeps.state.manualBook or 1,drawDeps.state.trackedSet or 1);
+                        drawDeps.say(drawDeps.state.layoutStatus,true);
+                    else
+                        drawDeps.state.macroLayouts[key]=previous;
+                        drawDeps.state.layoutStatus='Save failed: profile or layout storage could not be written.';
+                        drawDeps.say(drawDeps.state.layoutStatus,true);
+                    end
+                else
+                    drawDeps.state.layoutStatus='Apply did not run: the book/set changed or the draft was invalid.';
+                    drawDeps.say(drawDeps.state.layoutStatus,true);
+                end
+            end
+            drawDeps.imgui.SameLine();
+            if drawDeps.imgui.Button('Cancel##cancelmacro_top') then
+                drawDeps.cancel_macro_layout();
+                drawDeps.state.layoutStatus='Edit cancelled; saved layout unchanged.';
+            end
+            drawDeps.imgui.SameLine();
+            if drawDeps.imgui.Button('Reset order##resetmacro_top') then
+                drawDeps.state.layoutDraft=drawDeps.identity_macro_layout();
+                drawDeps.state.layoutSelected=nil;
+                drawDeps.state.layoutStatus='Reset is a draft. Press Apply & Save to keep it.';
+            end
+            if drawDeps.state.layoutStatus then drawDeps.imgui.TextWrapped(drawDeps.state.layoutStatus); end
+            drawDeps.imgui.Separator();
+        end
         if #drawDeps.state.names==20 then
             drawDeps.draw_macro_panel();
             drawDeps.draw_row('CTRL',0);
@@ -3298,23 +3333,8 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine();
                 if drawDeps.imgui.Button('Cancel##guardcancel') then drawDeps.cancel_macro_guard('Protected macro cancelled; nothing was executed.'); end
             end
-            if drawDeps.state.layoutEditing then
-                drawDeps.imgui.TextWrapped('LAYOUT EDITOR: click one macro to select it, then click another to swap their positions. Decker display only; native macros stay put.');
-                drawDeps.imgui.Separator();
-                if drawDeps.imgui.Button('APPLY LAYOUT##applymacro') then
-                    local key=drawDeps.macro_layout_key();
-                    local previous=drawDeps.state.macroLayouts[key] and drawDeps.copy_macro_layout(drawDeps.state.macroLayouts[key]) or nil;
-                    if drawDeps.apply_macro_layout() then
-                        if drawDeps.save_display() then drawDeps.say('Decker macro layout applied to this book/set.',true);
-                        else drawDeps.state.macroLayouts[key]=previous; drawDeps.say('Profile could not be saved; layout was not applied.',true); end
-                    end
-                end
-                if drawDeps.imgui.Button('Cancel##cancelmacro') then drawDeps.cancel_macro_layout(); end
-                if drawDeps.imgui.Button('Reset order##resetmacro') then drawDeps.state.layoutDraft=drawDeps.identity_macro_layout(); drawDeps.state.layoutSelected=nil; end
-            else
-                if drawDeps.imgui.Button('Arrange macros##arrangemacro') then
-                    if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
-                end
+            if not drawDeps.state.layoutEditing and drawDeps.imgui.Button('Arrange macros##arrangemacro') then
+                if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
             end
             if drawDeps.state.guardEditing then
                 drawDeps.imgui.Separator();
