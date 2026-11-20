@@ -1,3 +1,7 @@
+## Cooldown mapping source
+
+Use native macro commands as the primary source for cooldown action identity. A macro label is presentation text and may be shorthand. Infer automatically only when the macro contains exactly one unique trackable spell or job ability; leave multiple action candidates ambiguous. Manual overrides name the actual action and are fingerprinted against the macro commands, not its display label. Keep exact-label inference as a clearly secondary fallback only when the native command file cannot be read. This feature reads macro data and does not modify it.
+
 # FFXI-Decker — decision register
 
 Record only decisions with material future impact. Keep earlier project history and existing decisions intact.
@@ -92,3 +96,8 @@ Store slot order and label sizes in the character CFG. Move hotkeys with their s
 ## Queued macro navigation and native targeting
 
 Use the same target-handoff check for the keyboard hooks and the frame that executes queued navigation. Preserve sticky navigation and captured-key ownership during temporary handoff. Clear stale modifier state when keyboard polling sees a release.
+
+
+## Login-screen visibility — 20 November 2026
+
+Keep the Decker addon loaded so it can detect the active character and continue non-visual background work, but return from the draw callback until `profileReady` confirms a logged-in character. This hides the main HUD, StateBar, Settings and other Decker windows at login/character select, then shows them when the profile is detected. When character identity disappears, profile refresh clears the readiness flag and hides the windows again.
