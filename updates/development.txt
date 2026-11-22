@@ -1,4 +1,4 @@
 protocol=1
-version=1.50.66-dev
-commit=4f43932afc892047e55aa9a0abfb8c06fd162c84
-sha256=b2f2d39adede6991fcfa397e33a700b1562dbc52b64932b97ec0c9b13d8ce477
+version=1.50.67-dev
+commit=bfdb1ccdd5008cdee7b1cc262ff4165d4bf3a756
+sha256=16f4295445224e995d417e1d968cc5ebcab22589
