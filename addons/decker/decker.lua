@@ -1,9 +1,9 @@
--- Decker 1.50.64-dev: restore saved macro layout keys correctly.
+-- Decker 1.50.65-dev: refresh macro availability from the current jobs and equipment.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.64-dev';
+addon.version = '1.50.65-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1161,7 +1161,7 @@ function selector.actions(index,fresh)
     local t=os.clock();
     local cached=selector.actionPage;
     if fresh or not cached or cached.key~=key or t>=cached.untilAt then
-        cached={key=key,untilAt=t+.25,status={}};
+        cached={key=key,untilAt=t+.25};
         selector.actionPage=cached;
         local file=io.open(path..'/mcr'..(page==0 and '' or tostring(page))..'.dat','rb');
         if file then
@@ -1171,19 +1171,18 @@ function selector.actions(index,fresh)
     end
     local bytes=cached.bytes;
     if not bytes then return nil; end
-    for slot=1,20 do
-        local offset=(slot-1)*380;
-        if bytes:sub(395+offset,404+offset):match('^[^%z]*')~=(state.names[slot] or '') then return nil; end
-    end
+    local offset=(index-1)*380;
+    local name=bytes:sub(395+offset,402+offset):match('^[^%z]*');
+    if name~=(state.names[index] or '') then return nil; end
     if not cached.commands then cached.commands={}; end
-    if cached.commands[index] then return cached.commands[index],cached.status; end
+    if cached.commands[index] then return cached.commands[index]; end
     local commands={};
     for line=0,5 do
         local first=29+(index-1)*380+line*61;
         commands[#commands+1]=bytes:sub(first,first+60):match('^[^%z]*');
     end
     cached.commands[index]=commands;
-    return commands,cached.status;
+    return commands;
 end
 function cooldown.infer_macro(index)
     if not selector or not selector.actions then return nil,'unavailable'; end
@@ -1243,25 +1242,43 @@ function selector.weapon_family(memory,resources,slot)
     local inventory=memory:GetInventory();
     local entry=inventory:GetEquippedItem(slot);
     local index=entry and tonumber(entry.Index);
-    if not index or index<=0 then return nil; end
+    if not index then return nil; end
+    if index==0 then return slot==0 and 1 or 0; end -- Unarmed main hand; empty ranged slot.
     local item=inventory:GetContainerItem(math.floor(index/256),index%256);
-    local resource=item and resources:GetItemById(item.Id);
+    if not item or not item.Id or item.Id==0 then return nil; end
+    local resource=resources:GetItemById(item.Id);
     return resource and tonumber(resource.Skill) or nil;
+end
+function selector.missing(known)
+    return known==false or tonumber(known)==0;
 end
 function selector.action_unavailable(kind,name,memory,resources)
     local player=memory:GetPlayer();
     if kind=='ma' or kind=='magic' or kind=='nin' or kind=='ninjutsu' then
         local resource=resources:GetSpellByName(name,0);
-        if resource and tonumber(resource.Skill)==39 then
-            local main,sub=tonumber(player:GetMainJob()),tonumber(player:GetSubJob());
-            if main and main>0 and sub and sub>=0 and main~=13 and sub~=13 then return true; end
+        if not resource then return false; end
+        local main,sub=tonumber(player:GetMainJob()),tonumber(player:GetSubJob());
+        local mainLevel,subLevel=tonumber(player:GetMainJobLevel()),tonumber(player:GetSubJobLevel());
+        if main and main>0 and sub and sub>=0 then
+            if tonumber(resource.Skill)==39 and main~=13 and sub~=13 then return true; end
+            local levels=resource.LevelRequired;
+            if levels and (tonumber(resource.Skill) or 0)>0 and mainLevel and mainLevel>0 and subLevel then
+                -- Ashita exposes LevelRequired as a one-based array including job 0.
+                local mainRequired=tonumber(levels[main+1]);
+                local subRequired=sub==0 and -1 or tonumber(levels[sub+1]);
+                if mainRequired and subRequired and mainRequired<=99 and subRequired<=99 then
+                    local mainCanCast=mainRequired>0 and mainLevel>=mainRequired;
+                    local subCanCast=subRequired>0 and subLevel>=subRequired;
+                    if not mainCanCast and not subCanCast then return true; end
+                end
+            end
         end
-        return resource and player:HasSpellData() and player:HasSpell(resource.Index)==false;
+        return player:HasSpellData() and selector.missing(player:HasSpell(resource.Index));
     end
     local resource=resources:GetAbilityByName(name,0);
     local id=resource and tonumber(resource.Id);
     if kind=='ja' or kind=='jobability' then
-        return id and id>=512 and player:HasAbilityData() and player:HasAbility(id)==false;
+        return id and id>=512 and player:HasAbilityData() and selector.missing(player:HasAbility(id));
     end
     if kind=='ws' or kind=='weaponskill' then
         if not id or not selector.weaponSkills[id] then
@@ -1281,26 +1298,25 @@ function selector.action_unavailable(kind,name,memory,resources)
         if not family then return false; end
         local equipped=selector.weapon_family(memory,resources,family>=25 and 2 or 0);
         if equipped and equipped~=family then return true; end
-        return player:HasAbilityData() and player:HasWeaponSkill(id)==false;
+        -- Use the client's current usable list so a learned WS can become unavailable under sync.
+        return player:HasAbilityData() and selector.missing(player:HasWeaponSkill(id));
     end
     return false;
 end
 function selector.unavailable(index)
-    local commands,status=selector.actions(index);
+    local commands=selector.actions(index);
     if not commands then return false; end
-    if status[index]~=nil then return status[index]; end
-    local ok,result=pcall(function()
-        local memory=AshitaCore:GetMemoryManager();
-        local resources=AshitaCore:GetResourceManager();
-        for _,command in ipairs(commands) do
-            local kind,name=command:match('^%s*/(%a+)%s+"([^"]+)"');
-            if not kind then kind,name=command:match('^%s*/(%a+)%s+([^<]+)'); end
-            if kind and selector.action_unavailable(kind:lower(),name:gsub('%s+$',''),memory,resources) then return true; end
+    local memory=AshitaCore:GetMemoryManager();
+    local resources=AshitaCore:GetResourceManager();
+    for _,command in ipairs(commands) do
+        local kind,name=command:match('^%s*/(%a+)%s+"([^"]+)"');
+        if not kind then kind,name=command:match('^%s*/(%a+)%s+([^<]+)'); end
+        if kind then
+            local ok,unavailable=pcall(selector.action_unavailable,kind:lower(),name:gsub('%s+$',''),memory,resources);
+            if ok and unavailable then return true; end
         end
-        return false;
-    end);
-    status[index]=ok and result==true;
-    return status[index];
+    end
+    return false;
 end
 function selector.saved_target(index,name)
     local commands=selector.actions(index,true);
