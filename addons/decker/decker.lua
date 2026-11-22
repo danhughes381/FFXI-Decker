@@ -1,9 +1,9 @@
--- Decker 1.50.65-dev: refresh macro availability from the current jobs and equipment.
+-- Decker 1.50.66-dev: resolve macro commands when the tracked page is stale.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.65-dev';
+addon.version = '1.50.66-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1153,28 +1153,71 @@ for family,skills in pairs({
 }) do
     for _,id in ipairs(skills) do selector.weaponSkills[id]=family; end
 end
+function selector.read_page(path,page)
+    local file=io.open(path..'/mcr'..(page==0 and '' or tostring(page))..'.dat','rb');
+    if not file then return nil; end
+    local bytes=file:read(7625); file:close();
+    return bytes and #bytes==7624 and bytes or nil;
+end
+function selector.page_label(bytes,index)
+    local first=395+(index-1)*380;
+    return bytes:sub(first,first+7):match('^[^%z]*'):gsub('[%c]','');
+end
+function selector.match_page(bytes)
+    if not bytes then return false; end
+    for index=1,20 do
+        if selector.page_label(bytes,index)~=(state.names[index] or '') then return false; end
+    end
+    return true;
+end
+function selector.find_action_page(path,tracked,trackedBytes,t)
+    if selector.match_page(trackedBytes) then return trackedBytes,tracked; end
+    -- A job change or native book navigation can leave Decker's saved page out of date.
+    -- Resolve command bodies by live labels without changing the active book or layout.
+    local namesKey=table.concat(state.names,'\0');
+    if namesKey:gsub('%z','')=='' then return trackedBytes,tracked; end
+    local key=path..':'..tracked..':'..namesKey;
+    local previous=selector.pageSearch;
+    if previous and previous.key==key then
+        if previous.page then
+            local bytes=selector.read_page(path,previous.page);
+            if selector.match_page(bytes) then return bytes,previous.page; end
+        elseif t<previous.retry then
+            if previous.ambiguous then return nil; end
+            return trackedBytes,tracked;
+        end
+    end
+    local found,foundPage;
+    for page=0,BOOK_COUNT*10-1 do
+        if page~=tracked then
+            local bytes=selector.read_page(path,page);
+            if selector.match_page(bytes) then
+                if found and found:sub(29)~=bytes:sub(29) then
+                    selector.pageSearch={key=key,retry=t+5,ambiguous=true};
+                    return nil;
+                end
+                found,foundPage=bytes,page;
+            end
+        end
+    end
+    selector.pageSearch={key=key,page=foundPage,retry=t+5};
+    if found then return found,foundPage; end
+    return trackedBytes,tracked;
+end
 function selector.actions(index,fresh)
     local path=(state.bookPath or ''):gsub('[\\/]+$','');
     if path=='' then return nil; end
     local page=(state.manualBook-1)*10+state.trackedSet-1;
-    local key=path..':'..page;
+    local key=path..':'..page..':'..table.concat(state.names,'\0');
     local t=os.clock();
     local cached=selector.actionPage;
     if fresh or not cached or cached.key~=key or t>=cached.untilAt then
-        cached={key=key,untilAt=t+.25};
+        local bytes,resolved=selector.find_action_page(path,page,selector.read_page(path,page),t);
+        cached={key=key,untilAt=t+.25,bytes=bytes,page=resolved,commands={}};
         selector.actionPage=cached;
-        local file=io.open(path..'/mcr'..(page==0 and '' or tostring(page))..'.dat','rb');
-        if file then
-            local bytes=file:read(7625); file:close();
-            if bytes and #bytes==7624 then cached.bytes=bytes; end
-        end
     end
     local bytes=cached.bytes;
-    if not bytes then return nil; end
-    local offset=(index-1)*380;
-    local name=bytes:sub(395+offset,402+offset):match('^[^%z]*');
-    if name~=(state.names[index] or '') then return nil; end
-    if not cached.commands then cached.commands={}; end
+    if not bytes or selector.page_label(bytes,index)~=(state.names[index] or '') then return nil; end
     if cached.commands[index] then return cached.commands[index]; end
     local commands={};
     for line=0,5 do
