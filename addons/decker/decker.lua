@@ -3,7 +3,7 @@
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.66-dev';
+addon.version = '1.50.67-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -1316,7 +1316,10 @@ function selector.action_unavailable(kind,name,memory,resources)
                 end
             end
         end
-        return player:HasSpellData() and selector.missing(player:HasSpell(resource.Index));
+        -- Spell resources plus the current main/subjob levels define job access.
+        -- HasSpell can remain false for spells granted by this server, so it is not
+        -- used to mark a level-accessible spell orange.
+        return false;
     end
     local resource=resources:GetAbilityByName(name,0);
     local id=resource and tonumber(resource.Id);
