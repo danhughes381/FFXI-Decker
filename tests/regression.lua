@@ -435,6 +435,35 @@ test('shared number and F-key layouts preserve row-switch routing',function()
  s.mappingMode='functions';row,slot=api.mapped(68);assert(row=='ALT' and slot==10);api.nav(57);row,slot=api.mapped(68);assert(row=='CTRL' and slot==10)
 end)
 
+test('Settings navigation follows macro outline modes and wraps in a narrow window',function()
+ ready();s.visible=false;s.showTests=true;s.statebarEnabled=false;s.settingsTab='Appearance'
+ local oldButton,oldAvail,oldSameLine=ui.Button,ui.GetContentRegionAvail,ui.SameLine
+ local oldLine=dl.AddLine
+ local angles,inline,tabCount,click=0,0,0,nil
+ dl.AddLine=function() angles=angles+1 end
+ ui.GetContentRegionAvail=function() return {205,400} end
+ ui.SameLine=function() if tabCount>0 and tabCount<4 then inline=inline+1 end end
+ ui.Button=function(label,size)
+  local id=label:match('##(tab%w+)$') or label:match('##(more%w+)$')
+  if id then
+   assert(size[1]>0 and size[1]<=205)
+   tabCount=tabCount+1
+   return id==click
+  end
+  return false
+ end
+ api.glass.custom=true
+ for i,mode in ipairs({'Glass','Angled selection','Angled tiles'}) do
+  angles,tabCount,inline=0,0,0
+  s.tileOutline=mode;events.decker_draw()
+  assert(angles==({0,6,24})[i] and tabCount==4 and inline<3 and styles==0 and vars==0,table.concat({mode,angles,tabCount,inline,styles,vars},' '))
+ end
+ click='tabGeneral';events.decker_draw();assert(s.settingsTab=='General')
+ click='moreUpdates';events.decker_draw();assert(s.settingsTab=='Updates')
+ dl.AddLine=oldLine;ui.Button=oldButton;ui.GetContentRegionAvail=oldAvail;ui.SameLine=oldSameLine
+ s.tileOutline='Glass';s.showTests=false;s.visible=true
+end)
+
 test('Settings native X closes on both expanded and collapsed Begin paths',function()
  ready();s.visible=true;s.statebarEnabled=false;s.autoHide=false
  local begin=ui.Begin

@@ -103,3 +103,5 @@ Use the same target-handoff check for the keyboard hooks and the frame that exec
 Keep the Decker addon loaded so it can detect the active character and continue non-visual background work, but return from the draw callback until `profileReady` confirms a logged-in character. This hides the main HUD, StateBar, Settings and other Decker windows at login/character select, then shows them when the profile is detected. When character identity disappears, profile refresh clears the readiness flag and hides the windows again.
 
 - The angled appearance is opt-in and shared by macro tiles and StateBar. Keep the existing glass renderer as the fallback for profiles and hosts that use it. Preserve rectangular button hit areas so visual changes do not affect native macro routing.
+
+- Settings shares the macro tile outline preference and renderer for its navigation. Keep standard ImGui controls styled within the Settings window for keyboard focus, readable content and host compatibility.
