@@ -1,9 +1,9 @@
--- Decker 1.50.68-dev: optional angled macro and StateBar tiles.
+-- Decker 1.50.69-dev: Settings refresh, macro details toggle and self-target recovery.
 -- Native macro calls and opt-in DirectInput keyboard hooks; no original HUD patches.
 -- CAUTION: Opt-in native FFI call may crash the FFXI process if signatures/API differ.
 addon.name = 'Decker';
 addon.author = 'Mutant X';
-addon.version = '1.50.68-dev';
+addon.version = '1.50.69-dev';
 addon.desc = 'FFXI-inspired dual-row macro HUD; validated mouse execution and opt-in keyboard controls.';
 require('common');
 local chat = require('chat');
@@ -50,7 +50,7 @@ end
 -- Glass preferences are display-only and participate in character profile isolation.
 state.savedKeybinds=true; state.savedAck=true;
 state.bookNames={}; state.bookAliases={}; state.bookPath=''; state.bookNameStatus='No saved book titles imported';
-state.showScrollbars=true;
+state.showScrollbars=true; state.showMacroDetails=true;
 state.outerOpacity=.05; state.panelOpacity=.15; state.buttonOpacity=.85;
 state.statebarOpacity=.15; state.macroFont='Arial Bold'; state.macroFontSize=18;
 state.tileOutline='Glass';
@@ -64,7 +64,7 @@ state.cooldownAutoNames=true;
 local profileDefaults=copy_value(state);
 local sectionKeys={
     Controls={'mappingMode','directKeys','navModifier','rowSwitchKey','stickyNavigation','navKeysEnabled','keybinds','acknowledgeKeys','savedNavEnabled','savedKeybinds','savedAck','echoLock'},
-    Appearance={'showScrollbars','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled','tileOutline'},
+    Appearance={'showScrollbars','showMacroDetails','outerOpacity','panelOpacity','buttonOpacity','macroFont','macroFontSize','scale','theme','hudWidth','hudHeight','compactKeys','hudOpacity','autoHide','autoHideDelay','autoHideMode','positionLocked','motionEnabled','tileOutline'},
     StateBar={'classic75','classicOrder','statebarEnabled','statebarVertical','statebarLocked','statebarAlways','statebarScale','statebarLabelSize','statebarKeySize','statebarOpacity','statebarTheme','statebarVisibility','statebarSelected','statebarHotkeys','statebarHotkeysEnabled','statebarSlots'},
     General={'bookNames','bookAliases','bookPath','bookNameStatus','manualBook','trackedSet','cooldownEnabled','cooldownBindings','cooldownAutoNames','autoConnect'},
 };
@@ -394,6 +394,7 @@ local function save_display()
     if not state.profileReady then return false; end
     local path=settings_path(); if not path then return false; end
     local ok,f=pcall(io.open,path,'w'); if not ok or not f then return false; end
+    f:write('showmacrodetails=',state.showMacroDetails and '1' or '0','\n');
     f:write('showscrollbars=',state.showScrollbars and '1' or '0','\n');
     f:write('tileoutline=',state.tileOutline:gsub(' ','_'),'\n');
     f:write('motionenabled=',state.motionEnabled and '1' or '0','\n');
@@ -539,6 +540,7 @@ local function load_display()
                 end
             end
         end
+        if key=='showmacrodetails' and (value=='0' or value=='1') then state.showMacroDetails=value=='1'; end
         if key=='showscrollbars' then state.showScrollbars=value=='1'; end
         if key=='tileoutline' and (value=='Glass' or value=='Angled_selection' or value=='Angled_tiles') then state.tileOutline=value:gsub('_',' '); end
         if key=='motionenabled' and (value=='0' or value=='1') then state.motionEnabled=value=='1'; end
@@ -1370,12 +1372,16 @@ end
 function selector.saved_target(index,name)
     local commands=selector.actions(index,true);
     if commands then
+        local selfTarget=false;
         for _,command in ipairs(commands) do
-            if command:lower():match('^%s*/[%a]+%s+.*<st%a*>%s*$') then return true; end
+            local line=command:lower();
+            if line:match('^%s*/[%a]+%s+.*<st%a*>') then return true; end
+            if line:match('^%s*/[%a]+%s+.*<me>') then selfTarget=true; end
         end
-        return false;
+        if selfTarget then return false; end
+        return nil;
     end
-    return name=='Cure3' or name=='Cure4';
+    if name=='Cure3' or name=='Cure4' then return true; end
 end
 local function execute_slot(row,slot,source,displayRow,displaySlot)
     if state.guideOpen or state.layoutEditing or state.guardEditing then return false; end -- Editors never execute macros.
@@ -1934,6 +1940,98 @@ function classic.draw_angled_tile(dl,x,y,w,h,base,accent,hovered)
     for i,point in ipairs(points) do dl:AddLine(point,points[i%#points+1],edge,accent and 1.5 or 1); end
 end
 
+function classic.push_settings_style()
+    local colours,vars=0,0;
+    if imgui.PushStyleColor and imgui.PopStyleColor then
+        for _,entry in ipairs({
+            {ImGuiCol_WindowBg,{.025,.035,.055,.96}},
+            {ImGuiCol_TitleBg,{.055,.071,.10,1}},
+            {ImGuiCol_TitleBgActive,{.075,.095,.13,1}},
+            {ImGuiCol_TitleBgCollapsed,{.055,.071,.10,.95}},
+            {ImGuiCol_Border,{.48,.56,.68,.46}},
+            {ImGuiCol_Separator,{.48,.56,.68,.34}},
+            {ImGuiCol_Button,{.10,.13,.18,1}},
+            {ImGuiCol_ButtonHovered,{.17,.22,.29,1}},
+            {ImGuiCol_ButtonActive,{.21,.27,.36,1}},
+            {ImGuiCol_FrameBg,{.075,.095,.13,1}},
+            {ImGuiCol_FrameBgHovered,{.13,.17,.23,1}},
+            {ImGuiCol_FrameBgActive,{.17,.22,.29,1}},
+            {ImGuiCol_Header,{.10,.13,.18,1}},
+            {ImGuiCol_HeaderHovered,{.17,.22,.29,1}},
+            {ImGuiCol_HeaderActive,{.21,.27,.36,1}},
+            {ImGuiCol_CheckMark,{.80,.88,1,1}},
+        }) do
+            if type(entry[1])=='number' then imgui.PushStyleColor(entry[1],entry[2]); colours=colours+1; end
+        end
+    end
+    if imgui.PushStyleVar and imgui.PopStyleVar then
+        for _,entry in ipairs({
+            {ImGuiStyleVar_WindowRounding,5},{ImGuiStyleVar_WindowBorderSize,1},
+            {ImGuiStyleVar_FrameRounding,3},{ImGuiStyleVar_FrameBorderSize,1},
+            {ImGuiStyleVar_WindowPadding,{12,10}},{ImGuiStyleVar_FramePadding,{8,4}},
+            {ImGuiStyleVar_ItemSpacing,{8,6}},{ImGuiStyleVar_ScrollbarSize,7},
+        }) do
+            if type(entry[1])=='number' then imgui.PushStyleVar(entry[1],entry[2]); vars=vars+1; end
+        end
+    end
+    return colours,vars;
+end
+
+classic.settingsTabs={{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}};
+classic.moreTabs={{'Book & Set','General'},{'Profiles','Profiles'},{'Updates','Updates'}};
+
+function classic.draw_settings_tabs(tabs,prefix,active)
+    local available=pair(imgui.GetContentRegionAvail()) or 450;
+    local used=0;
+    for _,tab in ipairs(tabs) do
+        local label,id=tab[1],tab[2];
+        local selected=active==id;
+        local tw,th;
+        if imgui.CalcTextSize then tw,th=pair(imgui.CalcTextSize(label)); end
+        local w=math.min(math.max(1,available),math.max(72,math.ceil(tw or #label*8)+22));
+        local h=math.max(28,math.ceil(th or 16)+10);
+        if used>0 and used+8+w<=available then
+            imgui.SameLine();
+            used=used+8+w;
+        else
+            used=w;
+        end
+        local dl=not classic.settingsDrawFallback and classic.angled_draw_list(selected);
+        local x,y;
+        if dl and dl.AddText and tw and th and w>=tw+6 then x,y=pair(imgui.GetCursorScreenPos()); end
+        local angled=x~=nil;
+        local base=selected and {.17,.22,.29,1} or {.10,.13,.18,1};
+        local accent={.80,.88,1,1};
+        local n=0;
+        if imgui.PushStyleColor and imgui.PopStyleColor then
+            local clear={0,0,0,0};
+            for _,entry in ipairs({
+                {ImGuiCol_Button,angled and clear or base},
+                {ImGuiCol_ButtonHovered,angled and clear or {.22,.28,.37,1}},
+                {ImGuiCol_ButtonActive,angled and clear or {.26,.33,.43,1}},
+                {ImGuiCol_Border,angled and clear or selected and accent or {.48,.56,.68,.46}},
+            }) do
+                if type(entry[1])=='number' then imgui.PushStyleColor(entry[1],entry[2]); n=n+1; end
+            end
+        end
+        if imgui.Button((angled and '' or label)..'##'..prefix..id,{w,h}) then state.settingsTab=id; end
+        if n>0 then imgui.PopStyleColor(n); end
+        if angled then
+            local ok=pcall(function()
+                classic.draw_angled_tile(dl,x,y,w,h,base,selected and accent or nil,
+                    imgui.IsItemHovered and imgui.IsItemHovered());
+                dl:AddText(imgui.GetFont(),imgui.GetTextLineHeight(),{x+(w-tw)/2,y+(h-th)/2},
+                    imgui.GetColorU32({.96,.96,.97,1}),label);
+            end);
+            if not ok then classic.settingsDrawFallback=true; end
+        end
+    end
+end
+
+function classic.settings_more_tab()
+    return state.settingsTab=='General' or state.settingsTab=='Profiles' or state.settingsTab=='Updates';
+end
+
 local function draw_row(title,offset)
     local now=os.clock(); -- One animation clock sample for the entire row.
     local order=current_macro_layout();
@@ -2304,30 +2402,44 @@ local function yield_chat_input()
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
 function selector.end_explicit()
-    selector.explicitUntil=nil;
+    selector.explicitUntil=nil; selector.inferredUntil=nil;
     state.targetHandoffUntil=0; state.targetGraceUntil=0;
     selector.macroPrompt=false;
 end
 function selector.begin_handoff(subtargetBefore,expectsTarget)
     -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
     -- ability keys or StateBar gear commands during engaged combat.
-    state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
+    local now=os.clock();
+    local probe=expectsTarget~=false;
+    state.targetHandoffUntil=probe and (now+5) or 0;
+    state.targetGraceUntil=probe and (now+0.35) or 0;
     selector.subtargetBefore=subtargetBefore;
     selector.macroPrompt=false;
-    selector.explicitUntil=expectsTarget and (os.clock()+30) or nil;
+    selector.explicitUntil=expectsTarget and (os.time()+30) or nil;
+    selector.inferredUntil=probe and (os.time()+30) or nil;
+    -- A confirmed self-target does not enter the speculative handoff or discard queued input.
+    if not probe then return; end
     -- Keep the user's toggle and the owner of any key still held.
     state.navQueue={};state.deferredNav={};
     state.navRepeatAt={};
 end
 function selector.handoff_active()
     local now=os.clock();
-    if selector.explicitUntil and now<selector.explicitUntil then return true; end
+    local wall=os.time();
+    if selector.explicitUntil then
+        if wall<selector.explicitUntil then return true; end
+        selector.explicitUntil=nil;
+    end
     local prompt=selector.active();
     -- When the host exposes both flags, protect actual native targeting even
     -- when launched outside Decker. Bare subtarget flags may stay set in combat,
     -- so do not allow them to hijack navigation forever.
     if prompt and selector.actionSupported then return true; end
     if not selector.subtargetActive then selector.macroPrompt=false; end
+    if selector.inferredUntil and wall>=selector.inferredUntil then
+        selector.inferredUntil=nil; selector.macroPrompt=false;
+        state.targetHandoffUntil=0; state.targetGraceUntil=0;
+    end
     if selector.macroPrompt then return true; end
     if now>=(state.targetHandoffUntil or 0) then return false; end
     if selector.subtargetActive and selector.subtargetBefore==false then
@@ -3326,7 +3438,11 @@ ashita.events.register('d3d_present','decker_draw',function()
     end
     if drawDeps.state.visible and not holdHidden and not idleHidden then
     local hudw=math.floor(10*drawDeps.state.hudWidth*drawDeps.state.scale+9*8+32);
-    drawDeps.size_window('hud',hudw,math.floor(2*drawDeps.state.hudHeight*drawDeps.state.scale+90+(drawDeps.state.layoutEditing and 52 or 0)));
+    local hudExtra=drawDeps.state.showMacroDetails and 112 or 62;
+    if #drawDeps.state.names~=20 then hudExtra=112; end
+    if drawDeps.state.layoutEditing or drawDeps.state.guardEditing then hudExtra=hudExtra+52; end
+    if drawDeps.state.pendingMacroConfirm then hudExtra=hudExtra+48; end
+    drawDeps.size_window('hud',hudw,math.floor(2*drawDeps.state.hudHeight*drawDeps.state.scale+hudExtra));
     drawDeps.pin_window('hud',drawDeps.state.positionLocked);
     -- Explicit open-state table keeps flags in the host binding's three-argument Begin overload.
     -- Hidden IDs preserve window identity; the single content heading is drawn below.
@@ -3447,42 +3563,59 @@ ashita.events.register('d3d_present','decker_draw',function()
                 drawDeps.imgui.SameLine();
                 if drawDeps.imgui.Button('Cancel##guardcancel') then drawDeps.cancel_macro_guard('Protected macro cancelled; nothing was executed.'); end
             end
-            if not drawDeps.state.layoutEditing and drawDeps.imgui.Button('Arrange macros##arrangemacro') then
-                if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
+            if drawDeps.imgui.Button((drawDeps.state.showMacroDetails and 'Hide details' or 'Show details')..'##macrodetails') then
+                drawDeps.state.showMacroDetails=not drawDeps.state.showMacroDetails;
+                drawDeps.state.hudLastActivity=os.clock();
+                drawDeps.save_display();
             end
-            if drawDeps.state.guardEditing then
-                drawDeps.imgui.Separator();
-                drawDeps.imgui.TextWrapped('2-HOUR GUARD SETUP: click macro buttons to toggle protection for this book/set. Protected buttons show GUARDED.');
-                if drawDeps.imgui.Button('Done##guarddone') then drawDeps.state.guardEditing=false; end
-            elseif not drawDeps.state.layoutEditing then
-                drawDeps.imgui.Separator();
-                if drawDeps.imgui.Button('Protect 2-hour macros##guardstart') then
-                    drawDeps.state.pendingMacroConfirm=nil; drawDeps.state.guardEditing=true; drawDeps.state.visible=true;
+            drawDeps.imgui.SameLine();
+            if drawDeps.imgui.Button('Settings') then
+                drawDeps.state.showTests=not drawDeps.state.showTests;
+                drawDeps.state.hudLastActivity=os.clock();
+            end
+            if drawDeps.state.showMacroDetails or drawDeps.state.guardEditing then
+                if drawDeps.state.showMacroDetails and not drawDeps.state.layoutEditing and not drawDeps.state.guardEditing
+                    and drawDeps.imgui.Button('Arrange macros##arrangemacro') then
+                    if not drawDeps.begin_macro_layout() then drawDeps.say('Connect to in-game macros before arranging the current book/set.',true); end
                 end
-            end
-            if drawDeps.state.allowSwitch then
-                if drawDeps.imgui.Button('<##deckprev') then drawDeps.select_page(((drawDeps.state.trackedSet or 1)+8)%10+1); end
-                drawDeps.imgui.SameLine(); drawDeps.imgui.Text(('Macro set %d/10'):format(drawDeps.state.trackedSet or 1));
-                drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('>##decknext') then drawDeps.select_page((drawDeps.state.trackedSet or 1)%10+1); end
-                drawDeps.imgui.SameLine();
-                if drawDeps.validaddr(drawDeps.state.addresses.set_book) then
-                    if drawDeps.imgui.Button('<##bookprev') then drawDeps.select_native_book(((drawDeps.state.manualBook or 1)+drawDeps.BOOK_COUNT-2)%drawDeps.BOOK_COUNT+1); end
-                    drawDeps.imgui.SameLine();
-                    local sized=drawDeps.imgui.PushItemWidth and drawDeps.imgui.PopItemWidth;
-                    if sized then drawDeps.imgui.PushItemWidth(130*drawDeps.state.scale); end
-                    if drawDeps.imgui.BeginCombo('##hudbook',('Book %d/%d'):format(drawDeps.state.manualBook or 1,drawDeps.BOOK_COUNT)) then
-                        for number=1,drawDeps.BOOK_COUNT do
-                            if drawDeps.imgui.Selectable(drawDeps.book_label(number)..'##hudbookchoice'..number,drawDeps.state.manualBook==number) then drawDeps.select_native_book(number); end
-                        end
-                        drawDeps.imgui.EndCombo();
+                if drawDeps.state.guardEditing then
+                    drawDeps.imgui.Separator();
+                    drawDeps.imgui.TextWrapped('2-HOUR GUARD SETUP: click macro buttons to toggle protection for this book/set. Protected buttons show GUARDED.');
+                    if drawDeps.imgui.Button('Done##guarddone') then drawDeps.state.guardEditing=false; end
+                elseif not drawDeps.state.layoutEditing then
+                    drawDeps.imgui.Separator();
+                    if drawDeps.imgui.Button('Protect 2-hour macros##guardstart') then
+                        drawDeps.state.pendingMacroConfirm=nil; drawDeps.state.guardEditing=true; drawDeps.state.visible=true;
                     end
-                    if sized then drawDeps.imgui.PopItemWidth(); end
-                    drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('>##booknext') then drawDeps.select_native_book((drawDeps.state.manualBook or 1)%drawDeps.BOOK_COUNT+1); end
-                    drawDeps.imgui.SameLine();
                 end
-            end
-            if drawDeps.imgui.Button(drawDeps.state.positionLocked and 'Unlock position' or 'Lock position') then drawDeps.state.positionLocked=not drawDeps.state.positionLocked; drawDeps.save_display(); end
-            drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Settings') then drawDeps.state.showTests=not drawDeps.state.showTests; drawDeps.state.hudLastActivity=os.clock(); end
+                if drawDeps.state.showMacroDetails and drawDeps.state.allowSwitch then
+                    if drawDeps.imgui.Button('<##deckprev') then drawDeps.select_page(((drawDeps.state.trackedSet or 1)+8)%10+1); end
+                    drawDeps.imgui.SameLine(); drawDeps.imgui.Text(('Macro set %d/10'):format(drawDeps.state.trackedSet or 1));
+                    drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('>##decknext') then drawDeps.select_page((drawDeps.state.trackedSet or 1)%10+1); end
+                    drawDeps.imgui.SameLine();
+                    if drawDeps.validaddr(drawDeps.state.addresses.set_book) then
+                        if drawDeps.imgui.Button('<##bookprev') then drawDeps.select_native_book(((drawDeps.state.manualBook or 1)+drawDeps.BOOK_COUNT-2)%drawDeps.BOOK_COUNT+1); end
+                        drawDeps.imgui.SameLine();
+                        local sized=drawDeps.imgui.PushItemWidth and drawDeps.imgui.PopItemWidth;
+                        if sized then drawDeps.imgui.PushItemWidth(130*drawDeps.state.scale); end
+                        if drawDeps.imgui.BeginCombo('##hudbook',('Book %d/%d'):format(drawDeps.state.manualBook or 1,drawDeps.BOOK_COUNT)) then
+                            for number=1,drawDeps.BOOK_COUNT do
+                                if drawDeps.imgui.Selectable(drawDeps.book_label(number)..'##hudbookchoice'..number,drawDeps.state.manualBook==number) then drawDeps.select_native_book(number); end
+                            end
+                            drawDeps.imgui.EndCombo();
+                        end
+                        if sized then drawDeps.imgui.PopItemWidth(); end
+                        drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('>##booknext') then drawDeps.select_native_book((drawDeps.state.manualBook or 1)%drawDeps.BOOK_COUNT+1); end
+                        drawDeps.imgui.SameLine();
+                    end
+                end
+                if drawDeps.state.showMacroDetails then
+                    if drawDeps.imgui.Button(drawDeps.state.positionLocked and 'Unlock position' or 'Lock position') then
+                        drawDeps.state.positionLocked=not drawDeps.state.positionLocked;
+                        drawDeps.save_display();
+                    end
+                end
+            end -- optional macro details or active guard setup
         else
             drawDeps.imgui.Text('Decker is not connected to native macros.');
             if drawDeps.imgui.Button('Connect to in-game macros') then drawDeps.connect_macros(); end
@@ -3492,39 +3625,28 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.imgui.TextWrapped('Connect invokes native FFXI reading functions. As with earlier builds, incompatible clients may crash.');
             if drawDeps.state.phase~=0 then drawDeps.imgui.TextWrapped(drawDeps.state.nameSummary..' / '..state.pointerSummary); end
         end
-        if drawDeps.imgui.TextDisabled then drawDeps.imgui.TextDisabled('By Mutant X'); else drawDeps.imgui.Text('By Mutant X'); end
     end
     drawDeps.imgui.End();
     drawDeps.pop_glass_background(hudColours,hudVars);
     end -- visible macro HUD; Settings is independent
     if not drawDeps.state.showTests or drawDeps.state.settingsTab~='StateBar' then drawDeps.state.statebarDrag=nil; end
     if drawDeps.state.showTests then
-        drawDeps.imgui.SetNextWindowSize({490,370},ImGuiCond_FirstUseEver);
-        local thinScroll=type(ImGuiStyleVar_ScrollbarSize)=='number' and drawDeps.imgui.PushStyleVar and drawDeps.imgui.PopStyleVar;
-        if thinScroll then drawDeps.imgui.PushStyleVar(ImGuiStyleVar_ScrollbarSize,7); end
+        drawDeps.imgui.SetNextWindowSize({540,420},ImGuiCond_FirstUseEver);
+        local settingsColours,settingsVars=drawDeps.classic.push_settings_style();
         local settingsOpen={drawDeps.state.showTests};
-        if drawDeps.imgui.Begin('Decker v'..addon.version..' - Settings',settingsOpen,drawDeps.scrollbar_flags()) then
-            if drawDeps.imgui.Button('X  Close Settings') then drawDeps.state.showTests=false; end
-            drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Show macros##settings') then drawDeps.state.visible=true; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudForceReveal=true; end
-            drawDeps.imgui.Text('Decker v'..addon.version);
-            drawDeps.imgui.Separator();
-            -- Four user-facing sections; technical pages live under More.
-            local currentTab=drawDeps.state.settingsTab;
-            local moreActive=(currentTab=='General' or currentTab=='Profiles' or currentTab=='Updates');
-            for i,tab in ipairs({{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}}) do
-                if i>1 then drawDeps.imgui.SameLine(); end
-                local active=(tab[2]=='General' and moreActive) or currentTab==tab[2];
-                if drawDeps.imgui.Button((active and '['..tab[1]..']' or tab[1])..'##tab'..tab[2]) then drawDeps.state.settingsTab=tab[2]; end
+        if drawDeps.imgui.Begin('Decker Settings###DeckerSettings',settingsOpen,drawDeps.scrollbar_flags()) then
+            local moreActive=drawDeps.classic.settings_more_tab();
+            drawDeps.classic.draw_settings_tabs(drawDeps.classic.settingsTabs,'tab',moreActive and 'General' or drawDeps.state.settingsTab);
+            if drawDeps.classic.settings_more_tab() then
+                drawDeps.classic.draw_settings_tabs(drawDeps.classic.moreTabs,'more',drawDeps.state.settingsTab);
             end
             drawDeps.imgui.Separator();
-            if moreActive then
-                drawDeps.imgui.Text('More options:');
-                for i,tab in ipairs({{'Book & Set','General'},{'Profiles','Profiles'},{'Updates','Updates'}}) do
-                    if i>1 then drawDeps.imgui.SameLine(); end
-                    if drawDeps.imgui.Button((drawDeps.state.settingsTab==tab[2] and '['..tab[1]..']' or tab[1])..'##more'..tab[2]) then drawDeps.state.settingsTab=tab[2]; end
-                end
-                drawDeps.imgui.Separator();
+            if drawDeps.imgui.Button('Show macros##settings') then
+                drawDeps.state.visible=true;
+                drawDeps.state.hudLastActivity=os.clock();
+                drawDeps.state.hudForceReveal=true;
             end
+            drawDeps.imgui.Separator();
             if drawDeps.state.settingsTab=='Profiles' then
                 local profileName=drawDeps.state.profileId and drawDeps.state.profileId:match('^[^_]+_(.*)$') or nil;
                 drawDeps.imgui.Text('Character: '..(profileName or 'Waiting for login'));
@@ -3696,6 +3818,11 @@ ashita.events.register('d3d_present','decker_draw',function()
             drawDeps.imgui.TextWrapped('Reopen Settings with /decker settings or show macros with /decker show.');
             local motion={drawDeps.state.motionEnabled};
             if drawDeps.imgui.Checkbox('Subtle animations (uncheck for reduced motion)',motion) then drawDeps.state.motionEnabled=motion[1]; drawDeps.save_display(); end
+            local details={drawDeps.state.showMacroDetails};
+            if drawDeps.imgui.Checkbox('Show details under macro rows',details) then
+                drawDeps.state.showMacroDetails=details[1];
+                drawDeps.save_display();
+            end
             local scroll={drawDeps.state.showScrollbars};
             if drawDeps.imgui.Checkbox('Show scrollbars',scroll) then drawDeps.state.showScrollbars=scroll[1]; drawDeps.save_display(); end
             for _,item in ipairs({{'Outer window','outerOpacity'},{'Inner macro panel','panelOpacity'},{'Macro buttons','buttonOpacity'}}) do
@@ -3983,7 +4110,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if (drawDeps.state.settingsTab=='General' or drawDeps.state.settingsTab=='Controls') and drawDeps.state.phase>=4 and drawDeps.imgui.Button('Refresh macro names') then drawDeps.state.confirmAll=true; drawDeps.read_all_names(); end
             drawDeps.imgui.Separator(); drawDeps.imgui.Text('Decker v'..addon.version..'  |  by Mutant X')
             if drawDeps.state.showAdvanced then drawDeps.imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.'); end
-            local section=moreActive and 'General' or drawDeps.state.settingsTab;
+            local section=drawDeps.classic.settings_more_tab() and 'General' or drawDeps.state.settingsTab;
             if drawDeps.imgui.Button('Restore section defaults') then drawDeps.state.resetSection=section; end
             if drawDeps.state.resetSection==section then
                 drawDeps.imgui.Text('Restore only this section?');
@@ -3993,7 +4120,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Button('Close settings') then drawDeps.state.showTests=false; end
         end
         drawDeps.imgui.End();
-        if thinScroll then drawDeps.imgui.PopStyleVar(); end
+        drawDeps.pop_glass_background(settingsColours,settingsVars);
         if not settingsOpen[1] then drawDeps.state.showTests=false; end
     end
     drawDeps.guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.
