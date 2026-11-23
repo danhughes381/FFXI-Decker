@@ -1,6 +1,6 @@
 # Decker — by Mutant X
 
-**Stable updater: v1.50.26-dev · Development updater: v1.50.26-dev** · Ashita v4 / Vanacor / CatsEyeXI
+**Stable updater: v1.50.64-dev · Development updater: v1.50.69-dev** · Ashita v4 / Vanacor / CatsEyeXI
 
 Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro rows together, with floating glass, fitted labels, shared or custom keys, Hold/Toggle navigation and an independent StateBar.
 
@@ -8,7 +8,7 @@ Enhanced in-game macro interface for Final Fantasy XI. Shows both native macro r
 
 ## Update an existing installation
 
-Open `/decker settings` → **More** → **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. Both channels serve the same build. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
+Open `/decker settings` → **More** → **Updates**. Choose **Stable** or **Development**, select **Check for updates**, then **Install and reload**. In **StateBar**, drag rows under **Slot order** and adjust **Action label size** and **Hotkey label size**. Supported Aegis mode highlights follow the saved mode.
 
 ## Development v1.50.38 input diagnostic test candidate
 

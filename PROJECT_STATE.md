@@ -220,3 +220,5 @@ LuaJIT bytecode compilation and 121 mocked checks passed under LuaJIT and Lua 5.
 Combines the Settings refresh from PR #59, the self-target recovery from PR #60 and a per-character Hide details toggle. Compact mode resizes the HUD and keeps both macro rows, Settings and active guard prompts accessible. Appearance can also control the details preference.
 
 LuaJIT bytecode compilation and all 123 mocked groups passed in LuaJIT and Lua 5.4. In-game appearance and self-cast verification are pending. Next: use Development to install the candidate, toggle details through a reload, then verify repeated Haste and a native ally selector.
+
+Development pins [source 377e9b1](https://github.com/danhughes381/FFXI-Decker/commit/377e9b1f2e41ee446a267ee0cb4295f2d31c36c5). Both GitHub workflows passed before merging [PR #61](https://github.com/danhughes381/FFXI-Decker/pull/61). Stable remains v1.50.64-dev.
