@@ -26,3 +26,5 @@ A CTRL or ALT position can represent different actions in every book and set. Ke
 - A subtarget flag can be true while the action-target flag is false. In the mocked Ashita regression, keyboard capture accepted Enter in that state. The older frame handler could still drop the queued macro using the raw selector check. Test the route through the draw callback as well as the keyboard hooks.
 
 - Decker's display-file parser only permits token characters in saved values. Appearance names containing spaces need a token encoding for profile round trips. The angled outline has a mocked save/reload check.
+
+- A single subtarget flag can outlast the inferred Decker prompt. The recovery test holds that flag high while advancing wall time and verifies native ownership still applies when both host flags corroborate the prompt.

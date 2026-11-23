@@ -1370,12 +1370,16 @@ end
 function selector.saved_target(index,name)
     local commands=selector.actions(index,true);
     if commands then
+        local selfTarget=false;
         for _,command in ipairs(commands) do
-            if command:lower():match('^%s*/[%a]+%s+.*<st%a*>%s*$') then return true; end
+            local line=command:lower();
+            if line:match('^%s*/[%a]+%s+.*<st%a*>') then return true; end
+            if line:match('^%s*/[%a]+%s+.*<me>') then selfTarget=true; end
         end
-        return false;
+        if selfTarget then return false; end
+        return nil;
     end
-    return name=='Cure3' or name=='Cure4';
+    if name=='Cure3' or name=='Cure4' then return true; end
 end
 local function execute_slot(row,slot,source,displayRow,displaySlot)
     if state.guideOpen or state.layoutEditing or state.guardEditing then return false; end -- Editors never execute macros.
@@ -2304,30 +2308,44 @@ local function yield_chat_input()
 end
 state.targetHandoffUntil=0;state.targetGraceUntil=0
 function selector.end_explicit()
-    selector.explicitUntil=nil;
+    selector.explicitUntil=nil; selector.inferredUntil=nil;
     state.targetHandoffUntil=0; state.targetGraceUntil=0;
     selector.macroPrompt=false;
 end
 function selector.begin_handoff(subtargetBefore,expectsTarget)
     -- Short grace, applied to navigation arrows/Enter only. Do not gate direct
     -- ability keys or StateBar gear commands during engaged combat.
-    state.targetHandoffUntil=os.clock()+5;state.targetGraceUntil=os.clock()+0.35
+    local now=os.clock();
+    local probe=expectsTarget~=false;
+    state.targetHandoffUntil=probe and (now+5) or 0;
+    state.targetGraceUntil=probe and (now+0.35) or 0;
     selector.subtargetBefore=subtargetBefore;
     selector.macroPrompt=false;
-    selector.explicitUntil=expectsTarget and (os.clock()+30) or nil;
+    selector.explicitUntil=expectsTarget and (os.time()+30) or nil;
+    selector.inferredUntil=probe and (os.time()+30) or nil;
+    -- A confirmed self-target does not enter the speculative handoff or discard queued input.
+    if not probe then return; end
     -- Keep the user's toggle and the owner of any key still held.
     state.navQueue={};state.deferredNav={};
     state.navRepeatAt={};
 end
 function selector.handoff_active()
     local now=os.clock();
-    if selector.explicitUntil and now<selector.explicitUntil then return true; end
+    local wall=os.time();
+    if selector.explicitUntil then
+        if wall<selector.explicitUntil then return true; end
+        selector.explicitUntil=nil;
+    end
     local prompt=selector.active();
     -- When the host exposes both flags, protect actual native targeting even
     -- when launched outside Decker. Bare subtarget flags may stay set in combat,
     -- so do not allow them to hijack navigation forever.
     if prompt and selector.actionSupported then return true; end
     if not selector.subtargetActive then selector.macroPrompt=false; end
+    if selector.inferredUntil and wall>=selector.inferredUntil then
+        selector.inferredUntil=nil; selector.macroPrompt=false;
+        state.targetHandoffUntil=0; state.targetGraceUntil=0;
+    end
     if selector.macroPrompt then return true; end
     if now>=(state.targetHandoffUntil or 0) then return false; end
     if selector.subtargetActive and selector.subtargetBefore==false then
