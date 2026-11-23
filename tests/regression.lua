@@ -435,6 +435,35 @@ test('shared number and F-key layouts preserve row-switch routing',function()
  s.mappingMode='functions';row,slot=api.mapped(68);assert(row=='ALT' and slot==10);api.nav(57);row,slot=api.mapped(68);assert(row=='CTRL' and slot==10)
 end)
 
+test('Settings navigation follows macro outline modes and wraps in a narrow window',function()
+ ready();s.visible=false;s.showTests=true;s.statebarEnabled=false;s.settingsTab='Appearance'
+ local oldButton,oldAvail,oldSameLine=ui.Button,ui.GetContentRegionAvail,ui.SameLine
+ local oldLine=dl.AddLine
+ local angles,inline,tabCount,click=0,0,0,nil
+ dl.AddLine=function() angles=angles+1 end
+ ui.GetContentRegionAvail=function() return {205,400} end
+ ui.SameLine=function() if tabCount>0 and tabCount<4 then inline=inline+1 end end
+ ui.Button=function(label,size)
+  local id=label:match('##(tab%w+)$') or label:match('##(more%w+)$')
+  if id then
+   assert(size[1]>0 and size[1]<=205)
+   tabCount=tabCount+1
+   return id==click
+  end
+  return false
+ end
+ api.glass.custom=true
+ for i,mode in ipairs({'Glass','Angled selection','Angled tiles'}) do
+  angles,tabCount,inline=0,0,0
+  s.tileOutline=mode;events.decker_draw()
+  assert(angles==({0,6,24})[i] and tabCount==4 and inline<3 and styles==0 and vars==0,table.concat({mode,angles,tabCount,inline,styles,vars},' '))
+ end
+ click='tabGeneral';events.decker_draw();assert(s.settingsTab=='General')
+ click='moreUpdates';events.decker_draw();assert(s.settingsTab=='Updates')
+ dl.AddLine=oldLine;ui.Button=oldButton;ui.GetContentRegionAvail=oldAvail;ui.SameLine=oldSameLine
+ s.tileOutline='Glass';s.showTests=false;s.visible=true
+end)
+
 test('Settings native X closes on both expanded and collapsed Begin paths',function()
  ready();s.visible=true;s.statebarEnabled=false;s.autoHide=false
  local begin=ui.Begin
@@ -634,6 +663,29 @@ test('prominent page indicator follows tracked macro set, not book title',functi
  found=false;for _,value in ipairs(labels) do if value=='PAGE 09' then found=true end end;assert(found,'page nine label missing')
  ui.Text=previous
 end)
+test('HUD details toggle keeps macro rows and Settings visible and saves the choice',function()
+ ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.autoHide=false;s.showMacroDetails=true
+ s.layoutEditing=false;s.guardEditing=false;s.pendingMacroConfirm=nil
+ local oldButton,oldSize=ui.Button,ui.SetNextWindowSize
+ local seen,height={},nil
+ local click='Hide details##macrodetails'
+ ui.Button=function(label) seen[label]=true;return label==click end
+ ui.SetNextWindowSize=function(size) height=size[2] end
+ events.decker_draw();assert(not s.showMacroDetails)
+ local fullHeight=height
+ s.showMacroDetails=true;api.load();assert(not s.showMacroDetails)
+ s.visible=true;s.autoHide=false;s.navKeysEnabled=false
+ click=nil;seen={};events.decker_draw()
+ assert(height<fullHeight and seen.Settings and seen['Show details##macrodetails'])
+ assert(not seen['Arrange macros##arrangemacro'] and not seen['Protect 2-hour macros##guardstart'])
+ local count=0
+ for label in pairs(seen) do if label:find('##decker_',1,true) then count=count+1 end end
+ assert(count==20)
+ click='Show details##macrodetails';seen={};events.decker_draw()
+ assert(s.showMacroDetails and seen['Arrange macros##arrangemacro'])
+ ui.Button=oldButton;ui.SetNextWindowSize=oldSize
+end)
+
 test('HUD Macro set and book controls select native books 1-20 with wrapping arrows',function()
  ready();s.visible=true;s.showTests=false;s.statebarEnabled=false;s.navKeysEnabled=false;s.autoHide=false;s.autoRefresh=false;s.pendingRefreshFrames=0;s.allowSwitch=true;s.macroObject=65536;s.addresses.macro_object=65536;s.addresses.set_book=65536
  local button=ui.Button;local select=ui.Selectable;local cast=ffi.cast;local text=ui.Text;local indices={};local options=0;local setLabel=false
@@ -1504,7 +1556,7 @@ test('Cure confirmation reaches FFXI when both target flags stay false',function
   local file=assert(io.open(tmp..'/mcr.dat','wb'))
   file:write(string.rep('\0',24))
   for i,name in ipairs(s.names) do
-   local cmd=i==1 and ('/ma "Cure IV" '..target) or ''
+   local cmd=i==1 and ('/ma "'..(name=='Haste' and 'Haste' or 'Cure IV')..'" '..target) or ''
    file:write(string.rep('\0',4),cmd,string.rep('\0',366-#cmd),name,string.rep('\0',10-#name))
   end
   file:close()
@@ -1521,13 +1573,31 @@ test('Cure confirmation reaches FFXI when both target flags stay false',function
  local e={key=28,down=true};events.decker_custom_set_navigation(e);assert(e.blocked)
  events.decker_custom_set_navigation({key=28,down=false})
  s.navQueue={}
- saveMacro('<me>')
- assert(api.execute('CTRL',1,'mouse'))
- s.targetGraceUntil=0;s.targetHandoffUntil=0
- e={key=28,down=true};events.decker_custom_set_navigation(e)
- assert(e.blocked,'saved self-only Cure does not arm targeting')
- events.decker_custom_set_navigation({key=28,down=false})
+ s.names[1]='Haste';saveMacro('<me>')
+ for _=1,3 do
+  assert(api.execute('CTRL',1,'mouse'))
+  subTarget=1;actionTarget=0
+  e={key=28,down=true};events.decker_custom_set_navigation(e)
+  assert(e.blocked,'known self-target Haste leaves navigation available immediately')
+  events.decker_custom_set_navigation({key=28,down=false})
+  subTarget=0
+ end
  s.navQueue={};s.navKeysEnabled=false;s.bookPath=''
+end)
+
+test('inferred targeting expires against wall time when the subtarget flag sticks',function()
+ local wall=100
+ local time=os.time;os.time=function() return wall end
+ subTarget=0;actionTarget=0
+ api.selector.begin_handoff(false,nil)
+ subTarget=1
+ assert(api.selector.handoff_active(),'recent subtarget transition can still belong to FFXI')
+ wall=130
+ assert(not api.selector.handoff_active(),'a stale single flag cannot retain navigation')
+ actionTarget=1
+ assert(api.selector.handoff_active(),'corroborated native prompts still own navigation')
+ subTarget=0;actionTarget=0
+ api.selector.end_explicit();os.time=time
 end)
 
 test('macro access distinguishes an unequipped weapon and unavailable jobs from known actions',function()

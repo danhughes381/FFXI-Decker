@@ -208,3 +208,15 @@ Changed `addons/decker/decker.lua` and `tests/regression.lua`. All 120 mocked-ho
 The owner requested Development delivery. The v1.50.68-dev candidate includes an alternate fill for hosts without the ImGui path API. LuaJIT bytecode compilation and all 120 mocked checks passed under LuaJIT and Lua 5.4. Live render, updater install and reload still need a Windows check.
 
 Development pin: [v1.50.68-dev source](https://github.com/danhughes381/FFXI-Decker/commit/7aeb7f879af7e067a1ca0af01f8d0cba2a581f46). [PR #58](https://github.com/danhughes381/FFXI-Decker/pull/58) merged after both GitHub regression workflows passed. The in-game Development manifest points to the verified source bytes. Stable remains 1.50.64-dev. Next: install from Development, select an Angled tile outline and check the macro rows and StateBar in Ashita/VanaCore.
+
+## 23 November 2026 — Self-target macro navigation recovery
+
+A report of Decker navigation locking after several self-casts prompted a fix in `addons/decker/decker.lua`. Saved self-target commands such as Haste on `<me>` bypass speculative native-target handoff, and an inferred prompt whose single target flag stays set expires after 30 seconds of wall time. Native prompts backed by both client flags still own their navigation. The reported in-game trigger has not been confirmed.
+
+LuaJIT bytecode compilation and 121 mocked checks passed under LuaJIT and Lua 5.4, including repeated self-target Haste and navigation recovery when a single flag stays high. Next: test self-target buff chains and an ally-target Cure on the target client.
+
+## 23 November 2026 — Development v1.50.69-dev candidate
+
+Combines the Settings refresh from PR #59, the self-target recovery from PR #60 and a per-character Hide details toggle. Compact mode resizes the HUD and keeps both macro rows, Settings and active guard prompts accessible. Appearance can also control the details preference.
+
+LuaJIT bytecode compilation and all 123 mocked groups passed in LuaJIT and Lua 5.4. In-game appearance and self-cast verification are pending. Next: use Development to install the candidate, toggle details through a reload, then verify repeated Haste and a native ally selector.
