@@ -1504,7 +1504,7 @@ test('Cure confirmation reaches FFXI when both target flags stay false',function
   local file=assert(io.open(tmp..'/mcr.dat','wb'))
   file:write(string.rep('\0',24))
   for i,name in ipairs(s.names) do
-   local cmd=i==1 and ('/ma "Cure IV" '..target) or ''
+   local cmd=i==1 and ('/ma "'..(name=='Haste' and 'Haste' or 'Cure IV')..'" '..target) or ''
    file:write(string.rep('\0',4),cmd,string.rep('\0',366-#cmd),name,string.rep('\0',10-#name))
   end
   file:close()
@@ -1521,13 +1521,31 @@ test('Cure confirmation reaches FFXI when both target flags stay false',function
  local e={key=28,down=true};events.decker_custom_set_navigation(e);assert(e.blocked)
  events.decker_custom_set_navigation({key=28,down=false})
  s.navQueue={}
- saveMacro('<me>')
- assert(api.execute('CTRL',1,'mouse'))
- s.targetGraceUntil=0;s.targetHandoffUntil=0
- e={key=28,down=true};events.decker_custom_set_navigation(e)
- assert(e.blocked,'saved self-only Cure does not arm targeting')
- events.decker_custom_set_navigation({key=28,down=false})
+ s.names[1]='Haste';saveMacro('<me>')
+ for _=1,3 do
+  assert(api.execute('CTRL',1,'mouse'))
+  subTarget=1;actionTarget=0
+  e={key=28,down=true};events.decker_custom_set_navigation(e)
+  assert(e.blocked,'known self-target Haste leaves navigation available immediately')
+  events.decker_custom_set_navigation({key=28,down=false})
+  subTarget=0
+ end
  s.navQueue={};s.navKeysEnabled=false;s.bookPath=''
+end)
+
+test('inferred targeting expires against wall time when the subtarget flag sticks',function()
+ local wall=100
+ local time=os.time;os.time=function() return wall end
+ subTarget=0;actionTarget=0
+ api.selector.begin_handoff(false,nil)
+ subTarget=1
+ assert(api.selector.handoff_active(),'recent subtarget transition can still belong to FFXI')
+ wall=130
+ assert(not api.selector.handoff_active(),'a stale single flag cannot retain navigation')
+ actionTarget=1
+ assert(api.selector.handoff_active(),'corroborated native prompts still own navigation')
+ subTarget=0;actionTarget=0
+ api.selector.end_explicit();os.time=time
 end)
 
 test('macro access distinguishes an unequipped weapon and unavailable jobs from known actions',function()
