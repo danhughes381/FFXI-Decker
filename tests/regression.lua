@@ -236,6 +236,29 @@ local previewPaints
  local key;for _,paint in ipairs(paints) do if paint[1]=='text' and paint[6]=='F1' then key=paint;break end end;assert(key and key[1]=='text' and key[6]=='F1' and key[2]>90 and key[3]>75)
  previewPaints=paints;s.motionEnabled=true
 end)
+test('angled outlines persist and draw only the chosen slots, with glass fallback',function()
+ local polygons,points,edges=0,0,0
+ dl.PathClear=function() points=0 end
+ dl.PathLineTo=function() points=points+1 end
+ dl.PathFillConvex=function() assert(points==6);polygons=polygons+1 end
+ dl.AddLine=function() edges=edges+1 end
+ local n=#requested
+ s.motionEnabled=false;s.tileOutline='Angled selection';api.save()
+ s.tileOutline='Glass';api.load();assert(s.tileOutline=='Angled selection')
+ s.navSlot=2;s.navRow='CTRL';cursorX=20;api.drawrow('CTRL',0)
+ assert(polygons==1 and edges==6)
+ s.tileOutline='Angled tiles';cursorX=20;api.drawrow('CTRL',0)
+ assert(polygons==11 and edges==66 and #requested==n)
+ dl.PathClear=nil;dl.PathLineTo=nil;dl.PathFillConvex=nil
+ local oldFill,bands=dl.AddRectFilled,0
+ dl.AddRectFilled=function(_,a,b) assert(b[1]>a[1] and b[2]>a[2]);bands=bands+1 end
+ cursorX=20;api.drawrow('CTRL',0)
+ assert(bands>10 and edges==126 and polygons==11 and #requested==n)
+ dl.AddRectFilled=oldFill;dl.AddLine=nil
+ local oldOutlines=outlines;cursorX=20;api.drawrow('CTRL',0)
+ assert(outlines==oldOutlines+10 and styles==0 and vars==0 and fontDepth==0)
+ s.tileOutline='Glass';s.motionEnabled=true;api.save()
+end)
 test('mouse and direct keyboard dispatch update execution only once',function()
  ready();s.navKeysEnabled=false;s.keybinds=true;s.acknowledgeKeys=true;s.mappingMode='split';s.held={};s.suppressed={};s.statebarSelected=1
  local old=ui.Button;local n=#requested
@@ -1509,8 +1532,10 @@ end)
 
 test('macro access distinguishes an unequipped weapon and unavailable jobs from known actions',function()
  local sel=api.selector
- local weapon,known=3,true
- local player={HasAbilityData=function()return true end,HasSpellData=function()return true end,
+ local weapon,known,mainLevel=3,true,75
+ local player={GetMainJob=function()return 7 end,GetSubJob=function()return 0 end,
+   GetMainJobLevel=function()return mainLevel end,GetSubJobLevel=function()return 0 end,
+   HasAbilityData=function()return true end,HasSpellData=function()return true end,
    HasWeaponSkill=function(_,id)assert(id==45);return known end,
    HasAbility=function(_,id)assert(id==600);return known end,
    HasSpell=function(_,id)assert(id==112);return known end}
@@ -1518,18 +1543,19 @@ test('macro access distinguishes an unequipped weapon and unavailable jobs from 
    GetEquippedItem=function(_,slot)assert(slot==0);return {Index=1} end,
    GetContainerItem=function()return {Id=77}end}end}
  local resources={GetAbilityByName=function(_,name)return {Id=name=='Atonement' and 45 or 600}end,
-   GetSpellByName=function()return {Index=112}end,GetItemById=function()return {Skill=weapon}end}
+   GetSpellByName=function()return {Index=112,Skill=32,LevelRequired={[8]=37}}end,GetItemById=function()return {Skill=weapon}end}
  assert(not sel.action_unavailable('ws','Atonement',memory,resources))
  weapon=4;assert(sel.action_unavailable('ws','Atonement',memory,resources))
  weapon=3;known=false;assert(sel.action_unavailable('ws','Atonement',memory,resources))
  assert(sel.action_unavailable('ja','Sentinel',memory,resources))
- assert(sel.action_unavailable('ma','Flash',memory,resources))
- known=true;assert(not sel.action_unavailable('ma','Flash',memory,resources))
+ mainLevel=36;assert(sel.action_unavailable('ma','Flash',memory,resources))
+ mainLevel=37;assert(not sel.action_unavailable('ma','Flash',memory,resources))
 end)
 
 test('learned Ninjutsu is unavailable without Ninja main or subjob',function()
  local main,sub=7,1
  local player={GetMainJob=function()return main end,GetSubJob=function()return sub end,
+   GetMainJobLevel=function()return 75 end,GetSubJobLevel=function()return 37 end,
    HasSpellData=function()return true end,HasSpell=function()return true end}
  local memory={GetPlayer=function()return player end}
  local resources={GetSpellByName=function()return {Index=338,Skill=39}end}

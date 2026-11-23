@@ -1,3 +1,62 @@
+# Current development work — v1.50.63-dev
+
+Dan confirmed he is on the latest Development build, used Apply & Save, logged out and back in, and the Decker HUD returned to its default macro order. The .63 top-of-HUD controls and visible save status did not resolve persistence. Do not claim layout persistence is fixed.
+
+Known code facts: Apply calls `save_display()`, which writes the character profile and layout sidecars; the loader reads the profile, then sidecars and legacy profile files. v1.50.62 fixed literal backslash-n sidecar line endings; that alone was insufficient. Next diagnostic: get the exact visible status after Apply ("Saved layout for Book X, Set Y" or save failure). Then distinguish failed disk write from book/set/profile mismatch during reload before changing storage semantics.
+
+v1.50.63 source commit: `622d0c13c288dabb1b03b784ec7fa834d13cf8d7`. SHA-256: `9a89eb14d0e27d48b14dc9edba114c2bcd0b9ae35c0aceeaacfc8040b58010df`. Both automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups. This is not proof of live persistence.
+
+Stable is v1.50.59-dev; Development is v1.50.63-dev.
+
+
+# Current development work — v1.50.59-dev
+
+This Settings cleanup keeps existing features and controls, shortens repeated help text, and labels More > General as Book & Set. Combat Alerts, Combat Analytics, Quick Start Guide and Interactive Guide are available under the new Developer tools toggle. Profile file/detection details are also hidden there. Stable remains unchanged.
+
+Source commit: `4937e69d691947468f4853048874e3d3eb70a5bb`. Automatic Lua 5.4/LuaJIT workflows are pending. Review the render in game after Development update; no functionality was intentionally removed.
+
+---
+
+# Current development work — v1.50.58-dev
+
+The active branch is `feature/visual-macro-remap-20261120`, under PR #57. Dan reported no cooldown overlay on the Shield Bash macro. His screenshot shows `ShldBash`; the previous inference recognized `ShieldBash` but not the shortened spelling. The alias now maps both to the Ashita resource name `Shield Bash`.
+
+Source commit: `0380e7cf1246c0e969f5eaa2b553135b92afb8b0`. Exact source SHA-256: `27c699bb2ed3f886a28b320bb59ea2f36a45db770867cec0d454f3857566c995`. Lua 5.4/LuaJIT syntax and regression workflows pass. All three Development manifests now pin v1.50.58-dev; Stable is unchanged.
+
+Live confirmation is still required: after updating Decker to Development v1.50.58-dev, use Shield Bash and check for the circular recast overlay on the `ShldBash` macro. The visual only appears while Ashita reports an active recast; the current build cannot be claimed live-verified until observed.
+
+---
+
+# Current development work — v1.50.58-dev
+
+This follow-up addresses Dan's report that Shield Bash still has no cooldown overlay. His screenshot shows the macro label `ShldBash`; the previous exact-name inference handled `ShieldBash` but did not translate this shortened label to the Ashita resource name `Shield Bash`. v1.50.58-dev adds that alias. This is a source-level diagnosis; the live overlay after use still needs confirmation.
+
+Source commit: `0380e7cf1246c0e969f5eaa2b553135b92afb8b0`. Workflow validation is pending. Do not change Stable. After validation, publish only through the Development manifests and have Dan update/retest.
+
+---
+
+# Current development work — v1.50.57-dev
+
+The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This fix addresses Dan's report that visual macro swaps disappeared after updating Decker. The root cause was confirmed in source: `load_display()` returned immediately when the character profile file was missing, before loading the layout sidecar. The loader now continues into sidecar recovery even without that profile file.
+
+Layout saving now writes both the Ashita config sidecar and an add-on-side copy. Loading keeps current profile values, fills missing book/set layouts from both copies, and scans older server-qualified profile files for the same character. Stable remains unchanged.
+
+Source commit: `4084689dfcc3d245ac650deb38a41653702439d2`. Exact source SHA-256: `a6236735d4953a747823b942e2251c3ec2ffe5426ac02d93415435a0d31ac1b7`. Lua 5.4 and LuaJIT syntax/regression workflows pass. All three Development manifests (main, development, legacy Development) now pin v1.50.57-dev. Live Ashita update/relogin recovery remains unverified; Dan needs to confirm the affected book/set layout in game.
+
+Next action: update Decker through Settings > More > Updates > Development, reconnect macros if prompted, then check the previously rearranged book/set. If every existing layout copy was already deleted, the intended order cannot be reconstructed automatically.
+
+---
+
+# Current development work — v1.50.57-dev candidate
+
+The active development branch is `feature/visual-macro-remap-20261120`, under PR #57. This change addresses Dan's report that visual macro swaps disappeared after updating Decker. Layout saves now write two copies, and startup merges existing per-profile layouts with sidecars and earlier server-qualified profile files for the same character.
+
+Source commit: `938d701f2eb428d99ebddd0f3a1a70b9e0c17c08`. Decker source reports v1.50.57-dev. Automated workflow status and exact source hash are pending. Do not claim live persistence until Dan confirms an update/relogin in Ashita. Stable remains unchanged.
+
+Next action: allow PR workflows to run; if they pass, publish only on Development and ask Dan to update/reconnect and verify the affected book/set layouts. If any layout file is still present in his install, this build should recover it; it cannot reconstruct a permutation if every prior copy has already been deleted.
+
+---
+
 # Decker — project state
 
 Updated 21 October 2026. Owner selected **v1.50.12-dev as the latest main, Stable and Development baseline**.
@@ -113,3 +172,37 @@ Validation passed locally for 87 mocked Lua 5.4 regression groups, Lua syntax, Z
 [PR #51](https://github.com/danhughes381/FFXI-Decker/pull/51) changes the keyboard routing in `addons/decker/decker.lua` and adds coverage in `tests/regression.lua`. The Windows LuaJIT run passed 115 mocked regression groups, including both Enter keys, a stale combat subtarget, missed modifier release, and native target confirmation.
 
 Live Ashita validation is pending. Test repeated navigation macro execution while unengaged and engaged, native ally confirmation and the next macro, chat focus, and multibox focus switching with the regular addon stack. The updater is still pinned to its existing build.
+
+
+## 20 November 2026 — Visual macro remap candidate
+
+Development branch `feature/visual-macro-remap-20261120`, candidate Decker 1.50.44-dev. Adds a per-character mapping for the current tracked book/set: the HUD can preview swapping displayed macro positions, then Apply saves the mapping in Decker's profile. Mouse buttons and Decker keyboard/navigation inputs resolve to the original native macro slot; StateBar buttons remain bound to their configured native slots. FFXI macro contents and native macro files are not changed.
+
+The layout editor supports drag-to-swap when Ashita exposes the needed mouse state calls, with select-then-select as a fallback, plus Apply, Cancel and Reset order. It is page-scoped and editing blocks Decker macro and StateBar execution. Draft [PR #57](https://github.com/danhughes381/FFXI-Decker/pull/57) contains the source-only candidate. Apply rolls back the in-memory profile mapping if the Decker profile cannot be saved. No tests were added or run; live Ashita/VanaCore validation is not recorded. Development manifests now pin source commit `1dd5a4274973015004077cee5b6b1e002b0be8f2` (SHA-256 `689b35fb7fd95404ab87e0e243b12772187f5e3911e2f0b24d8ede0c114a2acd`) as v1.50.44-dev; Stable manifests remain unchanged. Install from Settings → More → Updates by selecting `development`, checking for updates, then installing. Verify preview/cancel/apply, reload persistence, book/set isolation, cooldowns, Decker keys/navigation and StateBar references. Decker’s updater provides rollback to the previous version.
+
+
+## Development v1.50.45-dev — login-screen visibility
+
+Updated `addons/decker/decker.lua` so the addon remains loaded but the `d3d_present` callback draws no Decker windows until `refresh_profile()` detects a character and sets `profileReady`. This gates the HUD, StateBar, Settings and other windows. If profile detection clears after logout, rendering stops again. The existing 1-second character-profile polling and updater polling remain active. Candidate is on `feature/visual-macro-remap-20261120` and includes visual macro remapping from v1.50.44-dev. The first v1.50.45-dev pin failed the owner's LuaJIT pre-install syntax check because the main draw callback exceeded LuaJIT's 60-upvalue limit; it was not installed. Fixed by bundling the callback's 67 top-level references behind one draw dependency table. Corrected v1.50.46-dev source commit `179e4e3d3d8b2dc0d2c7762c04f06d4ece916232`, SHA-256 `cef8f530d10a4cf86833e244f0c77dbe9c80971cc26a049d11cd1dbbd9d193d7`, is now pinned in all three Development manifests. The automatic GitHub workflow passed Lua 5.4 and LuaJIT syntax plus regression validation. Stable remains v1.50.40-dev. Live Ashita/VanaCore behaviour remains unverified. Next: install .46-dev from Development and check login-screen invisibility, post-login visibility, logout hiding, and macro remapping.
+
+Checksum correction: the previous manifest SHA-256 was recalculated from decoded source text and did not match updater byte hashing. Recomputed from the exact immutable source bytes (228,802 bytes) with `sha256sum`; all Development manifests now pin `cef8f530d10a4cf86833e244f0c77dbe9c80971cc26a049d11cd1dbbd9d193d7`. The owner’s updater SHA mismatch was the evidence that triggered this correction. Stable remains unchanged.
+
+
+## Development v1.50.47-dev — high-contrast header
+
+Added a dark, slightly translucent backing strip behind the HUD header row so the book/title, lock status, active row and page badge remain readable over bright scenes. This does not change macro row appearance or layout. Source commit `53c90d1a773fdba03ee13d66eca3a0112601ef6f`, exact-byte SHA-256 `50c902ab6f727bc34698950d0e525585f422abb72107f981f95d6a482dc202e9`. All three Development manifests now pin v1.50.47-dev; Stable remains v1.50.40-dev. Automatic Lua 5.4/LuaJIT syntax and regression workflows both passed on the candidate. Not live-tested in Ashita/VanaCore. Next: install Development and confirm header contrast and layout on a bright in-game background.
+
+
+## Development v1.50.48-dev — guarded high-impact macros
+
+Added an optional per-character, per-book/set guard for manually selected native macro slots. In `Protect 2-hour macros` mode, click the displayed macro buttons to toggle protection; mapped buttons resolve to their original native slot. A guarded macro's first input only arms it. The HUD then offers a separate `CONFIRM 2-HOUR` button for eight seconds; the confirmation is cancelled on timeout, page/fingerprint change, or explicit Cancel. Mouse, assigned key/navigation and StateBar macro routes share the same guard. Native FFXI macros remain unchanged. Automatic Lua 5.4/LuaJIT syntax and regression workflows passed. Live Ashita/VanaCore behaviour is unverified.
+
+Immutable source commit `893e42890ab85a0bf2ce6eb8e91c9460b105932c`, exact-byte SHA-256 `e9e6ffb3155de86903f31efc7708edb7fd904a58510ff22384e76955ad5a40a7`. All three Development manifests now pin v1.50.48-dev. Stable remains v1.50.40-dev. Next: install from Development, protect the 2-hour macro slots, confirm one press only arms them, Confirm executes them, and timeout/Cancel do not execute.
+
+## 23 November 2026 — Angled macro and StateBar appearance draft
+
+The draft branches from the availability fix at `bfdb1cc` (addon version 1.50.67-dev). Appearance offers Glass, Angled selection and Angled tiles. Glass is the default for existing and new profiles. The angled variants use the existing button bounds and slot routing. The compact key label layout has a lower-left recast ring. StateBar retains its existing mode readback and pending highlight.
+
+Changed `addons/decker/decker.lua` and `tests/regression.lua`. All 120 mocked-host Lua 5.4 checks passed. Live Ashita/VanaCore rendering and LuaJIT verification are pending. Open Appearance on the target client and compare each option at full and compact scale. Verify the active StateBar mode, orange unavailable labels and the on-tile recast clock. This draft does not update either release channel.
+
+The owner requested Development delivery. The v1.50.68-dev candidate includes an alternate fill for hosts without the ImGui path API. LuaJIT bytecode compilation and all 120 mocked checks passed under LuaJIT and Lua 5.4. Live render, updater install and reload still need a Windows check.

@@ -1,3 +1,43 @@
+## 1.50.63-dev — expose Apply & Save result
+
+- Move layout editing controls above the macro rows so Apply & Save is visible without scrolling the fixed-height HUD.
+- Expand the HUD while arranging macros and show persistent on-screen status for unsaved changes, success, and save failure.
+- Automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups pass. Live Ashita click and relog persistence still require confirmation.
+
+## 1.50.62-dev — repair macro layout backup files
+
+- Write real line breaks into the redundant macro-layout sidecars. The previous writer emitted literal `\\n` characters, so sidecar layouts could not be read back after losing the profile copy.
+- **Apply Layout** remains the save/commit action; stored layouts are character, book and set scoped.
+- Both automatic Lua 5.4/LuaJIT workflows pass; 119 mocked regression groups pass. Live update/relogin persistence still requires in-game confirmation.
+
+## 1.50.61-dev — identify cooldowns from macro commands
+
+- Read each native macro's command lines and infer a spell or job ability when exactly one trackable action is present. Display labels can be nicknames such as `MP` or `Mag Acc`.
+- Leave macros with multiple trackable actions unresolved instead of guessing. Exact-label lookup remains a fallback when command data is unavailable.
+- Add a Settings mapper to choose a macro slot, enter an exact spell or ability name, save a manual override, or return to automatic detection.
+- Key saved overrides to macro commands so renaming the visible label does not discard the mapping.
+- Lua 5.4/LuaJIT syntax and existing mocked regression workflows pass (119 groups). Live Ashita macro-file detection, manual mapping, and actual timer/UI behaviour remain unverified.
+
+## 1.50.59-dev — simplify Settings
+
+- Keep features but shorten repeated help text and relabel More > General as Book & Set.
+- Move Combat Alerts, Combat Analytics, Quick Start Guide and the Interactive Guide into the Developer tools panel.
+- Show profile file and detection details only in Developer tools.
+- Lua 5.4/LuaJIT syntax and regression workflows pass. Live visual review of the reorganised Settings screen remains pending.
+
+## 1.50.58-dev — recognize shortened Shield Bash label
+
+- Treat the in-game macro label `ShldBash` as the ability `Shield Bash` when inferring a recast timer.
+- The prior lookup handled `ShieldBash` but did not recognize this shortened label.
+- Automatic Lua 5.4/LuaJIT syntax and regression workflows pass. The live in-game overlay after using Shield Bash still needs confirmation.
+
+## 1.50.57-dev — macro layout persistence recovery
+
+- Save the per-character macro layout sidecar both in Ashita's `config/addons/decker` directory and beside the addon source.
+- On load, preserve layouts in the current character profile and recover missing book/set layouts from either sidecar or older server-qualified profile files for the same character.
+- Confirm that the persistent directory exists after attempting creation; fall back to the addon-side copy if unavailable.
+- Automatic Lua 5.4/LuaJIT syntax and regression workflows pass on the v1.50.57-dev source commit. Live Ashita update/relogin persistence still needs confirmation.
+
 ## 1.50.19-dev — navigation and saved-title test candidate
 
 - Hold arrows to repeat; release to stop. 350 ms initial delay, 80 ms cadence.
@@ -148,3 +188,8 @@
 - 1.47: GitHub main source baseline at inspection.
 
 Older release descriptions are retained in RELEASE_NOTES.md below the current candidate entry; they describe historical builds, not current validation.
+
+
+## 1.50.44-dev candidate — visual macro remapping
+
+On branch `feature/visual-macro-remap-20261120`, Decker can stage a per-book/set remap of displayed macro positions and apply it to the character's Decker profile. Macro contents remain in their original native FFXI slots; Decker mouse, keyboard and navigation actions resolve the mapped source slot. StateBar references remain native-slot based. Candidate is not in updater manifests and has not been tested in-game.
