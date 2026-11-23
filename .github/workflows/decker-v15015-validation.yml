@@ -1,0 +1,46 @@
+name: Decker 1.50.15 UI Experience Lab validation
+on:
+  push:
+    branches:
+      - dev/decker-v1.50.15-ui-experience-lab
+    paths:
+      - .github/workflows/decker-v15015-validation.yml
+      - addons/decker/decker.lua
+      - tests/regression.lua
+      - tests/run_lua54.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Lua 5.4, LuaJIT and test-only ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua runtimes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends liblua5.4-0 lua5.4 luajit zip unzip
+      - name: Parse Lua
+        run: |
+          lua5.4 -e "assert(loadfile('addons/decker/decker.lua'))"
+          lua5.4 -e "assert(loadfile('tests/regression.lua'))"
+          luajit -b addons/decker/decker.lua /tmp/decker-v15015.luac
+      - name: Lua 5.4 regression
+        run: python3 tests/run_lua54.py
+      - name: LuaJIT regression
+        run: luajit tests/regression.lua .
+      - name: Package TEST-ONLY source (not release, no config files)
+        run: |
+          mkdir -p dist/test-only
+          zip -q -9 -r dist/test-only/Decker_v1.50.15_dev_Mutant_X_UI_LAB_TEST_ONLY.zip addons/decker/decker.lua docs/UI_EXPERIENCE_LAB_1.50.15.md LICENSE NOTICE
+          unzip -t dist/test-only/Decker_v1.50.15_dev_Mutant_X_UI_LAB_TEST_ONLY.zip
+          sha256sum addons/decker/decker.lua dist/test-only/Decker_v1.50.15_dev_Mutant_X_UI_LAB_TEST_ONLY.zip | tee dist/test-only/SHA256SUMS.txt
+      - name: Upload test-only ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Decker-v1.50.15-dev-UI-LAB-TEST-ONLY
+          path: dist/test-only/
+          if-no-files-found: error
+          retention-days: 14
