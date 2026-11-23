@@ -1934,6 +1934,98 @@ function classic.draw_angled_tile(dl,x,y,w,h,base,accent,hovered)
     for i,point in ipairs(points) do dl:AddLine(point,points[i%#points+1],edge,accent and 1.5 or 1); end
 end
 
+function classic.push_settings_style()
+    local colours,vars=0,0;
+    if imgui.PushStyleColor and imgui.PopStyleColor then
+        for _,entry in ipairs({
+            {ImGuiCol_WindowBg,{.025,.035,.055,.96}},
+            {ImGuiCol_TitleBg,{.055,.071,.10,1}},
+            {ImGuiCol_TitleBgActive,{.075,.095,.13,1}},
+            {ImGuiCol_TitleBgCollapsed,{.055,.071,.10,.95}},
+            {ImGuiCol_Border,{.48,.56,.68,.46}},
+            {ImGuiCol_Separator,{.48,.56,.68,.34}},
+            {ImGuiCol_Button,{.10,.13,.18,1}},
+            {ImGuiCol_ButtonHovered,{.17,.22,.29,1}},
+            {ImGuiCol_ButtonActive,{.21,.27,.36,1}},
+            {ImGuiCol_FrameBg,{.075,.095,.13,1}},
+            {ImGuiCol_FrameBgHovered,{.13,.17,.23,1}},
+            {ImGuiCol_FrameBgActive,{.17,.22,.29,1}},
+            {ImGuiCol_Header,{.10,.13,.18,1}},
+            {ImGuiCol_HeaderHovered,{.17,.22,.29,1}},
+            {ImGuiCol_HeaderActive,{.21,.27,.36,1}},
+            {ImGuiCol_CheckMark,{.80,.88,1,1}},
+        }) do
+            if type(entry[1])=='number' then imgui.PushStyleColor(entry[1],entry[2]); colours=colours+1; end
+        end
+    end
+    if imgui.PushStyleVar and imgui.PopStyleVar then
+        for _,entry in ipairs({
+            {ImGuiStyleVar_WindowRounding,5},{ImGuiStyleVar_WindowBorderSize,1},
+            {ImGuiStyleVar_FrameRounding,3},{ImGuiStyleVar_FrameBorderSize,1},
+            {ImGuiStyleVar_WindowPadding,{12,10}},{ImGuiStyleVar_FramePadding,{8,4}},
+            {ImGuiStyleVar_ItemSpacing,{8,6}},{ImGuiStyleVar_ScrollbarSize,7},
+        }) do
+            if type(entry[1])=='number' then imgui.PushStyleVar(entry[1],entry[2]); vars=vars+1; end
+        end
+    end
+    return colours,vars;
+end
+
+classic.settingsTabs={{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}};
+classic.moreTabs={{'Book & Set','General'},{'Profiles','Profiles'},{'Updates','Updates'}};
+
+function classic.draw_settings_tabs(tabs,prefix,active)
+    local available=pair(imgui.GetContentRegionAvail()) or 450;
+    local used=0;
+    for _,tab in ipairs(tabs) do
+        local label,id=tab[1],tab[2];
+        local selected=active==id;
+        local tw,th;
+        if imgui.CalcTextSize then tw,th=pair(imgui.CalcTextSize(label)); end
+        local w=math.min(math.max(1,available),math.max(72,math.ceil(tw or #label*8)+22));
+        local h=math.max(28,math.ceil(th or 16)+10);
+        if used>0 and used+8+w<=available then
+            imgui.SameLine();
+            used=used+8+w;
+        else
+            used=w;
+        end
+        local dl=not classic.settingsDrawFallback and classic.angled_draw_list(selected);
+        local x,y;
+        if dl and dl.AddText and tw and th and w>=tw+6 then x,y=pair(imgui.GetCursorScreenPos()); end
+        local angled=x~=nil;
+        local base=selected and {.17,.22,.29,1} or {.10,.13,.18,1};
+        local accent={.80,.88,1,1};
+        local n=0;
+        if imgui.PushStyleColor and imgui.PopStyleColor then
+            local clear={0,0,0,0};
+            for _,entry in ipairs({
+                {ImGuiCol_Button,angled and clear or base},
+                {ImGuiCol_ButtonHovered,angled and clear or {.22,.28,.37,1}},
+                {ImGuiCol_ButtonActive,angled and clear or {.26,.33,.43,1}},
+                {ImGuiCol_Border,angled and clear or selected and accent or {.48,.56,.68,.46}},
+            }) do
+                if type(entry[1])=='number' then imgui.PushStyleColor(entry[1],entry[2]); n=n+1; end
+            end
+        end
+        if imgui.Button((angled and '' or label)..'##'..prefix..id,{w,h}) then state.settingsTab=id; end
+        if n>0 then imgui.PopStyleColor(n); end
+        if angled then
+            local ok=pcall(function()
+                classic.draw_angled_tile(dl,x,y,w,h,base,selected and accent or nil,
+                    imgui.IsItemHovered and imgui.IsItemHovered());
+                dl:AddText(imgui.GetFont(),imgui.GetTextLineHeight(),{x+(w-tw)/2,y+(h-th)/2},
+                    imgui.GetColorU32({.96,.96,.97,1}),label);
+            end);
+            if not ok then classic.settingsDrawFallback=true; end
+        end
+    end
+end
+
+function classic.settings_more_tab()
+    return state.settingsTab=='General' or state.settingsTab=='Profiles' or state.settingsTab=='Updates';
+end
+
 local function draw_row(title,offset)
     local now=os.clock(); -- One animation clock sample for the entire row.
     local order=current_macro_layout();
@@ -3499,32 +3591,22 @@ ashita.events.register('d3d_present','decker_draw',function()
     end -- visible macro HUD; Settings is independent
     if not drawDeps.state.showTests or drawDeps.state.settingsTab~='StateBar' then drawDeps.state.statebarDrag=nil; end
     if drawDeps.state.showTests then
-        drawDeps.imgui.SetNextWindowSize({490,370},ImGuiCond_FirstUseEver);
-        local thinScroll=type(ImGuiStyleVar_ScrollbarSize)=='number' and drawDeps.imgui.PushStyleVar and drawDeps.imgui.PopStyleVar;
-        if thinScroll then drawDeps.imgui.PushStyleVar(ImGuiStyleVar_ScrollbarSize,7); end
+        drawDeps.imgui.SetNextWindowSize({540,420},ImGuiCond_FirstUseEver);
+        local settingsColours,settingsVars=drawDeps.classic.push_settings_style();
         local settingsOpen={drawDeps.state.showTests};
-        if drawDeps.imgui.Begin('Decker v'..addon.version..' - Settings',settingsOpen,drawDeps.scrollbar_flags()) then
-            if drawDeps.imgui.Button('X  Close Settings') then drawDeps.state.showTests=false; end
-            drawDeps.imgui.SameLine(); if drawDeps.imgui.Button('Show macros##settings') then drawDeps.state.visible=true; drawDeps.state.hudLastActivity=os.clock(); drawDeps.state.hudForceReveal=true; end
-            drawDeps.imgui.Text('Decker v'..addon.version);
-            drawDeps.imgui.Separator();
-            -- Four user-facing sections; technical pages live under More.
-            local currentTab=drawDeps.state.settingsTab;
-            local moreActive=(currentTab=='General' or currentTab=='Profiles' or currentTab=='Updates');
-            for i,tab in ipairs({{'Quick Setup','Controls'},{'Appearance','Appearance'},{'StateBar','StateBar'},{'More','General'}}) do
-                if i>1 then drawDeps.imgui.SameLine(); end
-                local active=(tab[2]=='General' and moreActive) or currentTab==tab[2];
-                if drawDeps.imgui.Button((active and '['..tab[1]..']' or tab[1])..'##tab'..tab[2]) then drawDeps.state.settingsTab=tab[2]; end
+        if drawDeps.imgui.Begin('Decker Settings###DeckerSettings',settingsOpen,drawDeps.scrollbar_flags()) then
+            local moreActive=drawDeps.classic.settings_more_tab();
+            drawDeps.classic.draw_settings_tabs(drawDeps.classic.settingsTabs,'tab',moreActive and 'General' or drawDeps.state.settingsTab);
+            if drawDeps.classic.settings_more_tab() then
+                drawDeps.classic.draw_settings_tabs(drawDeps.classic.moreTabs,'more',drawDeps.state.settingsTab);
             end
             drawDeps.imgui.Separator();
-            if moreActive then
-                drawDeps.imgui.Text('More options:');
-                for i,tab in ipairs({{'Book & Set','General'},{'Profiles','Profiles'},{'Updates','Updates'}}) do
-                    if i>1 then drawDeps.imgui.SameLine(); end
-                    if drawDeps.imgui.Button((drawDeps.state.settingsTab==tab[2] and '['..tab[1]..']' or tab[1])..'##more'..tab[2]) then drawDeps.state.settingsTab=tab[2]; end
-                end
-                drawDeps.imgui.Separator();
+            if drawDeps.imgui.Button('Show macros##settings') then
+                drawDeps.state.visible=true;
+                drawDeps.state.hudLastActivity=os.clock();
+                drawDeps.state.hudForceReveal=true;
             end
+            drawDeps.imgui.Separator();
             if drawDeps.state.settingsTab=='Profiles' then
                 local profileName=drawDeps.state.profileId and drawDeps.state.profileId:match('^[^_]+_(.*)$') or nil;
                 drawDeps.imgui.Text('Character: '..(profileName or 'Waiting for login'));
@@ -3983,7 +4065,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if (drawDeps.state.settingsTab=='General' or drawDeps.state.settingsTab=='Controls') and drawDeps.state.phase>=4 and drawDeps.imgui.Button('Refresh macro names') then drawDeps.state.confirmAll=true; drawDeps.read_all_names(); end
             drawDeps.imgui.Separator(); drawDeps.imgui.Text('Decker v'..addon.version..'  |  by Mutant X')
             if drawDeps.state.showAdvanced then drawDeps.imgui.TextWrapped('CatseyeXI: T1 Sanctioned - approved 19 October 2026.'); end
-            local section=moreActive and 'General' or drawDeps.state.settingsTab;
+            local section=drawDeps.classic.settings_more_tab() and 'General' or drawDeps.state.settingsTab;
             if drawDeps.imgui.Button('Restore section defaults') then drawDeps.state.resetSection=section; end
             if drawDeps.state.resetSection==section then
                 drawDeps.imgui.Text('Restore only this section?');
@@ -3993,7 +4075,7 @@ ashita.events.register('d3d_present','decker_draw',function()
             if drawDeps.imgui.Button('Close settings') then drawDeps.state.showTests=false; end
         end
         drawDeps.imgui.End();
-        if thinScroll then drawDeps.imgui.PopStyleVar(); end
+        drawDeps.pop_glass_background(settingsColours,settingsVars);
         if not settingsOpen[1] then drawDeps.state.showTests=false; end
     end
     drawDeps.guide_draw(); -- Independent of Settings and HUD visibility; preview never invokes native calls.

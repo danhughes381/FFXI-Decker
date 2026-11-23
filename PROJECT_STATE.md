@@ -208,3 +208,9 @@ Changed `addons/decker/decker.lua` and `tests/regression.lua`. All 120 mocked-ho
 The owner requested Development delivery. The v1.50.68-dev candidate includes an alternate fill for hosts without the ImGui path API. LuaJIT bytecode compilation and all 120 mocked checks passed under LuaJIT and Lua 5.4. Live render, updater install and reload still need a Windows check.
 
 Development pin: [v1.50.68-dev source](https://github.com/danhughes381/FFXI-Decker/commit/7aeb7f879af7e067a1ca0af01f8d0cba2a581f46). [PR #58](https://github.com/danhughes381/FFXI-Decker/pull/58) merged after both GitHub regression workflows passed. The in-game Development manifest points to the verified source bytes. Stable remains 1.50.64-dev. Next: install from Development, select an Angled tile outline and check the macro rows and StateBar in Ashita/VanaCore.
+
+## 23 November 2026 — Settings visual refresh candidate
+
+Settings uses the macro bar's dark glass palette and active outline. Its primary tabs and More subtabs follow the active tile outline preference: Glass, Angled selection or Angled tiles. Tabs wrap in a narrow window. The Settings window uses a stable ImGui ID across future version changes. Settings actions, macro bindings and profile data continue to use their existing handlers.
+
+Changed `addons/decker/decker.lua` and `tests/regression.lua`. LuaJIT bytecode compilation and 121 mocked regression groups pass under LuaJIT and Lua 5.4. Next: review the candidate in Ashita at regular and compact sizes and check all tabs, native Close and update/rollback navigation. The in-game Development pin still serves v1.50.68-dev.

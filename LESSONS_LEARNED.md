@@ -26,3 +26,5 @@ A CTRL or ALT position can represent different actions in every book and set. Ke
 - A subtarget flag can be true while the action-target flag is false. In the mocked Ashita regression, keyboard capture accepted Enter in that state. The older frame handler could still drop the queued macro using the raw selector check. Test the route through the draw callback as well as the keyboard hooks.
 
 - Decker's display-file parser only permits token characters in saved values. Appearance names containing spaces need a token encoding for profile round trips. The angled outline has a mocked save/reload check.
+
+- Settings tabs need width-aware wrapping because Ashita's SameLine places tabs inline regardless of available width. Mocked checks cover the 205 px layout with all three outline modes and navigation into More.
